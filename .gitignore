@@ -1,0 +1,29 @@
+# ── Python ──
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ipynb_checkpoints/
+
+# ── Secrets ──
+.env
+.cache            # spotipy token cache
+
+# ── Data (rebuildable via scripts/run_pipeline.py — never commit) ──
+data/raw_audio/
+data/warehouse/
+data/embeddings/
+data/vector_store/
+*.parquet
+*.mp3
+
+# ── IDE / tool state ──
+anaconda_projects/
+.vscode/
+.idea/
+
+# ── Generated outputs ──
+*.faiss
+temporal_analysis.html
+temporal_analysis.pdf
