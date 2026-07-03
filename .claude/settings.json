@@ -1,0 +1,5 @@
+{
+  "permissions": {
+    "allow": ["Skill", "Bash(uv run:*)", "Bash(pytest:*)"]
+  }
+}
