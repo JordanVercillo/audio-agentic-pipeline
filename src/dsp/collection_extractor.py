@@ -351,8 +351,8 @@ def extract_features_for_collection(
     # Import here (not at module top) to avoid circular dependency with the
     # warehouse layer, which may import dsp indirectly.
     try:
-        from src.warehouse.staging import land_staging_features
         from src.warehouse.cleansed import build_cleansed_features
+        from src.warehouse.staging import land_staging_features
 
         logger.info("Landing %d feature rows to Staging (Bronze)…", n_extracted)
         land_staging_features(features_df)

@@ -23,20 +23,19 @@ Time Complexity: O(n) single-pass aggregation
 Space Complexity: O(d) per partition where d = 77 features
 """
 
-import sys
 from pathlib import Path
 from typing import Optional
 
 import numpy as np
 
 try:
-    from pyspark.sql import SparkSession, DataFrame
+    from pyspark.sql import DataFrame, SparkSession
     from pyspark.sql import functions as F
-    from pyspark.sql.types import StructType, StructField, StringType, FloatType
+    from pyspark.sql.types import StructType
 except ImportError:
     raise ImportError(
         "PySpark is required. Install: pip install pyspark>=3.5.0"
-    )
+    ) from None
 
 # ── Default paths ──
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -117,7 +116,7 @@ def compute_centroids_spark(
     centroids_path = f"{output_path}/temporal_centroids_spark.parquet"
     centroids.coalesce(1).write.mode("overwrite").parquet(centroids_path)
 
-    print(f"   ✅ Temporal centroids computed:")
+    print("   ✅ Temporal centroids computed:")
     centroids.select("time_range", "track_count", *available[:5]).show(truncate=False)
 
     return centroids

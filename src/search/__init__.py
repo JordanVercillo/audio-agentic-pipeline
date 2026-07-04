@@ -31,22 +31,38 @@ Full DAG (from 03_data_orchestrator.md):
     3. Upsert to Vector Store (src.search)  ← this module
 """
 
+import importlib
+
 # Configuration
-from .config import VectorStoreConfig, SimilarityMetric
+from .config import SimilarityMetric, VectorStoreConfig
 
-# FAISS Store
-from .faiss_store import FAISSStore
+# Visualization (light: umap + matplotlib — needed by the taste-map path)
+from .visualizer import compute_umap, plot_similarity_radar, plot_taste_map
 
-# Visualization
-from .visualizer import compute_umap, plot_taste_map, plot_similarity_radar
+# ── Lazy heavy submodules ──
+# FAISS (faiss_store) and the full DAG (pipeline) are loaded ON FIRST ACCESS,
+# not at package import. Otherwise `from src.search.visualizer import compute_umap`
+# — the taste-map / report path — would drag in FAISS it never uses (and emit
+# faiss's AVX-fallback noise). `from src.search import FAISSStore` still works.
+_LAZY = {
+    "FAISSStore": ".faiss_store",
+    "build_index_from_features": ".pipeline",
+    "build_index_from_embeddings": ".pipeline",
+    "find_similar_tracks": ".pipeline",
+    "visualize_collection": ".pipeline",
+}
 
-# Pipeline Orchestration
-from .pipeline import (
-    build_index_from_features,
-    build_index_from_embeddings,
-    find_similar_tracks,
-    visualize_collection,
-)
+
+def __getattr__(name: str):  # PEP 562
+    target = _LAZY.get(name)
+    if target is None:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    return getattr(importlib.import_module(target, __name__), name)
+
+
+def __dir__():
+    return sorted([*globals().keys(), *_LAZY])
+
 
 __all__ = [
     # Config

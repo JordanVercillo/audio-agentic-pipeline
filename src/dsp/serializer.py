@@ -25,17 +25,16 @@ import numpy as np
 import pandas as pd
 
 try:
-    import pyarrow as pa
-    import pyarrow.parquet as pq
+    import pyarrow as pa  # noqa: F401 — availability probe (pandas writes via the pyarrow engine)
+    import pyarrow.parquet as pq  # noqa: F401 — availability probe
 except ImportError:
     raise ImportError(
         "PyArrow is required for Parquet serialization.\n"
         "Install: pip install pyarrow>=14.0.0"
-    )
+    ) from None
 
-from .feature_extractor import TrackFeatures
 from .embedding_extractor import AudioEmbedding
-
+from .feature_extractor import TrackFeatures
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 #  FEATURE SUMMARY → PARQUET

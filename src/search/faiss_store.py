@@ -36,10 +36,9 @@ except ImportError:
     raise ImportError(
         "FAISS is required for vector search.\n"
         "Install: pip install faiss-cpu"
-    )
+    ) from None
 
-from .config import VectorStoreConfig, VECTOR_STORE_DIR
-
+from .config import VectorStoreConfig
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 #  FAISS VECTOR STORE
@@ -188,7 +187,7 @@ class FAISSStore:
 
         results = []
         rank = 1
-        for dist, idx in zip(distances[0], indices[0]):
+        for dist, idx in zip(distances[0], indices[0], strict=True):
             if idx < 0:
                 continue  # FAISS returns -1 for empty slots
 
@@ -239,7 +238,7 @@ class FAISSStore:
         try:
             idx = self._track_ids.index(track_id)
         except ValueError:
-            raise KeyError(f"Track '{track_id}' not found in index")
+            raise KeyError(f"Track '{track_id}' not found in index") from None
 
         # Reconstruct the vector from the index
         vector = self.index.reconstruct(idx)

@@ -30,30 +30,6 @@ Audio Download:
 """
 
 # Authentication
-from .auth import get_user_spotify
-
-# Guardrails
-from .guardrails import (
-    safe_api_call,
-    strip_deprecated_fields,
-    throttle,
-    DeprecatedEndpointError,
-)
-
-# Data Fetchers
-from .fetchers import (
-    fetch_top_tracks,
-    fetch_top_artists,
-    fetch_all_top_items,
-    fetch_artists_by_ids,
-    fetch_track_metadata,
-    fetch_batch_metadata,
-    fetch_user_playlists,
-    fetch_playlist_tracks,
-    search_tracks,
-    fetch_user_profile,
-)
-
 # Audio Download (Phase 1)
 from .audio_downloader import (
     DownloadConfig,
@@ -62,13 +38,36 @@ from .audio_downloader import (
     resolve_youtube_url,
     should_skip_download,
 )
+from .auth import get_user_spotify
+
+# Data Fetchers
+from .fetchers import (
+    fetch_all_top_items,
+    fetch_artists_by_ids,
+    fetch_batch_metadata,
+    fetch_playlist_tracks,
+    fetch_top_artists,
+    fetch_top_tracks,
+    fetch_track_metadata,
+    fetch_user_playlists,
+    fetch_user_profile,
+    search_tracks,
+)
+
+# Guardrails
+from .guardrails import (
+    DeprecatedEndpointError,
+    safe_api_call,
+    strip_deprecated_fields,
+    throttle,
+)
 
 # Serialization
 from .serializer import (
+    get_track_ids_from_parquet,
+    load_metadata_parquet,
     save_metadata_to_parquet,
     save_top_items_to_parquet,
-    load_metadata_parquet,
-    get_track_ids_from_parquet,
 )
 
 __all__ = [

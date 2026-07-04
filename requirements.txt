@@ -1,5 +1,8 @@
 # audio-agentic-pipeline — Python Dependencies
 # ==============================================
+# NOTE: pyproject.toml + uv.lock are the canonical, pinned source of truth
+# (SPEC P6). This file is kept as a pip-compatible export for anyone not
+# using uv:  uv pip install -r requirements.txt  (or plain pip).
 
 # ── Core DSP & Audio I/O ──
 librosa>=0.10.0

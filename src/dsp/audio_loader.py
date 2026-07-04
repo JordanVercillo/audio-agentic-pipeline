@@ -24,10 +24,9 @@ try:
 except ImportError:
     raise ImportError(
         "librosa is required for audio loading. Install via: pip install librosa>=0.10.0"
-    )
+    ) from None
 
-from .config import DSPConfig, SAMPLE_RATE, MIN_DURATION_SEC, MAX_DURATION_SEC
-
+from .config import MAX_DURATION_SEC, MIN_DURATION_SEC, SAMPLE_RATE, DSPConfig
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 #  DATA STRUCTURES

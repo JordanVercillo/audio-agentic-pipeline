@@ -16,27 +16,24 @@ Run from the project root:
 
 from __future__ import annotations
 
-import time
+# ── Allow running before installation (add src to path) ──────────────────────
+import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pandas as pd
 import pytest
 
-# ── Allow running before installation (add src to path) ──────────────────────
-import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
 from src.ingestion.audio_downloader import (
-    DownloadConfig,
     RAW_AUDIO_DIR,
-    _CLEANSED_FEATURES_PATH,
+    DownloadConfig,
     download_audio_for_tracks,
     download_track_audio,
     resolve_youtube_url,
     should_skip_download,
 )
-
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 #  FIXTURES

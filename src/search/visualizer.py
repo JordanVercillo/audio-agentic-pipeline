@@ -31,7 +31,6 @@ from pathlib import Path
 from typing import Optional, Union
 
 import numpy as np
-import pandas as pd
 
 try:
     import umap
@@ -39,13 +38,12 @@ except ImportError:
     raise ImportError(
         "umap-learn is required for visualization.\n"
         "Install: pip install umap-learn"
-    )
+    ) from None
 
-import matplotlib.pyplot as plt
 import matplotlib.patheffects as pe
+import matplotlib.pyplot as plt
 
 from .config import VectorStoreConfig
-
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 #  UMAP PROJECTION
@@ -144,7 +142,7 @@ def plot_taste_map(
     if colors is not None:
         unique_cats = sorted(set(colors))
         # Use a perceptually uniform colormap with enough distinction
-        cmap = plt.cm.get_cmap("tab20", len(unique_cats))
+        cmap = plt.get_cmap("tab20", len(unique_cats))  # plt.cm.get_cmap removed in mpl 3.9
         cat_to_idx = {cat: i for i, cat in enumerate(unique_cats)}
         overrides = category_colors or {}
 
