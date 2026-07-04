@@ -1,0 +1,40 @@
+name: CI
+
+# Lint + the synthetic-data test suite. No secrets, no network, no real audio
+# required — the tests use generate_test_signal(), so this runs free on every
+# push and PR (SPEC P6; the platform-DE "solid engineering practices" signal).
+
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # soundfile writes the synthetic WAV fixtures; libsndfile is its backend.
+      - name: Install audio system libs
+        run: sudo apt-get update && sudo apt-get install -y libsndfile1
+
+      - name: Install uv + Python 3.12
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+          enable-cache: true
+
+      # --frozen: install exactly what uv.lock pins; fails if the lock is stale
+      # (which is itself a useful check that deps and lock stay in sync).
+      - name: Install dependencies
+        run: uv sync --frozen --extra dev
+
+      - name: Lint (ruff)
+        run: uv run ruff check
+
+      - name: Test (pytest — synthetic data)
+        run: uv run pytest
