@@ -8,13 +8,13 @@ venv/
 
 # ── Secrets ──
 .env
-.cache            # spotipy token cache
+.cache                 # spotipy token cache (legacy default location)
+.spotify_cache         # legacy spotify/ OAuth cache
+.spotify_pkce_cache    # PKCE token cache (written under data/)
 
 # ── Data (rebuildable via scripts/run_pipeline.py — never commit) ──
-data/raw_audio/
-data/warehouse/
-data/embeddings/
-data/vector_store/
+# Whole tree: warehouse layers, raw audio, AND the PKCE token cache live here.
+data/
 *.parquet
 *.mp3
 
