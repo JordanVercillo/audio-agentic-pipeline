@@ -1,0 +1,239 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-07-03T22:53:17+00:00",
+  "corpus": {
+    "n_fact_rows": 151,
+    "n_unique_tracks": 118,
+    "n_tracks_with_features": 117,
+    "n_unique_artists": 60,
+    "time_ranges": [
+      "short_term",
+      "medium_term",
+      "long_term"
+    ],
+    "genre_coverage": {
+      "covered": 81,
+      "total": 117
+    }
+  },
+  "drift": {
+    "score": 0.1405,
+    "label": "Minimal Drift \u2014 Your taste is remarkably stable",
+    "stability_score": 0.8594,
+    "pairwise_distances": {
+      "short_term_vs_medium_term": 0.1378,
+      "medium_term_vs_long_term": 0.1434,
+      "short_term_vs_long_term": 0.1405
+    },
+    "top_drivers": [
+      {
+        "feature": "spectral_rolloff_std",
+        "label": "Freq. Ceiling Variability",
+        "short_term": 1624.5844,
+        "long_term": 1656.0826,
+        "relative_delta_pct": 1.9,
+        "direction": "stable"
+      },
+      {
+        "feature": "spectral_centroid_std",
+        "label": "Brightness Variability",
+        "short_term": 779.5812,
+        "long_term": 803.8079,
+        "relative_delta_pct": 3.01,
+        "direction": "decreasing"
+      },
+      {
+        "feature": "spectral_centroid_mean",
+        "label": "Brightness",
+        "short_term": 2373.9465,
+        "long_term": 2391.9358,
+        "relative_delta_pct": 0.75,
+        "direction": "stable"
+      },
+      {
+        "feature": "spectral_rolloff_mean",
+        "label": "Freq. Ceiling",
+        "short_term": 4991.4824,
+        "long_term": 5005.3193,
+        "relative_delta_pct": 0.28,
+        "direction": "stable"
+      },
+      {
+        "feature": "tempo_bpm",
+        "label": "Tempo (BPM)",
+        "short_term": 126.2984,
+        "long_term": 125.5519,
+        "relative_delta_pct": 0.59,
+        "direction": "stable"
+      }
+    ]
+  },
+  "clusters": {
+    "available": true,
+    "k": 3,
+    "clusters": [
+      {
+        "cluster_id": 0,
+        "n_tracks": 33,
+        "acoustic_label": "Noisy \u00b7 Bright",
+        "dominant_genre": "Indie & Alt",
+        "top_artist": "Muse"
+      },
+      {
+        "cluster_id": 1,
+        "n_tracks": 40,
+        "acoustic_label": "Smooth \u00b7 Dark",
+        "dominant_genre": "Indie & Alt",
+        "top_artist": "Muse"
+      },
+      {
+        "cluster_id": 2,
+        "n_tracks": 44,
+        "acoustic_label": "Gentle \u00b7 Loud",
+        "dominant_genre": "Punk & Emo",
+        "top_artist": "Muse"
+      }
+    ]
+  },
+  "persistence": {
+    "n_single_range": 94,
+    "n_two_ranges": 15,
+    "n_all_three": 9,
+    "persistent_favorites": [
+      {
+        "track_name": "Nightshift Superstar",
+        "artist": "Muse",
+        "avg_rank": 2.0
+      },
+      {
+        "track_name": "Shimmering Scars",
+        "artist": "Muse",
+        "avg_rank": 6.7
+      },
+      {
+        "track_name": "The Dark Forest",
+        "artist": "Muse",
+        "avg_rank": 10.3
+      },
+      {
+        "track_name": "The Sickness In You & I",
+        "artist": "Muse",
+        "avg_rank": 13.7
+      },
+      {
+        "track_name": "One By One",
+        "artist": "The Blue Stones",
+        "avg_rank": 14.7
+      }
+    ]
+  },
+  "superlatives": {
+    "highest_energy": {
+      "short_term": {
+        "track_name": "Cut Back",
+        "artist": "Marmozets",
+        "value": 0.3052
+      },
+      "medium_term": {
+        "track_name": "Diamond on a Landmine",
+        "artist": "Billy Talent",
+        "value": 0.2892
+      },
+      "long_term": {
+        "track_name": "Be With You",
+        "artist": "Muse",
+        "value": 0.2911
+      }
+    },
+    "fastest": {
+      "short_term": {
+        "track_name": "The Lazy Song",
+        "artist": "Bruno Mars",
+        "value": 172.2656
+      },
+      "medium_term": {
+        "track_name": "Rich Girl",
+        "artist": "Daryl Hall & John Oates",
+        "value": 172.2656
+      },
+      "long_term": {
+        "track_name": "Rich Girl",
+        "artist": "Daryl Hall & John Oates",
+        "value": 172.2656
+      }
+    },
+    "most_acoustic": {
+      "short_term": {
+        "track_name": "Space Debris",
+        "artist": "Muse",
+        "value": 0.6778
+      },
+      "medium_term": {
+        "track_name": "Lost Together",
+        "artist": "Blue Rodeo",
+        "value": 0.7547
+      },
+      "long_term": {
+        "track_name": "Hallelujah",
+        "artist": "The Canadian Tenors",
+        "value": 0.7417
+      }
+    },
+    "brightest": {
+      "short_term": {
+        "track_name": "Nightshift Superstar",
+        "artist": "Muse",
+        "value": 3051.6929
+      },
+      "medium_term": {
+        "track_name": "Nightshift Superstar",
+        "artist": "Muse",
+        "value": 3051.6929
+      },
+      "long_term": {
+        "track_name": "Plug in Baby",
+        "artist": "Muse",
+        "value": 3482.5149
+      }
+    }
+  },
+  "genres": {
+    "distribution": {
+      "Unknown": 36,
+      "Indie & Alt": 35,
+      "Punk & Emo": 25,
+      "Metal": 6,
+      "Blues": 4,
+      "Electronic": 2,
+      "Other": 2,
+      "Rock": 2,
+      "R&B & Funk": 1,
+      "Country": 1,
+      "Classical": 1,
+      "Hip-Hop": 1,
+      "Pop": 1
+    },
+    "top_artists": [
+      {
+        "artist": "Muse",
+        "n_tracks": 31
+      },
+      {
+        "artist": "Linkin Park",
+        "n_tracks": 6
+      },
+      {
+        "artist": "Green Day",
+        "n_tracks": 5
+      },
+      {
+        "artist": "Fall Out Boy",
+        "n_tracks": 4
+      },
+      {
+        "artist": "Foo Fighters",
+        "n_tracks": 3
+      }
+    ]
+  }
+}
