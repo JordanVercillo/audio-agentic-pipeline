@@ -534,10 +534,16 @@ def plot_feature_distributions(
                 colors.append(TIME_RANGE_COLORS.get(tr, "#ffffff"))
 
         if data_by_tr:
+            # Set tick labels after the fact rather than via a boxplot kwarg —
+            # matplotlib renamed boxplot(labels=) → tick_labels= in 3.9, so the
+            # kwarg form breaks on newer matplotlib (caught by CI). This is
+            # version-agnostic.
             bp = ax.boxplot(
-                data_by_tr, labels=labels, patch_artist=True,
+                data_by_tr, patch_artist=True,
                 widths=0.6, showfliers=True, flierprops={"marker": ".", "markersize": 4},
             )
+            ax.set_xticks(range(1, len(labels) + 1))
+            ax.set_xticklabels(labels)
             for patch, color in zip(bp["boxes"], colors, strict=True):
                 patch.set_facecolor(color)
                 patch.set_alpha(0.6)
