@@ -10,6 +10,12 @@ This is the distributed version of src/analysis/drift.py.
 In production, this would run as a scheduled Dataflow/Spark job
 to recompute drift metrics as new listening data arrives.
 
+The distributed value here is the CENTROID aggregation (`groupBy(time_range)`)
+— that's what parity-checks against pandas (spark/parity_check.py). The
+pairwise-cosine below is a legacy quick-distance; the CANONICAL taste-drift
+metric is the RMS σ-shift in src/analysis/drift.py (ADR-003 amended, SPEC
+D-9), computed on the driver from these 3 centroids (an O(1) step).
+
 Execution:
     spark-submit spark/temporal_aggregate.py
     python spark/temporal_aggregate.py  # local mode
