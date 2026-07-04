@@ -31,14 +31,16 @@ def run_smoke_test():
 
     # ── 1. Imports ──
     print("\n━━━ TEST 1: Module Imports ━━━")
-    from src.search import (
-        FAISSStore, VectorStoreConfig, SimilarityMetric,
-        compute_umap, plot_taste_map,
-        build_index_from_features, find_similar_tracks,
-    )
     from src.dsp import (
-        generate_test_signal, extract_features, extract_embedding,
-        save_features_to_parquet, save_embeddings_to_parquet,
+        extract_features,
+        generate_test_signal,
+        save_features_to_parquet,
+    )
+    from src.search import (
+        FAISSStore,
+        VectorStoreConfig,
+        build_index_from_features,
+        compute_umap,
     )
     print("   ✅ All modules imported")
 
@@ -104,7 +106,7 @@ def run_smoke_test():
 
     assert len(results) > 0, "Query returned no results"
     print(f"   Query: {query_id}")
-    print(f"   Results:")
+    print("   Results:")
     for r in results:
         sim_pct = r["similarity"] * 100
         print(f"      {r['rank']}. {r['spotify_track_id']} — {sim_pct:.1f}%")
@@ -142,7 +144,7 @@ def run_smoke_test():
         )
 
         print(f"   ✅ Save/load round-trip: {store_loaded.size} vectors preserved")
-        print(f"   ✅ Query consistency verified after reload")
+        print("   ✅ Query consistency verified after reload")
 
     # ── 7. UMAP projection ──
     print("\n━━━ TEST 7: UMAP Projection ━━━")

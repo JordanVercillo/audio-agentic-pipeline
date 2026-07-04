@@ -23,6 +23,7 @@ import sys
 from pathlib import Path
 
 import matplotlib
+
 matplotlib.use("Agg")  # headless — we only save files
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -52,9 +53,9 @@ def main() -> None:
     from src.analysis.drift import compute_temporal_centroids
     from src.analysis.visualizations import (
         plot_drift_radar,
-        plot_temporal_heatmap,
         plot_feature_distributions,
         plot_genre_flow,
+        plot_temporal_heatmap,
     )
 
     print("=" * 60)

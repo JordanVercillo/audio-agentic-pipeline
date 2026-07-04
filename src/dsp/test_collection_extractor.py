@@ -18,26 +18,23 @@ Run from the project root:
 
 from __future__ import annotations
 
-import struct
+import sys
 import wave
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import numpy as np
 import pandas as pd
 import pytest
 
-import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
 from src.dsp.collection_extractor import (
-    RAW_AUDIO_DIR,
     _load_cached_feature_ids,
     extract_features_for_collection,
     extract_features_for_track,
 )
-from src.dsp.config import DSPConfig, SAMPLE_RATE
-
+from src.dsp.config import SAMPLE_RATE, DSPConfig
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 #  TEST HELPERS
@@ -251,8 +248,8 @@ class TestExtractFeaturesForCollection:
     ) -> None:
         """Two valid WAVs and one corrupt → DataFrame with exactly 2 rows."""
         with patch(self._CACHE_PATCH, return_value=set()), \
-             patch(self._STAGING_PATCH) as mock_stage, \
-             patch(self._CLEANSED_PATCH) as mock_cleanse:
+             patch(self._STAGING_PATCH), \
+             patch(self._CLEANSED_PATCH):
 
             result = extract_features_for_collection(
                 audio_dir=audio_dir_with_files, config=config

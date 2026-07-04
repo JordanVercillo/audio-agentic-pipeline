@@ -32,17 +32,19 @@ Time Complexity: O(n log n) for the sort + dedup
 Space Complexity: O(n) — single pass after sort, no materialization of intermediate DFs
 """
 
-import sys
 from pathlib import Path
 from typing import Optional
 
 # ── PySpark imports ──
 try:
-    from pyspark.sql import SparkSession, DataFrame
+    from pyspark.sql import DataFrame, SparkSession
     from pyspark.sql import functions as F
     from pyspark.sql.types import (
-        StructType, StructField, StringType, FloatType,
-        IntegerType, BooleanType,
+        BooleanType,
+        FloatType,
+        IntegerType,
+        StringType,
+        StructType,
     )
     from pyspark.sql.window import Window
 except ImportError:
@@ -50,7 +52,7 @@ except ImportError:
         "PySpark is required for this job.\n"
         "Install: pip install pyspark>=3.5.0\n"
         "Or run the pandas-based equivalent in src/warehouse/cleansed.py"
-    )
+    ) from None
 
 # ── Default paths ──
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent

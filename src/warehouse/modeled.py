@@ -57,7 +57,6 @@ Reference: Medallion Architecture — Gold/Modeled Layer
 from pathlib import Path
 from typing import Optional, Union
 
-import numpy as np
 import pandas as pd
 
 # ── Default paths ──
@@ -368,7 +367,7 @@ def build_star_schema(
             print(f"   ✅ {name}: {len(df)} rows → {path.name}")
 
     # ── Summary ──
-    print(f"\n   📊 Star Schema Summary:")
+    print("\n   📊 Star Schema Summary:")
     print(f"      Fact table rows:    {len(fact)}")
     print(f"      Unique tracks:      {len(dim_tracks)}")
     print(f"      Unique artists:     {len(dim_artists)}")
@@ -376,7 +375,7 @@ def build_star_schema(
     print(f"      Column descriptions: {len(col_desc_df)}")
 
     if not fact.empty and "time_range" in fact.columns:
-        print(f"\n   📊 Rows per time range:")
+        print("\n   📊 Rows per time range:")
         for tr, count in fact["time_range"].value_counts().items():
             print(f"      {tr}: {count}")
 
@@ -441,6 +440,6 @@ def get_column_descriptions(
     """
     try:
         df = load_dimension("column_descriptions", modeled_dir)
-        return dict(zip(df["column_name"], df["description"]))
+        return dict(zip(df["column_name"], df["description"], strict=True))
     except FileNotFoundError:
         return COLUMN_DESCRIPTIONS

@@ -18,6 +18,7 @@ import sys
 from pathlib import Path
 
 import matplotlib
+
 matplotlib.use("Agg")  # headless — we only save files
 import matplotlib.pyplot as plt
 import numpy as np
@@ -118,9 +119,9 @@ def main() -> None:
     size_legend.get_title().set_color("#f0f6fc")
     # Re-add the genre legend (a second ax.legend() call replaces the first)
     handles, labels_ = ax.get_legend_handles_labels()
-    genre_only = [(h, l) for h, l in zip(handles, labels_) if l in GENRE_PALETTE]
+    genre_only = [(h, lab) for h, lab in zip(handles, labels_, strict=True) if lab in GENRE_PALETTE]
     genre_legend = ax.legend(
-        [h for h, _ in genre_only], [l for _, l in genre_only],
+        [h for h, _ in genre_only], [lab for _, lab in genre_only],
         title="Genre", loc="upper right",
         facecolor="#161b22", edgecolor="#30363d", labelcolor="#c9d1d9",
         title_fontsize=11, fontsize=9,

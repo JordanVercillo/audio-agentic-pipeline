@@ -33,8 +33,8 @@ from typing import Optional, Union
 
 import pandas as pd
 
-from src.analysis.drift import compute_taste_drift
 from src.analysis.clustering import UNKNOWN_BUCKET, describe_clusters
+from src.analysis.drift import compute_taste_drift
 
 logger = logging.getLogger(__name__)
 
