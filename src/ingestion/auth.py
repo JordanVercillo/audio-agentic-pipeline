@@ -1,22 +1,24 @@
 """
-auth.py — Spotify OAuth Authentication (2026 Compliant)
-========================================================
-Implements the two surviving auth flows per 01_spotify_api_guardrails.md:
+auth.py — Spotify OAuth Authentication (2026 Compliant, PKCE-only)
+===================================================================
+ONE auth flow for the whole project: Authorization Code with PKCE
+(per 01_spotify_api_guardrails.md — Implicit Grant is deprecated).
 
-    1. PKCE Authorization Code Flow — for user-scoped endpoints (/me/top, /me/player).
-       The Implicit Grant flow is DEPRECATED. PKCE is the only sanctioned user auth flow.
-       Key advantage: no client_secret needed on the client side (PKCE uses a
-       code_verifier/code_challenge instead), making it safe for desktop/mobile apps.
-
-    2. Client Credentials Flow — for public endpoints (tracks, artists, albums, search).
-       No user login required. Uses client_id + client_secret for machine-to-machine auth.
+Why PKCE-only (SPEC decision, 2026-07-03):
+    - No client secret exists ANYWHERE in this project — not in code, not in
+      env, not in deployment. PKCE uses a code_verifier/code_challenge pair.
+    - A user-authorized PKCE token can call both user-scoped endpoints
+      (/me/top) AND public endpoints (/tracks, /search), so the old
+      Client Credentials flow was redundant surface area.
+    - This is the same flow the production-pilot webapp needs: any visitor
+      authenticates their own Spotify account against our public client_id.
 
 Credential loading priority:
-    1. Environment variables (SPOTIPY_CLIENT_ID, SPOTIPY_CLIENT_SECRET, SPOTIPY_REDIRECT_URI)
-    2. .env file in project root (loaded via python-dotenv if available)
-    3. Hardcoded fallback (your existing credentials from spotify_config.py)
+    1. Environment variables (SPOTIPY_CLIENT_ID, SPOTIPY_REDIRECT_URI)
+    2. .env file in project root (loaded via python-dotenv)
 
-Reference: 01_spotify_api_guardrails.md — "NO IMPLICIT GRANT" directive
+    There are NO in-code fallbacks (CLAUDE.md ground rule: no secrets in the
+    repo). A missing client_id raises immediately with setup instructions.
 """
 
 import os
@@ -24,7 +26,7 @@ from pathlib import Path
 from typing import Optional
 
 import spotipy
-from spotipy.oauth2 import SpotifyClientCredentials, SpotifyPKCE
+from spotipy.oauth2 import SpotifyPKCE
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 #  CREDENTIAL MANAGEMENT
@@ -39,11 +41,15 @@ try:
 except ImportError:
     pass  # python-dotenv not installed — rely on env vars or fallbacks
 
-# Fallback credentials (from your existing projects/spotify/spotify_config.py).
-# In production, always prefer environment variables for security.
-_FALLBACK_CLIENT_ID = "8900a9bfd0424ea0aaa054ce5aa9cfff"
-_FALLBACK_CLIENT_SECRET = "***REMOVED***"
-_FALLBACK_REDIRECT_URI = "http://127.0.0.1:8888/callback"
+# The redirect URI is a public OAuth convention, not a credential — a
+# loopback default is safe and matches the app's dashboard registration.
+_DEFAULT_REDIRECT_URI = "http://127.0.0.1:8888/callback"
+
+_MISSING_CREDENTIAL_HELP = (
+    "Set it as an environment variable or in the project-root .env file "
+    "(gitignored). Get the value from your app at "
+    "https://developer.spotify.com/dashboard"
+)
 
 # ── Scopes ──
 # user-top-read:             GET /me/top/{type} — our primary personalization signal
@@ -71,13 +77,13 @@ _PKCE_CACHE_PATH = _CACHE_DIR / ".spotify_pkce_cache"
 
 
 def _get_client_id() -> str:
-    return os.environ.get("SPOTIPY_CLIENT_ID", _FALLBACK_CLIENT_ID)
-
-def _get_client_secret() -> str:
-    return os.environ.get("SPOTIPY_CLIENT_SECRET", _FALLBACK_CLIENT_SECRET)
+    client_id = os.environ.get("SPOTIPY_CLIENT_ID")
+    if not client_id:
+        raise RuntimeError(f"SPOTIPY_CLIENT_ID is not set. {_MISSING_CREDENTIAL_HELP}")
+    return client_id
 
 def _get_redirect_uri() -> str:
-    return os.environ.get("SPOTIPY_REDIRECT_URI", _FALLBACK_REDIRECT_URI)
+    return os.environ.get("SPOTIPY_REDIRECT_URI", _DEFAULT_REDIRECT_URI)
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -125,30 +131,6 @@ def get_user_spotify(
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-#  CLIENT CREDENTIALS FLOW (Public Endpoints)
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-def get_public_spotify() -> spotipy.Spotify:
-    """
-    Authenticate via Client Credentials flow for public data endpoints.
-
-    Use this for:
-    - GET /tracks/{id}, GET /artists/{id}, GET /albums/{id}
-    - GET /search
-    - Any endpoint that doesn't require user context
-
-    No user login needed — uses client_id + client_secret for
-    machine-to-machine authentication.
-    """
-    auth_manager = SpotifyClientCredentials(
-        client_id=_get_client_id(),
-        client_secret=_get_client_secret(),
-    )
-    sp = spotipy.Spotify(auth_manager=auth_manager, requests_timeout=15)
-    return sp
-
-
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 #  SELF-TEST
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -158,21 +140,14 @@ if __name__ == "__main__":
         sys.stdout.reconfigure(encoding="utf-8")
 
     print("─" * 50)
-    print("🔐 Testing Client Credentials flow...")
-    try:
-        sp = get_public_spotify()
-        results = sp.search(q="Muse", type="artist", limit=1)
-        name = results["artists"]["items"][0]["name"]
-        print(f"   ✅ Authenticated! Found artist: {name}")
-    except Exception as e:
-        print(f"   ❌ Client Credentials failed: {e}")
-
-    print("─" * 50)
     print("🔐 Testing PKCE flow (will open browser on first run)...")
     try:
         sp_user = get_user_spotify()
         me = sp_user.me()
         print(f"   ✅ PKCE authenticated as: {me['display_name']} ({me['id']})")
+        results = sp_user.search(q="Muse", type="artist", limit=1)
+        name = results["artists"]["items"][0]["name"]
+        print(f"   ✅ Public endpoint via PKCE token works: found {name}")
     except Exception as e:
         print(f"   ❌ PKCE failed: {e}")
     print("─" * 50)
