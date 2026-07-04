@@ -234,3 +234,69 @@ def build_cleansed_features(
     print(f"      Feature columns: {len(df.select_dtypes(include=[np.number]).columns)}")
 
     return df
+
+
+def build_cleansed_artists(
+    staging_dir: Optional[Union[str, Path]] = None,
+    output_dir: Optional[Union[str, Path]] = None,
+) -> pd.DataFrame:
+    """
+    Build the Cleansed artists table from all Staging artist files.
+
+    Artist identity/genre metadata is time-independent, so this table has
+    ONE row per artist_id (unlike tracks, which keep the time_range grain).
+    Staging rows come from two fetchers with slightly different shapes —
+    top-artists rows carry time_range/rank, genre-backfill rows don't —
+    both collapse to the same identity columns here.
+
+    Processing steps:
+        1. Read all `artists_raw_*.parquet` from Staging
+        2. Deduplicate by artist_id (keep most recently landed row)
+        3. Type enforcement + null handling (genres NaN → "")
+        4. Write to cleansed_artists.parquet
+
+    Returns:
+        Cleansed artists DataFrame (empty if nothing staged).
+    """
+    staging_dir = Path(staging_dir or STAGING_DIR).resolve()
+    output_dir = Path(output_dir or CLEANSED_DIR).resolve()
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    artist_files = sorted(staging_dir.glob("artists_raw_*.parquet"))
+    if not artist_files:
+        print("   ⚠️  No staging artist files found.")
+        return pd.DataFrame()
+
+    dfs = [pd.read_parquet(f, engine="pyarrow") for f in artist_files]
+    df = pd.concat(dfs, ignore_index=True)
+    print(f"   📂 Read {len(df)} raw artist rows from {len(artist_files)} staging file(s)")
+
+    # ── Deduplicate by artist_id, most recent landing wins ──
+    if "_landed_at" in df.columns:
+        df = df.sort_values("_landed_at", ascending=False)
+    before = len(df)
+    df = df.drop_duplicates(subset=["artist_id"], keep="first")
+    if before - len(df) > 0:
+        print(f"   🔄 Removed {before - len(df)} duplicate artist rows")
+
+    # ── Identity columns only (drop ranking grain + lineage) ──
+    identity_cols = ["artist_id", "artist_name", "genres", "num_genres",
+                     "followers", "image_url"]
+    df = df[[c for c in identity_cols if c in df.columns]]
+
+    # ── Type enforcement + nulls ──
+    for col in ["artist_id", "artist_name", "genres", "image_url"]:
+        if col in df.columns:
+            df[col] = df[col].fillna("").astype(str)
+    for col in ["num_genres", "followers"]:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0).astype(np.int64)
+
+    df = df.reset_index(drop=True)
+    output_path = output_dir / "cleansed_artists.parquet"
+    df.to_parquet(output_path, engine="pyarrow", index=False)
+
+    with_genres = int((df["genres"] != "").sum()) if "genres" in df.columns else 0
+    print(f"   ✅ Cleansed artists: {len(df)} rows → cleansed_artists.parquet "
+          f"({with_genres} with genres)")
+    return df

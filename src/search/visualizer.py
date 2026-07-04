@@ -102,6 +102,8 @@ def plot_taste_map(
     title: str = "Musical Taste Map (UMAP)",
     figsize: tuple = (14, 10),
     point_size: int = 80,
+    sizes: Optional[np.ndarray] = None,
+    category_colors: Optional[dict[str, str]] = None,
     annotate: bool = True,
     save_path: Optional[Union[str, Path]] = None,
 ) -> plt.Figure:
@@ -121,7 +123,11 @@ def plot_taste_map(
         color_label: Legend title for the color dimension.
         title:       Plot title.
         figsize:     Figure dimensions.
-        point_size:  Marker size.
+        point_size:  Marker size (uniform; ignored where ``sizes`` is given).
+        sizes:       Optional per-point sizes, shape (n,) — e.g. encode how
+                     many time ranges a track appears in.
+        category_colors: Optional {category: hex} overriding the colormap for
+                     specific categories (e.g. force "Unknown" to grey).
         annotate:    If True, add text labels near each point.
         save_path:   If provided, save the figure to this path.
 
@@ -140,15 +146,17 @@ def plot_taste_map(
         # Use a perceptually uniform colormap with enough distinction
         cmap = plt.cm.get_cmap("tab20", len(unique_cats))
         cat_to_idx = {cat: i for i, cat in enumerate(unique_cats)}
+        overrides = category_colors or {}
 
         for cat in unique_cats:
             mask = np.array([c == cat for c in colors])
+            cat_color = overrides.get(str(cat), cmap(cat_to_idx[cat]))
             ax.scatter(
                 projection[mask, 0],
                 projection[mask, 1],
-                c=[cmap(cat_to_idx[cat])],
+                c=[cat_color],
                 label=str(cat),
-                s=point_size,
+                s=sizes[mask] if sizes is not None else point_size,
                 alpha=0.8,
                 edgecolors="#30363d",
                 linewidth=0.5,
@@ -169,7 +177,7 @@ def plot_taste_map(
             projection[:, 0],
             projection[:, 1],
             c="#58a6ff",
-            s=point_size,
+            s=sizes if sizes is not None else point_size,
             alpha=0.8,
             edgecolors="#1f6feb",
             linewidth=0.5,
