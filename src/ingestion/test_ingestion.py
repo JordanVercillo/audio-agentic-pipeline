@@ -33,7 +33,7 @@ def run_smoke_test(interactive: bool = False):
     # ── 1. Import validation ──
     print("\n━━━ TEST 1: Module Imports ━━━")
     from src.ingestion import (
-        get_user_spotify, get_public_spotify,
+        get_user_spotify,
         safe_api_call, strip_deprecated_fields, DeprecatedEndpointError,
         fetch_track_metadata, fetch_batch_metadata,
         fetch_top_tracks, search_tracks,
@@ -43,7 +43,8 @@ def run_smoke_test(interactive: bool = False):
 
     # ── 2. Guardrails — deprecated endpoint blocking ──
     print("\n━━━ TEST 2: Guardrails — Deprecated Endpoint Blocking ━━━")
-    sp_public = get_public_spotify()
+    # PKCE client construction is offline-safe; guardrails block before any call
+    sp_public = get_user_spotify(open_browser=False)
 
     # Test that audio_features is blocked
     blocked = False

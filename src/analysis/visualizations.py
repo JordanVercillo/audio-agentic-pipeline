@@ -63,6 +63,7 @@ TEXT_DIM = "#484f58"
 def plot_drift_radar(
     centroids: pd.DataFrame,
     feature_cols: Optional[list[str]] = None,
+    corpus_stats: Optional[tuple[pd.Series, pd.Series]] = None,
     title: str = "Acoustic Profile — Taste Drift Radar",
     figsize: tuple = (10, 10),
     save_path: Optional[Union[str, Path]] = None,
@@ -73,12 +74,20 @@ def plot_drift_radar(
     Each time range is a polygon on the radar. Where polygons diverge,
     taste is shifting. Where they overlap, taste is stable.
 
-    The feature values are min-max normalized across all time ranges
-    so the radar axes are comparable (0 = minimum observed, 1 = maximum).
+    Normalization (this is what makes the chart honest or dishonest):
+        - With ``corpus_stats`` (per-feature mean, std over TRACKS): axes are
+          σ-shifts vs the corpus mean — 0.5 radius = corpus mean, each ring
+          0.25 = 1σ, full scale ±2σ. Visual divergence now MEANS effect size,
+          matching the drift score's units (journal #10).
+        - Without (legacy fallback): min-max across the centroid rows. With
+          only 3 windows this pins every axis to 0 and 1 by construction and
+          amplifies sub-1% differences to full scale — avoid for real data.
 
     Args:
         centroids:     DataFrame from compute_temporal_centroids().
         feature_cols:  Features to include on the radar. Max ~10 for readability.
+        corpus_stats:  Optional (mean, std) Series per feature, computed over
+                       the track-level fact table.
         title:         Chart title.
         figsize:       Figure dimensions.
         save_path:     Optional path to save.
@@ -94,19 +103,25 @@ def plot_drift_radar(
         print("   ⚠️  Need at least 3 features for radar chart")
         return plt.figure()
 
-    # ── Normalize features to [0, 1] for comparable axes ──
     values_by_tr = {}
-    all_values = centroids[available].values
-    col_min = all_values.min(axis=0)
-    col_max = all_values.max(axis=0)
-    col_range = col_max - col_min
-    col_range[col_range < 1e-8] = 1.0  # prevent div by zero
-
-    for _, row in centroids.iterrows():
-        tr = row["time_range"]
-        raw = row[available].values.astype(np.float64)
-        normalized = (raw - col_min) / col_range
-        values_by_tr[tr] = normalized
+    if corpus_stats is not None:
+        # ── σ-shift normalization: radius 0.5 = corpus mean, ring = 1σ ──
+        mean, std = corpus_stats
+        mean = mean[available].values.astype(np.float64)
+        std = std[available].values.astype(np.float64)
+        std[std < 1e-8] = 1.0
+        for _, row in centroids.iterrows():
+            z = (row[available].values.astype(np.float64) - mean) / std
+            values_by_tr[row["time_range"]] = np.clip(0.5 + z / 4.0, 0.0, 1.0)
+    else:
+        # ── Legacy min-max across windows (artifact-prone at n=3) ──
+        all_values = centroids[available].values
+        col_min = all_values.min(axis=0)
+        col_range = all_values.max(axis=0) - col_min
+        col_range[col_range < 1e-8] = 1.0  # prevent div by zero
+        for _, row in centroids.iterrows():
+            raw = row[available].values.astype(np.float64)
+            values_by_tr[row["time_range"]] = (raw - col_min) / col_range
 
     # ── Build radar ──
     n = len(available)
@@ -133,8 +148,13 @@ def plot_drift_radar(
     ax.set_xticks(angles[:-1])
     ax.set_xticklabels(labels, color=TEXT_COLOR, fontsize=10, fontweight="500")
 
-    ax.set_yticks([0.25, 0.5, 0.75, 1.0])
-    ax.set_yticklabels(["0.25", "0.50", "0.75", "1.00"], color=TEXT_DIM, fontsize=8)
+    if corpus_stats is not None:
+        ax.set_yticks([0.0, 0.25, 0.5, 0.75, 1.0])
+        ax.set_yticklabels(["−2σ", "−1σ", "mean", "+1σ", "+2σ"],
+                           color=TEXT_DIM, fontsize=8)
+    else:
+        ax.set_yticks([0.25, 0.5, 0.75, 1.0])
+        ax.set_yticklabels(["0.25", "0.50", "0.75", "1.00"], color=TEXT_DIM, fontsize=8)
     ax.set_ylim(0, 1.1)
 
     # ── Styling ──
@@ -161,19 +181,26 @@ def plot_drift_radar(
 def plot_temporal_heatmap(
     centroids: pd.DataFrame,
     feature_cols: Optional[list[str]] = None,
+    corpus_stats: Optional[tuple[pd.Series, pd.Series]] = None,
     title: str = "Feature Intensity — Temporal Heatmap",
     figsize: tuple = (14, 6),
     save_path: Optional[Union[str, Path]] = None,
 ) -> plt.Figure:
     """
-    Heatmap: features (x-axis) × time ranges (y-axis), colored by normalized value.
+    Heatmap: features (x-axis) × time ranges (y-axis).
 
-    This visualization answers: "Which features are strongest in which time period?"
-    Hot spots indicate high values; cool spots indicate low values.
+    With ``corpus_stats`` (per-feature mean/std over tracks), cells are the
+    centroid's σ-shift vs the corpus mean on a diverging colormap (±1σ full
+    scale) — color intensity means effect size, matching the drift score.
+    Without, falls back to per-column min-max (artifact-prone with only 3
+    windows: every column then spans the full colormap by construction).
+
+    Cell annotations always show the RAW feature values.
 
     Args:
         centroids:    DataFrame from compute_temporal_centroids().
         feature_cols: Features to include. Uses DRIFT_FEATURE_COLS if None.
+        corpus_stats: Optional (mean, std) Series per feature over the fact table.
         title:        Chart title.
         figsize:      Figure dimensions.
         save_path:    Optional save path.
@@ -192,18 +219,36 @@ def plot_temporal_heatmap(
     centroids_sorted["_sort"] = centroids_sorted["time_range"].map(time_order)
     centroids_sorted = centroids_sorted.sort_values("_sort").drop(columns=["_sort"])
 
-    # ── Normalize per column (min-max) ──
     matrix = centroids_sorted[available].values.astype(np.float64)
-    col_min = matrix.min(axis=0)
-    col_range = matrix.max(axis=0) - col_min
-    col_range[col_range < 1e-8] = 1.0
-    normalized = (matrix - col_min) / col_range
+
+    if corpus_stats is not None:
+        # ── σ-shift vs corpus mean, diverging scale (±1σ) ──
+        mean, std = corpus_stats
+        mean_v = mean[available].values.astype(np.float64)
+        std_v = std[available].values.astype(np.float64)
+        std_v[std_v < 1e-8] = 1.0
+        normalized = (matrix - mean_v) / std_v
+        cmap, vmin, vmax = "coolwarm", -1.0, 1.0
+        cbar_label = "Centroid shift vs corpus mean (σ)"
+        # annotation contrast: extremes of coolwarm are dark
+        def _text_color(norm_val: float) -> str:
+            return "black" if abs(norm_val) < 0.5 else "white"
+    else:
+        # ── Legacy per-column min-max ──
+        col_min = matrix.min(axis=0)
+        col_range = matrix.max(axis=0) - col_min
+        col_range[col_range < 1e-8] = 1.0
+        normalized = (matrix - col_min) / col_range
+        cmap, vmin, vmax = "magma", 0.0, 1.0
+        cbar_label = "Normalized Intensity"
+        def _text_color(norm_val: float) -> str:
+            return "white" if norm_val < 0.5 else "black"
 
     fig, ax = plt.subplots(figsize=figsize)
     fig.patch.set_facecolor(BG_COLOR)
     ax.set_facecolor(BG_COLOR)
 
-    im = ax.imshow(normalized, cmap="magma", aspect="auto", vmin=0, vmax=1)
+    im = ax.imshow(normalized, cmap=cmap, aspect="auto", vmin=vmin, vmax=vmax)
 
     # ── Labels ──
     x_labels = [FEATURE_LABELS.get(c, c) for c in available]
@@ -225,12 +270,12 @@ def plot_temporal_heatmap(
                 text = f"{val:.2f}"
             else:
                 text = f"{val:.3f}"
-            text_color = "white" if normalized[i, j] < 0.5 else "black"
-            ax.text(j, i, text, ha="center", va="center", fontsize=7, color=text_color, fontweight="500")
+            ax.text(j, i, text, ha="center", va="center", fontsize=7,
+                    color=_text_color(float(normalized[i, j])), fontweight="500")
 
     # ── Colorbar ──
     cbar = fig.colorbar(im, ax=ax, shrink=0.8, pad=0.02)
-    cbar.set_label("Normalized Intensity", color=TEXT_MUTED, fontsize=10)
+    cbar.set_label(cbar_label, color=TEXT_MUTED, fontsize=10)
     cbar.ax.tick_params(colors=TEXT_MUTED, labelsize=8)
 
     ax.set_title(title, color=TEXT_COLOR, fontsize=16, fontweight="bold", pad=15)

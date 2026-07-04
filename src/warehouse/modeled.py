@@ -174,13 +174,18 @@ def _build_dim_tracks(cleansed_tracks: pd.DataFrame) -> pd.DataFrame:
     return dim.reset_index(drop=True)
 
 
-def _build_dim_artists(cleansed_tracks: pd.DataFrame) -> pd.DataFrame:
+def _build_dim_artists(
+    cleansed_tracks: pd.DataFrame,
+    cleansed_artists: Optional[pd.DataFrame] = None,
+) -> pd.DataFrame:
     """
     Build the artist dimension table.
 
-    Extracts unique primary artists from the track data.
-    In a full production system, this would be enriched with
-    a separate artist metadata fetch.
+    Base population: every primary artist referenced by the track data
+    (guarantees join coverage for the fact table). When the Cleansed
+    artists table is available, each row is enriched with genre metadata
+    (genres, num_genres, followers, image_url) — the taste map's genre
+    overlay and the insight engine read genres from HERE.
     """
     if cleansed_tracks.empty:
         return pd.DataFrame()
@@ -194,6 +199,18 @@ def _build_dim_artists(cleansed_tracks: pd.DataFrame) -> pd.DataFrame:
     dim = cleansed_tracks[available].drop_duplicates(
         subset=["primary_artist_id"], keep="first"
     ).rename(columns={"primary_artist_id": "artist_id", "primary_artist_name": "artist_name"})
+
+    # ── Genre enrichment from cleansed_artists (when present) ──
+    if cleansed_artists is not None and not cleansed_artists.empty \
+            and "artist_id" in cleansed_artists.columns:
+        enrich_cols = [c for c in ["artist_id", "genres", "num_genres",
+                                   "followers", "image_url"]
+                       if c in cleansed_artists.columns]
+        dim = dim.merge(cleansed_artists[enrich_cols], on="artist_id", how="left")
+        if "genres" in dim.columns:
+            dim["genres"] = dim["genres"].fillna("")
+            covered = int((dim["genres"] != "").sum())
+            print(f"   🎸 dim_artists genre coverage: {covered}/{len(dim)}")
 
     return dim.reset_index(drop=True)
 
@@ -299,9 +316,11 @@ def build_star_schema(
     # ── Load Cleansed data ──
     tracks_path = cleansed_dir / "cleansed_tracks.parquet"
     features_path = cleansed_dir / "cleansed_features.parquet"
+    artists_path = cleansed_dir / "cleansed_artists.parquet"
 
     cleansed_tracks = pd.DataFrame()
     cleansed_features = pd.DataFrame()
+    cleansed_artists = pd.DataFrame()
 
     if tracks_path.exists():
         cleansed_tracks = pd.read_parquet(tracks_path, engine="pyarrow")
@@ -315,10 +334,16 @@ def build_star_schema(
     else:
         print(f"   ⚠️  {features_path.name} not found — fact table will have metadata only")
 
+    if artists_path.exists():
+        cleansed_artists = pd.read_parquet(artists_path, engine="pyarrow")
+        print(f"   📂 Loaded {len(cleansed_artists)} cleansed artists")
+    else:
+        print(f"   ⚠️  {artists_path.name} not found — dim_artists will lack genres")
+
     # ── Build tables ──
     dim_time_range = _build_dim_time_range()
     dim_tracks = _build_dim_tracks(cleansed_tracks)
-    dim_artists = _build_dim_artists(cleansed_tracks)
+    dim_artists = _build_dim_artists(cleansed_tracks, cleansed_artists)
     fact = _build_fact_listening_features(cleansed_tracks, cleansed_features)
 
     # ── Column descriptions (agent interface) ──

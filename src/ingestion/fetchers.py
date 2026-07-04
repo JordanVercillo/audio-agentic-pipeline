@@ -27,7 +27,7 @@ from typing import Optional
 import pandas as pd
 import spotipy
 
-from .auth import get_user_spotify, get_public_spotify
+from .auth import get_user_spotify
 from .guardrails import safe_api_call, strip_deprecated_fields, throttle
 
 
@@ -187,6 +187,64 @@ def fetch_all_top_items(
     return result
 
 
+def fetch_artists_by_ids(
+    artist_ids: list[str],
+    sp: Optional[spotipy.Spotify] = None,
+) -> pd.DataFrame:
+    """
+    Batch-fetch artist metadata for arbitrary artist IDs (GET /artists?ids=…).
+
+    Why this exists: top TRACKS are made by artists who aren't always in the
+    user's top ARTISTS list, so genre coverage from fetch_top_artists alone
+    is partial. One batch call per 50 IDs fills the gap — dim_artists (and
+    everything downstream: taste-map genre overlay, insights, RAG) gets
+    complete genre metadata.
+
+    Args:
+        artist_ids: Spotify artist IDs (deduplicated internally).
+        sp:         Pre-authenticated Spotify client (PKCE). Created if None.
+
+    Returns:
+        DataFrame with the same identity/genre columns as fetch_top_artists
+        (no time_range/rank — these are backfill rows, not ranked top items).
+    """
+    ids = [a for a in dict.fromkeys(artist_ids) if a]  # dedupe, keep order
+    if not ids:
+        return pd.DataFrame()
+
+    if sp is None:
+        sp = get_user_spotify()
+
+    records = []
+    for i in range(0, len(ids), 50):  # API maximum is 50 per request
+        batch = ids[i:i + 50]
+        results, err = safe_api_call(
+            sp.artists, batch,
+            label=f"GET /artists?ids=… (batch of {len(batch)})",
+        )
+        if results is None:
+            print(f"   ⚠️  Artist batch fetch failed: {err}")
+            continue
+
+        for artist in results.get("artists", []):
+            if artist is None:
+                continue  # unknown/removed ID — API returns null in its slot
+            artist = strip_deprecated_fields(artist)
+            records.append({
+                "artist_id": artist["id"],
+                "artist_name": artist["name"],
+                "genres": ", ".join(artist.get("genres", [])),
+                "num_genres": len(artist.get("genres", [])),
+                "followers": artist.get("followers", {}).get("total", 0),
+                "image_url": artist["images"][0]["url"] if artist.get("images") else None,
+            })
+        throttle(0.2)
+
+    df = pd.DataFrame(records)
+    print(f"   ✅ Backfilled metadata for {len(df)} artists ({len(ids)} requested)")
+    return df
+
+
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 #  TRACK METADATA ENRICHMENT
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -207,14 +265,14 @@ def fetch_track_metadata(
 
     Args:
         track_id: Spotify track ID (e.g., "0c4IEciLCDdXEhhKxj4ThA").
-        sp:       Pre-authenticated Spotify client. Uses Client Credentials if None.
+        sp:       Pre-authenticated Spotify client (PKCE). Created if None.
 
     Returns:
         Flat dictionary suitable for DataFrame conversion.
         Contains {"error": msg} if the fetch fails.
     """
     if sp is None:
-        sp = get_public_spotify()
+        sp = get_user_spotify()
 
     # ── Fetch track ──
     track, err = safe_api_call(sp.track, track_id, label=f"GET /tracks/{track_id}")
@@ -298,7 +356,7 @@ def fetch_batch_metadata(
         DataFrame with one row per track.
     """
     if sp is None:
-        sp = get_public_spotify()
+        sp = get_user_spotify()
 
     records = []
     total = len(track_ids)
@@ -443,13 +501,13 @@ def search_tracks(
     Args:
         query: Search string (e.g., "Radiohead OK Computer", "genre:jazz").
         limit: Max results (1-50).
-        sp:    Spotify client (Client Credentials works fine for search).
+        sp:    Pre-authenticated Spotify client (PKCE). Created if None.
 
     Returns:
         DataFrame with spotify_track_id and metadata for each result.
     """
     if sp is None:
-        sp = get_public_spotify()
+        sp = get_user_spotify()
 
     results, err = safe_api_call(
         sp.search,

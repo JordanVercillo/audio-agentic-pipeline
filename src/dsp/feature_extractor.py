@@ -81,6 +81,9 @@ class TrackFeatures:
     spectral_centroid_std: float = 0.0
     spectral_rolloff_mean: float = 0.0
     spectral_rolloff_std: float = 0.0
+    spectral_bandwidth_mean: float = 0.0
+    spectral_bandwidth_std: float = 0.0
+    spectral_flatness_mean: float = 0.0
     spectral_contrast_means: Optional[np.ndarray] = None  # shape: (7,)
     spectral_contrast_stds: Optional[np.ndarray] = None
 
@@ -155,6 +158,9 @@ class TrackFeatures:
             "spectral_centroid_std": self.spectral_centroid_std,
             "spectral_rolloff_mean": self.spectral_rolloff_mean,
             "spectral_rolloff_std": self.spectral_rolloff_std,
+            "spectral_bandwidth_mean": self.spectral_bandwidth_mean,
+            "spectral_bandwidth_std": self.spectral_bandwidth_std,
+            "spectral_flatness_mean": self.spectral_flatness_mean,
             "harmonic_ratio": self.harmonic_ratio,
             "estimated_key": self.estimated_key,
             "estimated_mode": self.estimated_mode,
@@ -170,9 +176,15 @@ class TrackFeatures:
                              "F#", "G", "G#", "A", "A#", "B"]
             for i, v in enumerate(self.chroma_means):
                 d[f"chroma_mean_{pitch_classes[i]}"] = float(v)
+            if self.chroma_stds is not None:
+                for i, v in enumerate(self.chroma_stds):
+                    d[f"chroma_std_{pitch_classes[i]}"] = float(v)
         if self.spectral_contrast_means is not None:
             for i, v in enumerate(self.spectral_contrast_means):
                 d[f"spectral_contrast_mean_{i}"] = float(v)
+            if self.spectral_contrast_stds is not None:
+                for i, v in enumerate(self.spectral_contrast_stds):
+                    d[f"spectral_contrast_std_{i}"] = float(v)
         return d
 
 
@@ -341,6 +353,23 @@ def _extract_timbre(
     )[0]
     features.spectral_rolloff_mean = float(np.mean(rolloff))
     features.spectral_rolloff_std = float(np.std(rolloff))
+
+    # -- Spectral bandwidth --
+    # The weighted spread of the spectrum around its centroid: narrow
+    # bandwidth → pure/tonal sound, wide bandwidth → noisy/dense mix.
+    bandwidth = librosa.feature.spectral_bandwidth(
+        y=y, sr=sr, n_fft=config.n_fft, hop_length=config.hop_length
+    )[0]
+    features.spectral_bandwidth_mean = float(np.mean(bandwidth))
+    features.spectral_bandwidth_std = float(np.std(bandwidth))
+
+    # -- Spectral flatness --
+    # Geometric/arithmetic mean ratio of the spectrum: 1.0 → white noise,
+    # near 0 → strongly tonal. Complements harmonic_ratio.
+    flatness = librosa.feature.spectral_flatness(
+        y=y, n_fft=config.n_fft, hop_length=config.hop_length
+    )[0]
+    features.spectral_flatness_mean = float(np.mean(flatness))
 
     # -- Spectral contrast (7 bands by default) --
     contrast = librosa.feature.spectral_contrast(
