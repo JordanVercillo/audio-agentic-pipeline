@@ -5,16 +5,22 @@ Computes quantitative metrics for how a user's musical taste evolves
 across Spotify's three temporal windows.
 
 Core Metrics:
-    1. Taste Drift Score: Cosine distance between temporal acoustic centroids
-    2. Temporal Centroids: Mean feature vector per time range
+    1. Taste Drift Score: RMS σ-shift between standardized temporal centroids
+    2. Temporal Centroids: Mean feature vector per time range (raw units)
     3. Feature Deltas: Per-feature change between time ranges
     4. Stability Score: How consistent taste is across all windows
 
-Why Cosine Distance (not Euclidean)?
-    Audio features span wildly different scales (tempo 60-200 vs RMS 0-1).
-    Cosine distance measures the ANGLE between vectors, making it scale-invariant.
-    Two listeners with the same taste proportions but different absolute
-    listening volumes will have cosine distance ≈ 0 (same taste, different scale).
+Why RMS σ-shift (ADR-003 amended 2026-07-03)?
+    Audio features span wildly different scales (tempo 60-200 vs RMS 0-1), so
+    scale-invariance is mandatory — ADR-003 originally chose cosine for that.
+    Measured against real data, cosine failed twice: on RAW centroids the
+    angle is dominated by the largest features (score ≈ 0.0000 always); on
+    CENTERED z-centroids the per-range means must sum to ~0, forcing ~120°
+    angles (score ≈ 1.5 always). Both are artifacts of measuring DIRECTION
+    only. The fix keeps the scale-invariance (per-feature z-scoring) and
+    measures MAGNITUDE: RMS per-feature shift in σ units — a multivariate
+    effect size (0 = identical; ~0.2 = subtle; 1.0 = every feature moved a
+    full standard deviation). See engineering journal #10.
 
 Scale Mechanics (PySpark):
     In a distributed environment, centroids are computed via:
@@ -62,8 +68,11 @@ FEATURE_LABELS = {
     "tempo_bpm": "Tempo (BPM)",
     "rms_mean": "Energy",
     "zcr_mean": "Noisiness",
+    "zcr_std": "Noisiness Variability",
     "spectral_centroid_mean": "Brightness",
+    "spectral_centroid_std": "Brightness Variability",
     "spectral_rolloff_mean": "Freq. Ceiling",
+    "spectral_rolloff_std": "Freq. Ceiling Variability",
     "harmonic_ratio": "Acousticness",
     "onset_strength_mean": "Rhythmic Activity",
     "onset_strength_std": "Rhythm Variability",
@@ -127,19 +136,21 @@ def compute_taste_drift(
     """
     Compute the Taste Drift Score and related metrics.
 
-    The Taste Drift Score is the cosine distance between the short-term
-    and long-term acoustic centroids. It answers: "How different does
-    the user's recent listening sound compared to their all-time taste?"
+    The Taste Drift Score is the RMS σ-shift between the short-term and
+    long-term standardized acoustic centroids: "on average, each acoustic
+    feature moved X standard deviations between recent and all-time
+    listening." A multivariate effect size — scale-invariant via per-feature
+    z-scoring (ADR-003's intent), zero for identical distributions.
 
-    Drift Score interpretation:
-        0.00 – 0.05: Minimal drift (stable taste, comfort zone)
-        0.05 – 0.15: Moderate drift (some exploration)
-        0.15 – 0.30: Significant drift (active taste evolution)
-        0.30+:       Major drift (genre shift or new discovery phase)
+    Drift Score interpretation (σ units, effect-size bands):
+        0.00 – 0.15: Minimal drift (stable taste, comfort zone)
+        0.15 – 0.35: Moderate drift (some exploration)
+        0.35 – 0.60: Significant drift (active taste evolution)
+        0.60+:       Major drift (genre shift or new discovery phase)
 
     Returns:
         Dict with:
-            - drift_score: float (cosine distance, 0 = identical, 1 = orthogonal)
+            - drift_score: float (RMS σ-shift, 0 = identical; unbounded above)
             - drift_label: str (human-readable interpretation)
             - centroids: DataFrame of centroids per time range
             - pairwise_distances: dict of all pairwise cosine distances
@@ -152,14 +163,39 @@ def compute_taste_drift(
     centroids = compute_temporal_centroids(fact_df, feature_cols)
     available = [c for c in feature_cols if c in centroids.columns]
 
-    # Extract centroid vectors
-    centroid_vectors = {}
-    for _, row in centroids.iterrows():
-        tr = row["time_range"]
-        vec = row[available].values.astype(np.float32)
-        centroid_vectors[tr] = vec
+    # ── Standardize BEFORE the distance math ──
+    # Raw feature scales differ by orders of magnitude (spectral_rolloff
+    # ~8000 Hz vs rms_mean ~0.1), so cosine on raw centroids is dominated by
+    # the few largest columns and reads ≈0.0000 on any real corpus — the
+    # angle barely moves even when many features shift by 5-10%. Z-scoring
+    # each feature across the corpus first makes every feature contribute
+    # equally to the angle (this is ADR-003's scale-invariance intent,
+    # applied correctly). Raw centroids are still returned for visuals and
+    # per-feature deltas.
+    z = fact_df[["time_range"] + available].copy()
+    for col in available:
+        std = float(fact_df[col].std())
+        if std > 1e-12:
+            z[col] = (fact_df[col] - float(fact_df[col].mean())) / std
+        else:
+            z[col] = 0.0
+    z_centroids = z.groupby("time_range")[available].mean()
 
-    # ── Pairwise cosine distances ──
+    # Extract standardized centroid vectors for distance computation
+    centroid_vectors = {}
+    for tr, row in z_centroids.iterrows():
+        centroid_vectors[tr] = row.values.astype(np.float32)
+
+    # ── Pairwise drift: RMS σ-shift between standardized centroids ──
+    # Why not cosine here? Cosine on RAW centroids is dominated by the
+    # largest-scale features (reads ≈0 always); cosine on CENTERED z-centroids
+    # has the opposite artifact — the per-range centroids of z-scores must
+    # sum to ~0, forcing near-120° angles (distance ≈1.5) for ANY corpus,
+    # noise included. Direction-only metrics can't express effect SIZE here.
+    # RMS σ-shift = sqrt(mean_j (Δz_j)²): "on average, each acoustic feature
+    # moved X standard deviations between the two windows." Scale-invariant
+    # (via z-scoring — ADR-003's intent), zero for identical distributions,
+    # and an honest multivariate effect size.
     pairs = [
         ("short_term", "medium_term"),
         ("medium_term", "long_term"),
@@ -169,18 +205,18 @@ def compute_taste_drift(
     pairwise = {}
     for tr_a, tr_b in pairs:
         if tr_a in centroid_vectors and tr_b in centroid_vectors:
-            dist = _cosine_distance(centroid_vectors[tr_a], centroid_vectors[tr_b])
-            pairwise[f"{tr_a}_vs_{tr_b}"] = float(dist)
+            diff = centroid_vectors[tr_a] - centroid_vectors[tr_b]
+            pairwise[f"{tr_a}_vs_{tr_b}"] = float(np.sqrt(np.mean(diff ** 2)))
 
     # ── Primary drift score: short_term vs long_term ──
     drift_score = pairwise.get("short_term_vs_long_term", 0.0)
 
-    # ── Drift label ──
-    if drift_score < 0.05:
+    # ── Drift label (effect-size bands, in σ units) ──
+    if drift_score < 0.15:
         drift_label = "Minimal Drift — Your taste is remarkably stable"
-    elif drift_score < 0.15:
+    elif drift_score < 0.35:
         drift_label = "Moderate Drift — You're exploring new sounds"
-    elif drift_score < 0.30:
+    elif drift_score < 0.60:
         drift_label = "Significant Drift — Your taste is actively evolving"
     else:
         drift_label = "Major Drift — You're in a musical discovery phase"
@@ -298,8 +334,10 @@ def _cosine_distance(a: np.ndarray, b: np.ndarray) -> float:
     norm_a = np.linalg.norm(a)
     norm_b = np.linalg.norm(b)
 
+    if norm_a < 1e-8 and norm_b < 1e-8:
+        return 0.0  # Both ~zero (e.g. z-centroids of a range-uniform corpus) → no drift
     if norm_a < 1e-8 or norm_b < 1e-8:
-        return 1.0  # Undefined → max distance
+        return 1.0  # One-sided degenerate → undefined, treat as max distance
 
     similarity = dot / (norm_a * norm_b)
     # Clamp to [-1, 1] for numerical stability
