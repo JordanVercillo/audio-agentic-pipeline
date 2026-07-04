@@ -29,14 +29,35 @@ WAREHOUSE = REPO / "data" / "warehouse"
 RAW_AUDIO = REPO / "data" / "raw_audio"
 LAYERS = ("staging", "cleansed", "modeled")
 BRIDGE = "spotify_track_id"
-EXPECTED_FEATURE_COLS = 77  # CLAUDE_INSTRUCTIONS.md — the DSP contract
-
 # Non-feature columns that may appear in feature/fact tables: identifiers,
 # tonal class labels, and numeric track METADATA (duration_ms/rank/explicit
-# come from Spotify, not DSP — they must not count toward the 77-dim contract).
+# come from Spotify, not DSP — they must not count as DSP features).
 META_COLS = {BRIDGE, "time_range", "track_name", "artist_names", "fetched_at",
              "estimated_key", "estimated_mode",
              "duration_ms", "rank", "explicit"}
+
+# Metadata columns that ARE documented in column_descriptions but aren't DSP
+# features. Subtracted from the documented set to get the expected feature
+# contract (D-4: the gold layer ships its own contract via column_descriptions;
+# the audit verifies the feature tables match it EXACTLY — no ± tolerance).
+NON_FEATURE_DESCRIBED = {
+    BRIDGE, "time_range", "rank", "track_name", "artist_names",
+    "primary_artist_name", "album_name", "duration_ms", "explicit",
+    "estimated_key", "estimated_mode",
+}
+
+
+def _load_expected_features():
+    """Expected DSP feature columns = everything documented in the gold layer's
+    column_descriptions minus the known metadata. Returns None when
+    column_descriptions is absent (e.g. a pre-modeled run)."""
+    path = WAREHOUSE / "modeled" / "column_descriptions.parquet"
+    if not path.exists():
+        return None
+    try:
+        return set(pd.read_parquet(path)["column_name"]) - NON_FEATURE_DESCRIBED
+    except Exception:
+        return None
 
 
 def table_summary(path: Path):
@@ -65,6 +86,7 @@ def main() -> int:
     key_nulls = False
     dup_keys = False
     feature_drift = False
+    expected_features = _load_expected_features()  # None until the gold layer exists
 
     for layer in LAYERS:
         ldir = WAREHOUSE / layer
@@ -111,19 +133,28 @@ def main() -> int:
                     errors.append(f"{layer}/{f.name}: {n_dup} duplicate rows on {key}")
                     dup_keys = True
 
-            # feature contract: tables that look like feature/fact tables
+            # feature contract: tables that look like feature/fact tables.
+            # EXACT-list verification against the documented contract (D-4):
+            # every documented feature must be present, and no undocumented
+            # numeric feature may appear.
             if "feature" in name or name.startswith("fact"):
-                n_feat = int(sum(
-                    pd.api.types.is_numeric_dtype(df[c]) and c not in META_COLS
-                    for c in df.columns
-                ))
-                layers[layer]["tables"][f.stem]["numeric_feature_cols"] = n_feat
-                if n_feat and abs(n_feat - EXPECTED_FEATURE_COLS) > 7:
-                    warnings.append(
-                        f"{layer}/{f.name}: {n_feat} numeric feature cols "
-                        f"(contract ~{EXPECTED_FEATURE_COLS}) — FEATURE_DRIFT"
-                    )
-                    feature_drift = True
+                actual = {c for c in df.columns
+                          if pd.api.types.is_numeric_dtype(df[c]) and c not in META_COLS}
+                layers[layer]["tables"][f.stem]["numeric_feature_cols"] = len(actual)
+                if expected_features is not None and actual:
+                    missing = sorted(expected_features - actual)
+                    extra = sorted(actual - expected_features)
+                    if missing or extra:
+                        parts = []
+                        if missing:
+                            parts.append(f"missing {len(missing)} (e.g. {missing[:4]})")
+                        if extra:
+                            parts.append(f"undocumented {len(extra)} (e.g. {extra[:4]})")
+                        warnings.append(
+                            f"{layer}/{f.name}: feature-contract mismatch vs "
+                            f"column_descriptions — {'; '.join(parts)} — FEATURE_DRIFT"
+                        )
+                        feature_drift = True
 
     # --- fact <-> dim join coverage ----------------------------------------
     join_orphans = False
