@@ -142,7 +142,7 @@ def plot_taste_map(
     if colors is not None:
         unique_cats = sorted(set(colors))
         # Use a perceptually uniform colormap with enough distinction
-        cmap = plt.cm.get_cmap("tab20", len(unique_cats))
+        cmap = plt.get_cmap("tab20", len(unique_cats))  # plt.cm.get_cmap removed in mpl 3.9
         cat_to_idx = {cat: i for i, cat in enumerate(unique_cats)}
         overrides = category_colors or {}
 
