@@ -20,16 +20,20 @@
   orchestrator rebuilt to match docs, ffmpeg/libmp3lame installed, DSP
   feature-serialization gap closed (warehouse: 82 numeric feature cols;
   FAISS vector unchanged at 77). Phase-4 webapp still NOT in this repo copy.
-- **➡️ NEXT ACTION — SPEC P6: platform hardening (the standardization/DX
-  pass).** uv migration (`pyproject.toml` + lockfile; keep requirements.txt
-  export) · ruff · GitHub Actions CI (lint + pytest, synthetic-only, no
-  secrets) · complete `column_descriptions` to the full schema and switch
-  the audit from ±7 tolerance to **exact column-list verification** (D-4) ·
-  archive legacy (`spotify/`, `00_tools/media_converter.py` → `legacy/`) ·
-  README rewrite (90-second reviewer path, SPEC §8). Accept: CI green on a
-  clean clone. **P0–P5 COMPLETE (2026-07-03)** — Phase 5 done AND the P5
-  agent layer shipped (MCP server, 145 tests green). Remaining after P6:
-  P7 (Spark scale slice), P8 (production-pilot webapp). Design: `SPEC.md`.
+- **➡️ NEXT ACTION — SPEC P7: scale slice.** Prove the PySpark jobs
+  (`spark/feature_transform.py`, `temporal_aggregate.py`) against the real
+  warehouse with pandas-parity checks (row-count + centroid), then write
+  `docs/SCALING.md` (10K/1M-track design: GCS layout, BigQuery external
+  tables, Dataflow-vs-Spark tradeoffs, partitioning) — zero cloud spend
+  (D-3). **P0–P6 COMPLETE (P6 done 2026-07-04): uv/pyproject+lock, ruff
+  (clean), GitHub Actions CI green, exact feature-contract audit (D-4),
+  legacy archived, README rewritten.** After P7: P8 (production-pilot
+  webapp). Design: `SPEC.md`.
+- **PR state (2026-07-04):** PR #1 (P0–P5) MERGED to `main`. PR #2
+  (`p6/ci` → main: uv+ruff+CI+faiss fix) open, CI green, MERGEABLE. Pieces
+  4–6 (feature-contract, legacy, README) on branches
+  `p6/{feature-contract-audit,legacy-archive,readme}`, stacked — rebase onto
+  main after PR #2 merges, or fold into PR #2.
 - **How to work:** `/pipeline-partner` for feature/design sessions (reads and
   updates this file automatically). `/warehouse-audit` after any pipeline run
   or transform change. Ground rules in `CLAUDE.md`.
@@ -227,6 +231,27 @@ narrative goes to `notes/engineering_journal.md`, plans to
     answered against the real warehouse; `docs/AGENT_ACCESS.md` has the
     registration config + transcript. Tests: 30 in `src/agent/test_agent.py`
     → suite total **145**, all green.
+- **SPEC P6 — platform hardening (✅ COMPLETE 2026-07-04, 6 branches).**
+  - **uv/pyproject** (`p6/uv-pyproject`): `pyproject.toml` (deps + dev extra +
+    `[tool.pytest]`, `package=false`) + `uv.lock` (88 pkgs); requirements.txt
+    kept as pip export.
+  - **ruff** (`p6/ruff`): linter (not formatter), `select E,F,I,B; ignore
+    E501`; **122 findings → 0** (import sort, unused-import, exception
+    chaining `from`, `strict=` zips, `__all__`); UP deliberately excluded.
+  - **CI** (`p6/ci`): GitHub Actions `uv sync --frozen` → ruff → pytest, on
+    push+PR. **Caught a real cross-platform bug on run #1** — newer mpl on
+    Linux (`boxplot(labels=)` renamed, `plt.cm.get_cmap` removed); fixed
+    version-agnostically → green (~1m50s). Also stranded-faiss-fix folded in.
+  - **feature-contract (D-4)** (`p6/feature-contract-audit`): COLUMN_DESCRIPTIONS
+    26→93 (full 82-feature contract, generated families + hand-written base);
+    audit now does EXACT-list verification (documented − metadata vs actual);
+    `test_feature_contract.py` locks DSP output == docs (3 tests). 82==82.
+  - **legacy** (`p6/legacy-archive`): `spotify/` + `00_tools/` → `legacy/`
+    (+ `legacy/README.md`); ruff exclude simplified; W-7 resolved.
+  - **README** (`p6/readme`): rewritten for the 90-second reviewer path (hero
+    taste map, drift result, 3 commands w/ real output, MCP demo, CI badge).
+  - Suite total **148** (145 + 3 contract tests), ruff clean, audit ALL-GREEN.
+  - Resolves W-5 (env reproducibility), W-6 (CI), W-7 (legacy), W-8 (README).
 - **Repo hardening + harness (2026-07-03 ✅).** Nested `audio-agentic-pipeline/`
   folder flattened to root; `.gitignore` added; committed `__pycache__`/
   anaconda db untracked; `.agent_prompts/` imported; CLAUDE.md bootloader +
@@ -381,3 +406,14 @@ narrative goes to `notes/engineering_journal.md`, plans to
   secret ROTATED in the dashboard** — the last standing security item is
   CLOSED (PKCE never used the secret; rotation kills the git-history leak).
   **Left off: branch is committed but NOT pushed — Jordan pushes. Then P6.**
+- **2026-07-04 (session 10 — SPEC P6 complete):** Jordan pushed + merged
+  PR #1 (P0–P5 → main). Then P6 as **6 stacked branches / PRs** (per-piece
+  for revertability): uv/pyproject+lock, ruff (122→0), GitHub Actions CI
+  (green — caught a real matplotlib-version bug on Linux that local testing
+  couldn't), exact feature-contract audit (D-4, 26→93 descriptions,
+  82==82), legacy archival (W-7), README rewrite (W-8). Also folded in the
+  stranded faiss lazy-load fix. Suite 148 green, ruff clean, audit
+  ALL-GREEN, CI green on GitHub. PR #2 (`p6/ci`→main) open + mergeable;
+  pieces 4–6 on further stacked branches. **Left off: P6 done — next is
+  SPEC P7 (Spark scale slice + docs/SCALING.md). Merge the P6 PR(s) when
+  ready; pieces 4–6 rebase onto main after.**
