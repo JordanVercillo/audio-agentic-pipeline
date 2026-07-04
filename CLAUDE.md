@@ -12,9 +12,12 @@ It is the project's living memory — verified status, next action, key files,
 conventions, session log — updated at the end of every session. This file
 holds only stable rules; status is deliberately NOT here.
 
-Architecture manual: [`CLAUDE_INSTRUCTIONS.md`](CLAUDE_INSTRUCTIONS.md)
-(medallion layers, module map, ADRs, code standards — its "Current State"
-table is a frozen 2026-05-06 snapshot; trust PROJECT_CONTEXT for live state).
+Design spec: [`SPEC.md`](SPEC.md) — approved vision, phase plan (P0–P7) with
+acceptance criteria, and decision log (2026-07-03). Architecture manual:
+[`CLAUDE_INSTRUCTIONS.md`](CLAUDE_INSTRUCTIONS.md) (medallion layers, module
+map, ADRs, code standards — its "Current State" table is a frozen 2026-05-06
+snapshot and its roadmap is superseded by SPEC.md; trust PROJECT_CONTEXT for
+live state).
 
 ## Ground rules (non-negotiable)
 
@@ -26,8 +29,10 @@ table is a frozen 2026-05-06 snapshot; trust PROJECT_CONTEXT for live state).
 3. **Respect the 2026 Spotify API reality** (`.agent_prompts/01_spotify_api_guardrails.md`):
    `/audio-features`, `/audio-analysis`, and `popularity` are GONE. Audio
    characteristics come from LOCAL DSP only. PKCE auth only.
-4. **No secrets in the repo.** Env vars (`SPOTIPY_CLIENT_ID/SECRET/REDIRECT_URI`);
-   `.env` is gitignored. Pin CVE-patched dependency minimums (yt-dlp ≥2026.2.21).
+4. **No secrets, period — PKCE-only auth.** No client secret exists anywhere
+   in this project (code, env, deployment); the only credentials are
+   `SPOTIPY_CLIENT_ID` (public by design) + `SPOTIPY_REDIRECT_URI` via env
+   or gitignored `.env`. Pin CVE-patched dependency minimums (yt-dlp ≥2026.2.21).
 5. **Tests use synthetic data** (`generate_test_signal()`) — never require
    real API calls or downloaded audio to pass.
 6. **Idempotency is a feature.** Downloads and extractions skip work already
@@ -38,11 +43,18 @@ table is a frozen 2026-05-06 snapshot; trust PROJECT_CONTEXT for live state).
 ## Run commands
 
 ```bash
-python scripts/run_pipeline.py                            # full 7-step pipeline
+python scripts/run_pipeline.py                            # full 8-step pipeline
 python scripts/run_pipeline.py --skip-download --skip-extract  # metadata-only smoke
+python scripts/build_taste_map.py                         # SPEC P1: taste map artifact
+python scripts/build_insights.py [--llm-polish]           # SPEC P2: insights artifacts
+python scripts/build_trend_charts.py                      # SPEC P3: trend chart PNGs
+python scripts/build_report.py                            # SPEC P4: single-file taste_report.html
+python -m src.agent.mcp_server                            # SPEC P5: MCP server over the gold warehouse
 pytest src/ -v                                            # test suite
 uv run .claude/skills/warehouse-audit/audit_warehouse.py  # data-quality audit
 ```
+
+MCP registration + demo transcript: [`docs/AGENT_ACCESS.md`](docs/AGENT_ACCESS.md).
 
 ## The harness
 
