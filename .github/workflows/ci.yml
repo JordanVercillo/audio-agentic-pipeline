@@ -16,14 +16,14 @@ jobs:
   lint-and-test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       # soundfile writes the synthetic WAV fixtures; libsndfile is its backend.
       - name: Install audio system libs
         run: sudo apt-get update && sudo apt-get install -y libsndfile1
 
       - name: Install uv + Python 3.12
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@v6
         with:
           python-version: "3.12"
           enable-cache: true
