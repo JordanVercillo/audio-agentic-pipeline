@@ -14,8 +14,9 @@
 - **Status:** ✅ **Phase V VERIFIED 2026-07-03 — the pipeline runs end-to-end
   on this machine and the warehouse passes its audit ALL-GREEN** (see §2:
   smoke + 9-track real run w/ audio download + DSP). Fixed during
-  verification: committed Spotify secret scrubbed (⚠️ **rotation in the
-  dashboard still owed** — old secret is burned in git history), 7-step
+  verification: committed Spotify secret scrubbed AND **rotated in the
+  dashboard 2026-07-03 (old `9b75…` secret is dead; PKCE never used it
+  anyway)** — security item CLOSED, 7-step
   orchestrator rebuilt to match docs, ffmpeg/libmp3lame installed, DSP
   feature-serialization gap closed (warehouse: 82 numeric feature cols;
   FAISS vector unchanged at 77). Phase-4 webapp still NOT in this repo copy.
@@ -374,5 +375,10 @@ narrative goes to `notes/engineering_journal.md`, plans to
   questions; wrote `docs/AGENT_ACCESS.md`. 30 new tests → **145 green**.
   **Left off: P5 done — next is SPEC P6 (platform hardening: uv/pyproject +
   lockfile, ruff, GitHub Actions CI, exact feature-contract audit per D-4,
-  legacy archival, README rewrite). ⚠️ Still owed by Jordan: rotate the old
-  Spotify secret + commit/push (tree now holds P0–P5, uncommitted).**
+  legacy archival, README rewrite).**
+- **2026-07-03 (session 9 wrap):** P0–P5 committed as **11 reviewable
+  commits** on branch `feat/insight-and-agent-layers` (security scrub first
+  and isolated; verified no `.env`/`data`/secret tracked). **Spotify client
+  secret ROTATED in the dashboard** — the last standing security item is
+  CLOSED (PKCE never used the secret; rotation kills the git-history leak).
+  **Left off: branch is committed but NOT pushed — Jordan pushes. Then P6.**
