@@ -47,11 +47,12 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - name: Set up Java 11 (Spark 3.5 runtime)
+      # PySpark 4.x (pinned 4.1.2 in uv.lock) dropped Java 8/11 — needs 17+.
+      - name: Set up Java 17 (Spark 4.x runtime)
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: "11"
+          java-version: "17"
 
       - name: Install uv + Python 3.12
         uses: astral-sh/setup-uv@v6
