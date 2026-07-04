@@ -25,16 +25,14 @@ Design Philosophy:
 from pathlib import Path
 from typing import Optional, Union
 
+import matplotlib.patheffects as pe
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
-import matplotlib.patheffects as pe
-from matplotlib.patches import FancyBboxPatch
 
 from .drift import (
     DRIFT_FEATURE_COLS,
     FEATURE_LABELS,
-    compute_temporal_centroids,
 )
 
 # ── Color Palette ──
@@ -437,7 +435,7 @@ def plot_genre_flow(
     fig.patch.set_facecolor(BG_COLOR)
     fig.suptitle(title, color=TEXT_COLOR, fontsize=16, fontweight="bold", y=1.02)
 
-    for ax, tr in zip(axes, time_ranges):
+    for ax, tr in zip(axes, time_ranges, strict=True):
         ax.set_facecolor(CARD_COLOR)
         subset = fact_df[fact_df["time_range"] == tr]
 
@@ -540,7 +538,7 @@ def plot_feature_distributions(
                 data_by_tr, labels=labels, patch_artist=True,
                 widths=0.6, showfliers=True, flierprops={"marker": ".", "markersize": 4},
             )
-            for patch, color in zip(bp["boxes"], colors):
+            for patch, color in zip(bp["boxes"], colors, strict=True):
                 patch.set_facecolor(color)
                 patch.set_alpha(0.6)
                 patch.set_edgecolor("white")

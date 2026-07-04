@@ -14,11 +14,17 @@ Usage:
     )
 """
 
-from .drift import compute_taste_drift, compute_temporal_centroids, compute_feature_deltas
+from .drift import compute_feature_deltas, compute_taste_drift, compute_temporal_centroids
 from .visualizations import (
     plot_drift_radar,
+    plot_feature_distributions,
+    plot_genre_flow,
     plot_temporal_heatmap,
     plot_umap_by_time_range,
-    plot_genre_flow,
-    plot_feature_distributions,
 )
+
+__all__ = [
+    "compute_feature_deltas", "compute_taste_drift", "compute_temporal_centroids",
+    "plot_drift_radar", "plot_feature_distributions", "plot_genre_flow",
+    "plot_temporal_heatmap", "plot_umap_by_time_range",
+]

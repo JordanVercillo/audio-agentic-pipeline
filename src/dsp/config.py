@@ -11,8 +11,6 @@ Reference: 02_audio_dsp_architect.md
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Optional
-
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 #  CANONICAL CONSTANTS

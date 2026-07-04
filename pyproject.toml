@@ -45,6 +45,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0",
+    "ruff>=0.6",
 ]
 
 [tool.uv]
@@ -54,3 +55,19 @@ package = false                        # application, not a buildable package
 testpaths = ["src"]                    # tests are colocated with modules
 python_files = ["test_*.py"]
 addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+# Lint only the maintained code — legacy v0 (spotify/, 00_tools/) is archived
+# in a later slice; notebooks + uv single-file skill scripts have their own style.
+extend-exclude = ["spotify", "00_tools", "legacy", "notebooks", ".claude"]
+
+[tool.ruff.lint]
+# Real-issue rules over pure-style churn. Deliberately NOT enabling UP
+# (pyupgrade): the codebase uses typing.Optional/Union consistently, and
+# rewriting ~190 signatures to PEP 604 would bury the diff for no correctness
+# gain. Ruff is used as a LINTER, not a formatter — the box-drawing section
+# comments are intentional.
+select = ["E", "F", "I", "B"]
+ignore = ["E501"]                      # long docstring tables / ASCII art are intentional

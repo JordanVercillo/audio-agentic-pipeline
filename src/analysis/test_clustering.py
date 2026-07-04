@@ -10,13 +10,13 @@ import pandas as pd
 import pytest
 
 from src.analysis.clustering import (
-    VECTOR_77_COLUMNS,
-    UNKNOWN_BUCKET,
     OTHER_BUCKET,
-    map_genres_to_bucket,
-    prepare_matrix,
+    UNKNOWN_BUCKET,
+    VECTOR_77_COLUMNS,
     cluster_tracks,
     describe_clusters,
+    map_genres_to_bucket,
+    prepare_matrix,
 )
 
 
@@ -26,7 +26,7 @@ def _synthetic_frame(n_per_blob: int = 12, n_blobs: int = 3, seed: int = 7) -> p
     rows = []
     for b in range(n_blobs):
         center = rng.normal(loc=b * 12.0, scale=1.0, size=len(VECTOR_77_COLUMNS))
-        for i in range(n_per_blob):
+        for _ in range(n_per_blob):
             rows.append(center + rng.normal(0, 0.5, size=len(VECTOR_77_COLUMNS)))
     df = pd.DataFrame(rows, columns=VECTOR_77_COLUMNS)
     df["spotify_track_id"] = [f"synth_{i:03d}" for i in range(len(df))]

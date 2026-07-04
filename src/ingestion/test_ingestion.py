@@ -33,11 +33,15 @@ def run_smoke_test(interactive: bool = False):
     # ── 1. Import validation ──
     print("\n━━━ TEST 1: Module Imports ━━━")
     from src.ingestion import (
+        DeprecatedEndpointError,
+        fetch_top_tracks,
+        fetch_track_metadata,
         get_user_spotify,
-        safe_api_call, strip_deprecated_fields, DeprecatedEndpointError,
-        fetch_track_metadata, fetch_batch_metadata,
-        fetch_top_tracks, search_tracks,
-        save_metadata_to_parquet, load_metadata_parquet,
+        load_metadata_parquet,
+        safe_api_call,
+        save_metadata_to_parquet,
+        search_tracks,
+        strip_deprecated_fields,
     )
     print("   ✅ All modules imported successfully")
 
@@ -108,7 +112,6 @@ def run_smoke_test(interactive: bool = False):
 
     # ── 6. Search ──
     print("\n━━━ TEST 6: Search ━━━")
-    import pandas as pd
     search_df = search_tracks("Daft Punk Random Access Memories", limit=5, sp=sp_public)
     assert not search_df.empty, "Search returned no results"
     assert "spotify_track_id" in search_df.columns, "Missing bridge key"

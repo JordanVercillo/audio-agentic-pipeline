@@ -23,7 +23,6 @@ from .config import VectorStoreConfig
 from .faiss_store import FAISSStore
 from .visualizer import compute_umap, plot_taste_map
 
-
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 #  STEP 3: BUILD VECTOR INDEX FROM FEATURES
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

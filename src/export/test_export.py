@@ -9,14 +9,12 @@ strings (P8 renders other users' libraries through this template).
 import base64
 import json
 
-import numpy as np
 import pandas as pd
 import pytest
 
 from src.export.portfolio import (
     REPORT_IMAGES,
     build_report_html,
-    render_html,
     top_tracks_by_window,
 )
 

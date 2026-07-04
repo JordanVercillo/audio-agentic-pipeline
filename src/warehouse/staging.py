@@ -24,7 +24,6 @@ from pathlib import Path
 from typing import Optional, Union
 
 import pandas as pd
-import numpy as np
 
 # ── Default paths ──
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent

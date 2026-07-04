@@ -34,10 +34,10 @@ Full DAG (from 03_data_orchestrator.md):
 import importlib
 
 # Configuration
-from .config import VectorStoreConfig, SimilarityMetric
+from .config import SimilarityMetric, VectorStoreConfig
 
 # Visualization (light: umap + matplotlib — needed by the taste-map path)
-from .visualizer import compute_umap, plot_taste_map, plot_similarity_radar
+from .visualizer import compute_umap, plot_similarity_radar, plot_taste_map
 
 # ── Lazy heavy submodules ──
 # FAISS (faiss_store) and the full DAG (pipeline) are loaded ON FIRST ACCESS,
