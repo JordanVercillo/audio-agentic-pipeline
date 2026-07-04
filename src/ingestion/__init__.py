@@ -6,7 +6,7 @@ Spotify Web API endpoints, serializes to Parquet with the spotify_track_id
 bridge key for joining with local DSP features.
 
 Architecture:
-    auth.py             → PKCE OAuth + Client Credentials
+    auth.py             → PKCE OAuth (the ONLY auth flow — no client secret)
     guardrails.py       → Blocks deprecated endpoints, strips removed fields
     fetchers.py         → High-level data fetchers (top items, metadata, playlists)
     audio_downloader.py → YouTube → MP3 acquisition (Phase 1)
@@ -30,7 +30,7 @@ Audio Download:
 """
 
 # Authentication
-from .auth import get_user_spotify, get_public_spotify
+from .auth import get_user_spotify
 
 # Guardrails
 from .guardrails import (
@@ -45,6 +45,7 @@ from .fetchers import (
     fetch_top_tracks,
     fetch_top_artists,
     fetch_all_top_items,
+    fetch_artists_by_ids,
     fetch_track_metadata,
     fetch_batch_metadata,
     fetch_user_playlists,
@@ -72,11 +73,12 @@ from .serializer import (
 
 __all__ = [
     # Auth
-    "get_user_spotify", "get_public_spotify",
+    "get_user_spotify",
     # Guardrails
     "safe_api_call", "strip_deprecated_fields", "throttle", "DeprecatedEndpointError",
     # Fetchers
     "fetch_top_tracks", "fetch_top_artists", "fetch_all_top_items",
+    "fetch_artists_by_ids",
     "fetch_track_metadata", "fetch_batch_metadata",
     "fetch_user_playlists", "fetch_playlist_tracks",
     "search_tracks", "fetch_user_profile",

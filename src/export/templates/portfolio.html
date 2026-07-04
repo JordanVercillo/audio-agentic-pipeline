@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Taste Report — Vercillo Analytics</title>
+<style>
+  :root {
+    --bg: #0d1117; --card: #161b22; --border: #30363d;
+    --text: #f0f6fc; --muted: #8b949e; --dim: #484f58;
+    --green: #7ee787; --blue: #58a6ff; --pink: #f778ba; --gold: #e3b341;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    line-height: 1.55; padding: 2.5rem 1.25rem 4rem;
+  }
+  .wrap { max-width: 1080px; margin: 0 auto; }
+  header { text-align: center; margin-bottom: 2.5rem; }
+  header h1 { font-size: 2.1rem; letter-spacing: -0.02em; }
+  header .sub { color: var(--muted); margin-top: 0.4rem; font-size: 0.95rem; }
+  .chips { display: flex; gap: 0.5rem; justify-content: center; flex-wrap: wrap; margin-top: 1rem; }
+  .chip {
+    background: var(--card); border: 1px solid var(--border); border-radius: 999px;
+    padding: 0.3rem 0.9rem; font-size: 0.85rem; color: var(--muted);
+  }
+  .chip b { color: var(--text); }
+  section { margin-bottom: 2.5rem; }
+  h2 { font-size: 1.3rem; margin-bottom: 1rem; padding-bottom: 0.4rem;
+       border-bottom: 1px solid var(--border); }
+  .hero {
+    display: flex; gap: 1rem; flex-wrap: wrap;
+  }
+  .hero .card { flex: 1 1 240px; }
+  .card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 12px; padding: 1.25rem;
+  }
+  .big { font-size: 2.6rem; font-weight: 700; }
+  .big small { font-size: 1.1rem; color: var(--muted); font-weight: 400; }
+  .verdict { color: var(--green); }
+  .label { color: var(--muted); font-size: 0.85rem; text-transform: uppercase;
+           letter-spacing: 0.06em; margin-bottom: 0.35rem; }
+  img.chart { width: 100%; height: auto; border-radius: 12px;
+              border: 1px solid var(--border); display: block; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+  @media (max-width: 800px) { .grid2 { grid-template-columns: 1fr; } }
+  table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+  th, td { text-align: left; padding: 0.5rem 0.65rem; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 600; font-size: 0.8rem;
+       text-transform: uppercase; letter-spacing: 0.05em; }
+  .cols3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; }
+  @media (max-width: 800px) { .cols3 { grid-template-columns: 1fr; } }
+  .tr-title { font-weight: 700; margin-bottom: 0.6rem; }
+  .tr-short { color: var(--green); } .tr-medium { color: var(--blue); } .tr-long { color: var(--pink); }
+  ol.tracks { list-style: none; counter-reset: rank; }
+  ol.tracks li { counter-increment: rank; padding: 0.28rem 0; font-size: 0.88rem;
+                 border-bottom: 1px solid #1c2129; display: flex; gap: 0.5rem; }
+  ol.tracks li::before { content: counter(rank); color: var(--dim); min-width: 1.4rem;
+                         font-variant-numeric: tabular-nums; }
+  ol.tracks .artist { color: var(--muted); }
+  .fav { padding: 0.35rem 0; border-bottom: 1px solid #1c2129; }
+  .fav b { color: var(--gold); }
+  .genre-chips { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+  .genre-chips .chip b { color: var(--text); }
+  .super { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 1rem; }
+  .super .card h3 { font-size: 0.95rem; margin-bottom: 0.5rem; }
+  .super .card div { font-size: 0.85rem; padding: 0.15rem 0; }
+  .super .who { color: var(--muted); }
+  footer { color: var(--muted); font-size: 0.85rem; border-top: 1px solid var(--border);
+           padding-top: 1.25rem; }
+  footer a { color: var(--blue); text-decoration: none; }
+  footer ul { margin: 0.5rem 0 0 1.2rem; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>🎧 How My Music Taste Evolves</h1>
+  <div class="sub">Vercillo Analytics · generated {{ generated_at }} · every acoustic number below
+    was measured by local DSP, not a vendor API</div>
+  <div class="chips">
+    <span class="chip"><b>{{ corpus.n_unique_tracks }}</b> tracks</span>
+    <span class="chip"><b>{{ corpus.n_fact_rows }}</b> listening entries</span>
+    <span class="chip"><b>{{ corpus.n_tracks_with_features }}</b> with 77-dim DSP features</span>
+    <span class="chip"><b>{{ corpus.n_unique_artists }}</b> artists</span>
+  </div>
+</header>
+
+<section class="hero">
+  <div class="card">
+    <div class="label">Taste Drift Score</div>
+    <div class="big verdict">{{ drift.score }}<small>σ</small></div>
+    <div style="color: var(--muted); margin-top: 0.4rem;">{{ drift.label }}</div>
+  </div>
+  <div class="card">
+    <div class="label">Stability</div>
+    <div class="big">{{ drift.stability_score }}</div>
+    <div style="color: var(--muted); margin-top: 0.4rem;">1.0 = identical acoustic profile across all time windows</div>
+  </div>
+  <div class="card">
+    <div class="label">Persistent favorites</div>
+    <div class="big">{{ persistence.n_all_three }}</div>
+    <div style="color: var(--muted); margin-top: 0.4rem;">tracks in the top list of all three time windows</div>
+  </div>
+</section>
+
+<section>
+  <h2>The taste map</h2>
+  <p style="color: var(--muted); margin-bottom: 0.8rem;">Every track projected from its own
+    77-dimension acoustic fingerprint (UMAP), colored by genre, sized by how many
+    time windows it appears in. Clusters are named by what acoustically distinguishes
+    them — not by metadata.</p>
+  <img class="chart" src="{{ images.taste_map }}" alt="UMAP taste map">
+  {% if clusters.available %}
+  <div class="card" style="margin-top: 1rem;">
+    <table>
+      <tr><th>Cluster</th><th>Tracks</th><th>Acoustic character</th><th>Mostly</th><th>Top artist</th></tr>
+      {% for c in clusters.clusters %}
+      <tr><td>{{ c.cluster_id }}</td><td>{{ c.n_tracks }}</td>
+          <td><b>{{ c.acoustic_label }}</b></td><td>{{ c.dominant_genre }}</td><td>{{ c.top_artist }}</td></tr>
+      {% endfor %}
+    </table>
+  </div>
+  {% endif %}
+</section>
+
+<section>
+  <h2>Drift, measured honestly</h2>
+  <p style="color: var(--muted); margin-bottom: 0.8rem;">Radar rings and heatmap colors are in
+    standard-deviation units against the whole corpus — visual divergence means
+    effect size, in the same units as the drift score.</p>
+  <div class="grid2">
+    <img class="chart" src="{{ images.drift_radar }}" alt="Drift radar">
+    <img class="chart" src="{{ images.temporal_heatmap }}" alt="Temporal heatmap">
+  </div>
+</section>
+
+<section>
+  <h2>Top tracks per window</h2>
+  <div class="cols3">
+    {% for tr in top_tracks %}
+    <div class="card">
+      <div class="tr-title tr-{{ tr.key }}">{{ tr.title }}</div>
+      <ol class="tracks">
+        {% for t in tr.tracks %}
+        <li><span>{{ t.track_name }} <span class="artist">— {{ t.artist }}</span></span></li>
+        {% endfor %}
+      </ol>
+    </div>
+    {% endfor %}
+  </div>
+</section>
+
+<section>
+  <h2>Staying power &amp; superlatives</h2>
+  <div class="grid2">
+    <div class="card">
+      <div class="label">The all-timers (top list of every window)</div>
+      {% for f in persistence.persistent_favorites %}
+      <div class="fav"><b>{{ f.track_name }}</b> <span class="who">— {{ f.artist }}
+        (avg rank {{ f.avg_rank }})</span></div>
+      {% endfor %}
+      <div style="color: var(--muted); font-size: 0.85rem; margin-top: 0.8rem;">
+        {{ persistence.n_single_range }} tracks appear in one window only ·
+        {{ persistence.n_two_ranges }} in two · {{ persistence.n_all_three }} in all three</div>
+    </div>
+    <div class="super">
+      {% for s in superlatives %}
+      <div class="card">
+        <h3>{{ s.title }}</h3>
+        {% for e in s.entries %}
+        <div><b>{{ e.window }}</b>: {{ e.track_name }} <span class="who">— {{ e.artist }}</span></div>
+        {% endfor %}
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Distributions &amp; artists over time</h2>
+  <img class="chart" src="{{ images.feature_distributions }}" alt="Feature distributions">
+  <div style="height: 1rem;"></div>
+  <img class="chart" src="{{ images.artist_flow }}" alt="Top artists per window">
+</section>
+
+<section>
+  <h2>Genre profile</h2>
+  <div class="genre-chips">
+    {% for g in genres %}
+    <span class="chip">{{ g.name }} <b>{{ g.count }}</b></span>
+    {% endfor %}
+  </div>
+</section>
+
+<footer>
+  <b>Methodology.</b> Spotify removed third-party access to its audio features in
+  February 2026 — so this pipeline builds its own:
+  <ul>
+    <li>Listening history via the Spotify API (Authorization Code + PKCE — no client secret exists anywhere in the project).</li>
+    <li>Audio acquired per track (rate-limited, idempotent), analyzed locally with librosa into a 77-dimension feature vector.</li>
+    <li>Medallion warehouse (Bronze → Silver → Gold star schema, Parquet) keyed on a single bridge key.</li>
+    <li>Drift = RMS per-feature shift between standardized window centroids, in σ units. Clustering and UMAP run in the same standardized space with fixed seeds — every number in this report is reproducible.</li>
+  </ul>
+  <div style="margin-top: 0.8rem;">Built by Jordan Vercillo ·
+    <a href="https://github.com/JordanVercillo/audio-agentic-pipeline">source on GitHub</a> ·
+    report generated by <code>scripts/build_report.py</code></div>
+</footer>
+
+</div>
+</body>
+</html>

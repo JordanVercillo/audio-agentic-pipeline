@@ -31,9 +31,12 @@ LAYERS = ("staging", "cleansed", "modeled")
 BRIDGE = "spotify_track_id"
 EXPECTED_FEATURE_COLS = 77  # CLAUDE_INSTRUCTIONS.md — the DSP contract
 
-# Non-feature columns that may appear in feature tables.
+# Non-feature columns that may appear in feature/fact tables: identifiers,
+# tonal class labels, and numeric track METADATA (duration_ms/rank/explicit
+# come from Spotify, not DSP — they must not count toward the 77-dim contract).
 META_COLS = {BRIDGE, "time_range", "track_name", "artist_names", "fetched_at",
-             "estimated_key", "estimated_mode"}
+             "estimated_key", "estimated_mode",
+             "duration_ms", "rank", "explicit"}
 
 
 def table_summary(path: Path):
@@ -90,6 +93,8 @@ def main() -> int:
                 pass  # artist tables key on artist ids — bridge not expected
             elif "time_range" in name and BRIDGE not in df.columns:
                 pass  # dim_time_range keys on time_range
+            elif "description" in name and BRIDGE not in df.columns:
+                pass  # column_descriptions is reference metadata, keyed on column names
             elif BRIDGE not in df.columns:
                 warnings.append(f"{layer}/{f.name}: no '{BRIDGE}' column")
                 missing_bridge = True

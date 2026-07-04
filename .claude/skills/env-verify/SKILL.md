@@ -12,17 +12,29 @@ when a prerequisite failed.
 
 ## Checks, in order
 
-1. **Python** — `python --version` (needs 3.11+; repo has run on 3.13/conda).
+1. **Python** — `python --version` (needs 3.11+). ⚠️ On this machine bare
+   `python` is a dep-less system 3.11; the project env is conda BASE:
+   `C:\Users\jverc\anaconda3\python.exe` (3.13.5, all deps). If imports
+   fail, check the conda interpreter before declaring the env broken —
+   wrong-interpreter-on-PATH mimics a missing environment.
 2. **Core imports** — `python -c "import librosa, soundfile, numpy, pandas,
    pyarrow, spotipy, yt_dlp, faiss, umap, matplotlib"`. On failure:
    `pip install -r requirements.txt` (name the missing module explicitly).
 3. **yt-dlp version** — must be ≥ 2026.2.21 (CVE floor pinned in
    requirements.txt): `python -c "import yt_dlp; print(yt_dlp.version.__version__)"`.
-4. **ffmpeg on PATH** — `ffmpeg -version | head -1`. Needed by the MP3
-   postprocessor. Fix: `winget install Gyan.FFmpeg` (or conda install ffmpeg).
-5. **Spotify credentials** — `SPOTIPY_CLIENT_ID`, `SPOTIPY_CLIENT_SECRET`,
-   `SPOTIPY_REDIRECT_URI` present in the environment (report NAMES only,
-   never values). Fix: set env vars / `.env` (gitignored).
+4. **ffmpeg CAPABILITY, not just presence** — presence:
+   `ffmpeg -version | head -1`; capability:
+   `ffmpeg -encoders | grep libmp3lame` (the MP3 postprocessor hardcodes
+   libmp3lame — Anaconda's ffmpeg build LACKS it and fails every download
+   with "Encoder not found"; verified 2026-07-03). Fix:
+   `winget install Gyan.FFmpeg`, then ensure its bin dir precedes conda's
+   `Library/bin` on PATH for pipeline runs. Do NOT suggest conda ffmpeg.
+5. **Spotify credentials (PKCE-only)** — `SPOTIPY_CLIENT_ID` and
+   `SPOTIPY_REDIRECT_URI` present via env or project-root `.env` (report
+   NAMES only, never values). The project uses NO client secret anywhere —
+   if you see one referenced or set, that's a finding (flag it), not a
+   requirement. No in-code fallbacks (removed 2026-07-03). Fix: create
+   `.env` (gitignored) with the client ID from the Developer Dashboard.
 6. **PySpark sanity** (only if today's work needs spark/) —
    `python -c "import pyspark; print(pyspark.__version__)"`; JVM present
    (`java -version`). Otherwise SKIP with a note.

@@ -7,49 +7,32 @@ Uses spotipy under the hood for token management and refresh.
 
 import os
 import spotipy
-from spotipy.oauth2 import SpotifyClientCredentials, SpotifyOAuth
 
 # ─────────────────────────────────────────────────────────
-# Credentials — set here or via environment variables
+# LEGACY (v0) — auth flows removed 2026-07-03.
+# This project is PKCE-only with NO client secret anywhere.
+# Use src/ingestion/auth.py:get_user_spotify() instead.
 # ─────────────────────────────────────────────────────────
-CLIENT_ID = os.environ.get("SPOTIPY_CLIENT_ID", "8900a9bfd0424ea0aaa054ce5aa9cfff")
-CLIENT_SECRET = os.environ.get("SPOTIPY_CLIENT_SECRET", "9b75a4ca168d49d190fb33a5fb1cc004")
+CLIENT_ID = os.environ.get("SPOTIPY_CLIENT_ID")
 REDIRECT_URI = os.environ.get("SPOTIPY_REDIRECT_URI", "http://127.0.0.1:8888/callback")
 
 # Scopes needed for user-specific endpoints (/me/top, etc.)
 USER_SCOPES = "user-top-read user-read-recently-played"
 
+_REMOVED_MSG = (
+    "Removed: this legacy v0 auth flow used a client secret. The project is "
+    "PKCE-only now — use src.ingestion.auth.get_user_spotify() instead."
+)
+
 
 def get_client_credentials_spotify() -> spotipy.Spotify:
-    """
-    Returns a Spotify client authenticated via Client Credentials flow.
-    Use this for public endpoints: tracks, artists, albums, search.
-    No user login required.
-    """
-    auth_manager = SpotifyClientCredentials(
-        client_id=CLIENT_ID,
-        client_secret=CLIENT_SECRET,
-    )
-    sp = spotipy.Spotify(auth_manager=auth_manager, requests_timeout=10)
-    return sp
+    """LEGACY — removed. See src/ingestion/auth.py (PKCE-only)."""
+    raise NotImplementedError(_REMOVED_MSG)
 
 
 def get_user_spotify() -> spotipy.Spotify:
-    """
-    Returns a Spotify client authenticated via Authorization Code flow.
-    Use this for user-specific endpoints: /me/top/{type}, /me/player, etc.
-    Will open browser for OAuth login on first run, then caches the token.
-    """
-    auth_manager = SpotifyOAuth(
-        client_id=CLIENT_ID,
-        client_secret=CLIENT_SECRET,
-        redirect_uri=REDIRECT_URI,
-        scope=USER_SCOPES,
-        cache_path=os.path.join(os.path.dirname(__file__), ".spotify_cache"),
-        open_browser=True,
-    )
-    sp = spotipy.Spotify(auth_manager=auth_manager, requests_timeout=10)
-    return sp
+    """LEGACY — removed. See src/ingestion/auth.py (PKCE-only)."""
+    raise NotImplementedError(_REMOVED_MSG)
 
 
 # ─────────────────────────────────────────────────────────

@@ -437,12 +437,17 @@ python scripts/run_pipeline.py --clean
 ```
 
 ### Web App (Phase 4)
+
+> **Historical note (2026-07-03):** the original instructions here exported a
+> client secret. The project is PKCE-only now — no client secret exists
+> anywhere (see `SPEC.md`); the production-pilot webapp (SPEC P8) uses
+> `SPOTIPY_CLIENT_ID` + redirect URI only.
+
 ```bash
 cd audio-agentic-pipeline/webapp
 
-# Set environment variables
+# Set environment variables (PKCE — client ID is public by design)
 export SPOTIPY_CLIENT_ID="your_client_id"
-export SPOTIPY_CLIENT_SECRET="your_client_secret"
 export SPOTIPY_REDIRECT_URI="http://127.0.0.1:8000/callback"
 
 # Run locally
@@ -451,10 +456,7 @@ uvicorn app:app --reload --port 8000
 
 # Or via Docker
 docker build -t vercillo-webapp .
-docker run -p 8000:8000 \
-  -e SPOTIPY_CLIENT_ID=... \
-  -e SPOTIPY_CLIENT_SECRET=... \
-  vercillo-webapp
+docker run -p 8000:8000 -e SPOTIPY_CLIENT_ID=... vercillo-webapp
 ```
 
 ---
