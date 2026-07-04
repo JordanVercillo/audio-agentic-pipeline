@@ -17,10 +17,10 @@ item below should strengthen that story.
 
 | # | Weakness | Severity | Root cause | Where it gets fixed |
 |---|---|---|---|---|
-| W-1 | **No verified end-to-end run on this machine** — code claims ≠ runtime proof; warehouse empty | 🔴 Gating | Repo re-uploaded; env never re-validated | env-verify → smoke run → small real run → warehouse-audit |
+| W-1 | ✅ ~~No verified end-to-end run on this machine~~ | ~~🔴~~ | Repo re-uploaded; env never re-validated | **RESOLVED 2026-07-03**: smoke (150 entries) + real run (9 tracks, audio+DSP) + audit ALL-GREEN. En route: secret scrubbed (ROTATE in dashboard!), orchestrator rebuilt, ffmpeg/libmp3lame fixed, feature serialization gap closed (82 warehouse cols; vector stays 77) |
 | W-2 | ✅ ~~Repo structure/hygiene~~ (nested root, committed bytecode, no .gitignore, stub README) | ~~🔴~~ | GitHub web upload | **RESOLVED 2026-07-03** (flatten + gitignore + harness) |
-| W-3 | **Phase-4 webapp missing** while docs claim it ✅ | 🟠 Med | Upload lost it (or it never left the Copilot copy) | Decide: recover / rebuild lean / descope + fix docs |
-| W-4 | **Phase 5 not started** — the actual analytical payoff (insights, clustering, temporal trends, portfolio export) | 🟠 Med (High value) | Gated by W-1 | Phase 5.1 → 5.4, spec in CLAUDE_INSTRUCTIONS |
+| W-3 | **Phase-4 webapp missing** while docs claim it ✅ | 🟠 Med | Upload lost it (or it never left the Copilot copy) | **DECIDED 2026-07-03 (SPEC D-7):** rebuild as P8 production pilot — per-visitor PKCE auth (no secret), feature-store joins, RAG insights |
+| W-4 | ✅ ~~Phase 5 not started~~ | ~~🟠~~ | Gated by W-1 | **RESOLVED 2026-07-03** (SPEC P1–P4: taste map, insight engine, σ-honest trend charts, single-file taste_report.html — `build_report.py` meets the "one command from a fresh warehouse" exit criterion) |
 | W-5 | **Env not reproducible** — conda + requirements.txt, no lockfile; heavy deps (pyspark, faiss, librosa) | 🟡 Low (until W-1 forces it) | Pre-uv era | Migrate to uv + `pyproject.toml` + lock; keep requirements.txt export for compat |
 | W-6 | **No CI** — tests exist but nothing runs them automatically | 🟡 Low | Never set up | GitHub Actions: ruff + pytest (synthetic-data tests make this free) — strong platform-DE signal |
 | W-7 | **Legacy code unintegrated** — `spotify/` v0 scripts, `00_tools/media_converter.py` | 🟡 Low | Accretion | Archive to `legacy/` or fold useful bits into `src/` |
@@ -28,19 +28,30 @@ item below should strengthen that story.
 
 ## The gameplan
 
+> **2026-07-03: the gameplan detail below is superseded by [`SPEC.md`](../SPEC.md)**
+> (approved design: phases P0–P7 with acceptance criteria + decision log).
+> This file remains the weakness ledger; W-numbers map to spec phases:
+> W-3 → **DECIDED (owner override D-7): webapp reinstated as SPEC P8
+> production pilot** (public PKCE auth per visitor, RAG insights) ·
+> W-4 → P0–P4 · W-5/W-6 → P6 · W-7 → P6 (legacy archival) ·
+> W-8 → P6 (README rewrite).
+
 ### ✅ Phase 0 — Repo hardening + harness (DONE 2026-07-03)
 Flatten, .gitignore, untrack junk, import `.agent_prompts/`, install
 bootloader + notes/ + skills. *(W-2)*
 
-### 🎯 Phase V — Verify the pipeline (NEXT — gates everything)
-1. `/env-verify`: deps import, ffmpeg present, `SPOTIPY_*` env vars, full
-   `pytest src/ -v`.
-2. Metadata-only smoke: `python scripts/run_pipeline.py --skip-download
-   --skip-extract` → staging/cleansed/modeled build from API data alone.
-3. Small real run (a handful of tracks) → `/warehouse-audit` green: bridge-key
-   integrity, fact↔dim join coverage, 77 feature columns, no orphans.
-*Exit criteria:* audit passes on a real warehouse; results recorded in
-PROJECT_CONTEXT §2. *(W-1)*
+### ✅ Phase V — Verify the pipeline (DONE 2026-07-03)
+1. ✅ `/env-verify`: conda base py3.13.5 is the env (bare `python` is a
+   dep-less 3.11 — invoke conda explicitly); 55/55 tests; yt-dlp 2026.03.17;
+   ffmpeg needed the Gyan build (conda's lacks libmp3lame).
+2. ✅ Metadata-only smoke: 150 track entries / 117 unique / 105 artist
+   entries → full Bronze→Silver→Gold build in 62.5s.
+3. ✅ Real run (`--limit 4`): 9/9 downloads, 9/9 DSP extractions →
+   `/warehouse-audit` ALL-GREEN (zero errors, all flags false; only soft
+   "108 not yet downloaded").
+*Exit criteria met;* results in PROJECT_CONTEXT §2. Fixed en route: committed
+secret scrubbed (rotation still owed), 7-step orchestrator rebuilt to match
+docs (+ `--limit N`), feature-serialization gap closed. *(W-1)*
 
 ### 📊 Phase 5 — Insight engine (the portfolio centerpiece)
 Build in order of demo value, each with a before/after artifact:
