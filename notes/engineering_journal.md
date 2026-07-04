@@ -246,3 +246,38 @@ entirely and confirm the sandbox still refuses to read a file."
 
 > *Prefer removing a capability to blocklisting its uses. A denylist is only
 > as good as your imagination; a capability you didn't grant can't be abused.*
+
+## Phase 7 — the scale slice
+
+### 12. "It ran on my machine" — because my machine wasn't the machine (2026-07-04)
+
+P7's whole point is a *proof*: `spark/parity_check.py` runs the real Spark
+engine and asserts its dedup row-counts and centroids match the pandas
+transforms. I probed it locally first — `Spark 3.5.6 session up`, imports
+clean — and shipped the CI job pinned to **Java 11** ("Spark 3.5 runtime,"
+I reasoned). CI went red instantly: `UnsupportedClassVersionError … class
+file version 61.0, this Java only recognizes up to 55.0`. 61 = Java 17,
+55 = Java 11. The JVM gateway died before a single assertion ran.
+
+The tell was in the lockfile: `py4j 0.10.9.9` — the bridge that ships with
+**PySpark 4.x**, not 3.5 (which pins 0.10.9.7). `uv sync --frozen` had
+resolved `pyspark>=3.5.0` all the way to **4.1.2**, whose jars are Java-17
+bytecode and which *dropped Java 8/11 entirely*. So why did my local probe say
+"3.5.6"? Because I ran it with the **anaconda** Python — which has its own
+conda-installed pyspark 3.5.6 and my system Java 11 — not the **uv `.venv`**
+that CI builds from the lock. Two different Sparks on two different Javas; the
+one I tested was not the one I shipped. Bumping the CI job to Temurin 17 turned
+it green: `dedup 30=30`, `dedup 90=90`, `centroid parity within 1e-3`.
+
+**The realization:** "works locally" is only evidence about the environment
+you actually ran in — and a convenient interpreter on `PATH` is rarely that
+environment. The reproducible truth is the *frozen* install (`uv sync
+--frozen`), and the place it gets exercised is CI. This is why P6's CI job
+exists at all: not to run tests I've already run, but to run them in the
+environment the lockfile *promises*, on a box that shares nothing with mine.
+The version floor (`>=3.5.0`) and the resolved pin (`4.1.2`) are different
+facts; only the lock knows the second one, and only CI runs it.
+
+> *Test the environment you ship, not the one that's convenient. If it didn't
+> run from the frozen lock, "it ran" is a statement about your PATH, not your
+> code.*

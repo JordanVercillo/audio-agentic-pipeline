@@ -20,20 +20,25 @@
   orchestrator rebuilt to match docs, ffmpeg/libmp3lame installed, DSP
   feature-serialization gap closed (warehouse: 82 numeric feature cols;
   FAISS vector unchanged at 77). Phase-4 webapp still NOT in this repo copy.
-- **➡️ NEXT ACTION — SPEC P7: scale slice.** Prove the PySpark jobs
-  (`spark/feature_transform.py`, `temporal_aggregate.py`) against the real
-  warehouse with pandas-parity checks (row-count + centroid), then write
-  `docs/SCALING.md` (10K/1M-track design: GCS layout, BigQuery external
-  tables, Dataflow-vs-Spark tradeoffs, partitioning) — zero cloud spend
-  (D-3). **P0–P6 COMPLETE (P6 done 2026-07-04): uv/pyproject+lock, ruff
-  (clean), GitHub Actions CI green, exact feature-contract audit (D-4),
-  legacy archived, README rewritten.** After P7: P8 (production-pilot
-  webapp). Design: `SPEC.md`.
-- **PR state (2026-07-04):** PR #1 (P0–P5) MERGED to `main`. PR #2
-  (`p6/ci` → main: uv+ruff+CI+faiss fix) open, CI green, MERGEABLE. Pieces
-  4–6 (feature-contract, legacy, README) on branches
-  `p6/{feature-contract-audit,legacy-archive,readme}`, stacked — rebase onto
-  main after PR #2 merges, or fold into PR #2.
+- **➡️ NEXT ACTION — SPEC P8: production-pilot webapp.** Public site, per-visitor
+  PKCE auth (no owner secret — D-8), pulls the visitor's listening history and
+  runs RAG over the P5 agent core; GCS/Cloud Run. Gated on Spotify dev-mode
+  ~25-user allowlist. Design: `SPEC.md` (D-7).
+- **✅ P7 COMPLETE (2026-07-04): Spark↔pandas parity proven in CI.** The new
+  `spark-parity` CI job runs `spark/parity_check.py` on real **Spark 4.1.2**
+  (Java 17, Linux) every push/PR — GREEN: `features dedup 30=30`, `tracks dedup
+  90=90`, `temporal centroid parity identical within 1e-3`. Artifact
+  `docs/SCALING.md` (honest 10K/1M design: bottleneck is acquisition+DSP not
+  transforms; GCS + BigQuery external tables; Spark-vs-Dataflow per stage;
+  hash-bucket partitioning; one thin cloud slice = BigQuery + P5 MCP tool).
+  Zero cloud spend (D-3). **P0–P7 COMPLETE.**
+- **PR state (2026-07-04):** PR #1 (P0–P5) MERGED. PR #2 (`p6/ci`→main) &
+  PR #3 (`p6/readme`→`p6/ci`) MERGED — **but #2 merged before #3, so `p6/ci`
+  is 4 commits AHEAD of main: P6 batch-2 (exact feature-contract D-4, legacy
+  archive, README rewrite) is stranded on `p6/ci`, NOT on main.** The P7 PR
+  (`p7/scale-slice`→main) therefore delivers those 3 stranded P6 commits + the
+  2 P7 commits together — one merge catches main fully current through P7.
+  (Verify: `git log --no-merges origin/main..p7/scale-slice`.)
 - **How to work:** `/pipeline-partner` for feature/design sessions (reads and
   updates this file automatically). `/warehouse-audit` after any pipeline run
   or transform change. Ground rules in `CLAUDE.md`.
