@@ -80,8 +80,7 @@ narrative goes to `notes/engineering_journal.md`, plans to
 | `src/agent/` | SPEC P5: `warehouse_agent.py` (pure DuckDB retrieval core — 2-layer SQL security D-10; reused by P8 RAG) + `mcp_server.py` (FastMCP stdio: get_schema / query_warehouse / get_insights). Test: `test_agent.py` (30). Run: `python -m src.agent.mcp_server`. |
 | `docs/AGENT_ACCESS.md` | P5 artifact: MCP registration config (Claude Desktop/Code) + security model + live demo transcript. |
 | `artifacts/` | COMMITTED portfolio outputs (PNGs, reports) — unlike `data/`, these are deliverables. |
-| `spotify/` | LEGACY v0 (auth tombstoned 2026-07-03 — PKCE-only project). Archive to `legacy/` in P6. |
-| `00_tools/notebooks/media_converter.py` | Standalone media→mp3/wav/mp4 utility (beginner-doc style). Unintegrated; overlaps `audio_downloader`. |
+| `legacy/` | Archived pre-pipeline v0 (moved 2026-07-04, P6): `legacy/spotify/` (secret-based v0 scripts) + `legacy/00_tools/` (media_converter). Excluded from ruff/tests/CI; nothing in `src/` imports it. See `legacy/README.md`. |
 | `data/` (gitignored) | `raw_audio/{track_id}.mp3` + `warehouse/{staging,cleansed,modeled}/` Parquet. Rebuild: `run_pipeline.py`. |
 
 ## 2. Phase results (verified vs. claimed)

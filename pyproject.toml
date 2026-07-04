@@ -59,9 +59,9 @@ addopts = "-q"
 [tool.ruff]
 line-length = 100
 target-version = "py311"
-# Lint only the maintained code — legacy v0 (spotify/, 00_tools/) is archived
-# in a later slice; notebooks + uv single-file skill scripts have their own style.
-extend-exclude = ["spotify", "00_tools", "legacy", "notebooks", ".claude"]
+# Lint only the maintained code — legacy/ is archived v0 (see legacy/README.md);
+# notebooks + uv single-file skill scripts have their own style.
+extend-exclude = ["legacy", "notebooks", ".claude"]
 
 [tool.ruff.lint]
 # Real-issue rules over pure-style churn. Deliberately NOT enabling UP
