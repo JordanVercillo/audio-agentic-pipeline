@@ -14,7 +14,6 @@ import pytest
 
 from src.agent.warehouse_agent import WarehouseAgent, is_safe_sql
 
-
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 #  Synthetic gold layer
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

@@ -17,13 +17,12 @@ Reference: 03_data_orchestrator.md — "The Bridging Key"
 from pathlib import Path
 from typing import Optional, Union
 
-import numpy as np
 import pandas as pd
 
 try:
     import pyarrow  # noqa: F401 — verify import
 except ImportError:
-    raise ImportError("PyArrow required: pip install pyarrow>=14.0.0")
+    raise ImportError("PyArrow required: pip install pyarrow>=14.0.0") from None
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

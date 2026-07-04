@@ -6,6 +6,7 @@ DataFrame alone and writes a non-trivial PNG. Headless (Agg), no warehouse.
 """
 
 import matplotlib
+
 matplotlib.use("Agg")
 
 import matplotlib.pyplot as plt
@@ -16,9 +17,9 @@ import pytest
 from src.analysis.drift import DRIFT_FEATURE_COLS, compute_temporal_centroids
 from src.analysis.visualizations import (
     plot_drift_radar,
-    plot_temporal_heatmap,
     plot_feature_distributions,
     plot_genre_flow,
+    plot_temporal_heatmap,
 )
 
 

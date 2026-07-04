@@ -31,7 +31,6 @@ from pathlib import Path
 from typing import Optional, Union
 
 import numpy as np
-import pandas as pd
 
 try:
     import umap
@@ -39,13 +38,12 @@ except ImportError:
     raise ImportError(
         "umap-learn is required for visualization.\n"
         "Install: pip install umap-learn"
-    )
+    ) from None
 
-import matplotlib.pyplot as plt
 import matplotlib.patheffects as pe
+import matplotlib.pyplot as plt
 
 from .config import VectorStoreConfig
-
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 #  UMAP PROJECTION

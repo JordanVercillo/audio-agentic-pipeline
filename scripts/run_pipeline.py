@@ -80,13 +80,15 @@ def step_1_fetch_metadata(limit: int):
     print("  STEP 1/8 — Fetch Spotify metadata (PKCE)")
     print("=" * 60)
 
+    import pandas as pd
+
     from src.ingestion.auth import get_user_spotify
     from src.ingestion.fetchers import (
-        fetch_top_tracks, fetch_top_artists, fetch_artists_by_ids,
+        fetch_artists_by_ids,
+        fetch_top_artists,
+        fetch_top_tracks,
     )
     from src.ingestion.guardrails import throttle
-
-    import pandas as pd
 
     print("🔐 Authenticating with Spotify (opens browser on first run)...")
     sp = get_user_spotify()
@@ -134,7 +136,7 @@ def step_2_stage_metadata(tracks_df, artists_df, snapshot_label: str) -> None:
     print("  STEP 2/8 — Land metadata in Staging (Bronze)")
     print("=" * 60)
 
-    from src.warehouse.staging import land_staging_tracks, land_staging_artists
+    from src.warehouse.staging import land_staging_artists, land_staging_tracks
 
     land_staging_tracks(tracks_df, output_dir=STAGING_DIR, snapshot_label=snapshot_label)
     if not artists_df.empty:
@@ -209,7 +211,9 @@ def step_6_build_cleansed() -> None:
     print("=" * 60)
 
     from src.warehouse.cleansed import (
-        build_cleansed_tracks, build_cleansed_features, build_cleansed_artists,
+        build_cleansed_artists,
+        build_cleansed_features,
+        build_cleansed_tracks,
     )
 
     build_cleansed_tracks(staging_dir=STAGING_DIR, output_dir=CLEANSED_DIR)

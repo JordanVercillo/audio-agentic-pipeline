@@ -29,13 +29,13 @@ def run_smoke_test():
 
     # ── 1. Generate synthetic signal ──
     print("\n━━━ TEST 1: Audio Signal Generation ━━━")
-    from src.dsp import generate_test_signal, DSPConfig, SAMPLE_RATE
+    from src.dsp import SAMPLE_RATE, generate_test_signal
 
     signal = generate_test_signal(frequency_hz=440.0, duration_sec=5.0)
 
     assert signal.sr == SAMPLE_RATE, f"Expected sr={SAMPLE_RATE}, got {signal.sr}"
     assert signal.duration_sec == 5.0, f"Expected 5.0s, got {signal.duration_sec}"
-    assert signal.n_samples == SAMPLE_RATE * 5, f"Sample count mismatch"
+    assert signal.n_samples == SAMPLE_RATE * 5, "Sample count mismatch"
     assert signal.waveform.dtype == np.float32, f"Expected float32, got {signal.waveform.dtype}"
     assert np.max(np.abs(signal.waveform)) <= 1.0, "Waveform not normalized to [-1, 1]"
 
@@ -112,7 +112,7 @@ def run_smoke_test():
 
     # ── 5. Parquet serialization round-trip ──
     print("\n━━━ TEST 5: Parquet Serialization Round-Trip ━━━")
-    from src.dsp import save_features_to_parquet, load_features_parquet
+    from src.dsp import load_features_parquet, save_features_to_parquet
 
     with tempfile.TemporaryDirectory() as tmpdir:
         parquet_path = Path(tmpdir) / "test_features.parquet"

@@ -31,8 +31,8 @@ Scale Mechanics (PySpark):
 Reference: Taste Drift analysis architecture
 """
 
-from typing import Optional, Union
 from pathlib import Path
+from typing import Optional
 
 import numpy as np
 import pandas as pd
@@ -232,11 +232,11 @@ def compute_taste_drift(
     deltas = compute_feature_deltas(centroids, available)
 
     # ── Report ──
-    print(f"\n   🎯 Taste Drift Analysis:")
+    print("\n   🎯 Taste Drift Analysis:")
     print(f"      Drift Score: {drift_score:.4f}")
     print(f"      Assessment:  {drift_label}")
     print(f"      Stability:   {stability:.4f}")
-    print(f"\n   📐 Pairwise Distances:")
+    print("\n   📐 Pairwise Distances:")
     for pair, dist in pairwise.items():
         print(f"      {pair}: {dist:.4f}")
 
@@ -313,7 +313,7 @@ def compute_feature_deltas(
     df = pd.DataFrame(records).sort_values("absolute_delta", ascending=False).reset_index(drop=True)
 
     # Report top movers
-    print(f"\n   📊 Top Feature Changes (short_term vs long_term):")
+    print("\n   📊 Top Feature Changes (short_term vs long_term):")
     for _, row in df.head(5).iterrows():
         arrow = "↑" if row["direction"] == "increasing" else ("↓" if row["direction"] == "decreasing" else "→")
         print(f"      {arrow} {row['label']}: {row['relative_delta_pct']:.1f}% ({row['direction']})")

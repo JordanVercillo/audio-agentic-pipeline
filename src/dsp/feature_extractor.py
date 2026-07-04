@@ -28,7 +28,7 @@ Output Formats:
 Reference: 02_audio_dsp_architect.md
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional
 
 import numpy as np
@@ -36,11 +36,10 @@ import numpy as np
 try:
     import librosa
 except ImportError:
-    raise ImportError("librosa is required. Install: pip install librosa>=0.10.0")
+    raise ImportError("librosa is required. Install: pip install librosa>=0.10.0") from None
 
-from .config import DSPConfig, FeatureGroup
 from .audio_loader import AudioSignal
-
+from .config import DSPConfig, FeatureGroup
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 #  DATA STRUCTURES

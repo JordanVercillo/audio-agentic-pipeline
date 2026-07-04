@@ -24,10 +24,9 @@ Reference: 01_spotify_api_guardrails.md
 """
 
 import time
-from typing import Optional, Any
+from typing import Any, Optional
 
 import spotipy
-
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 #  DEPRECATED ENDPOINT BLOCKLIST

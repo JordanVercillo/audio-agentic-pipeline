@@ -25,10 +25,9 @@ from typing import Optional, Union
 
 import numpy as np
 
-from .config import DSPConfig, SAMPLE_RATE
 from .audio_loader import AudioSignal
+from .config import DSPConfig
 from .feature_extractor import TrackFeatures, extract_features
-
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 #  DATA STRUCTURES
@@ -92,7 +91,7 @@ def extract_embedding_panns(
             "panns_inference is required for deep embeddings.\n"
             "Install: pip install panns-inference\n"
             "Or use extract_embedding_summary() as a lightweight fallback."
-        )
+        ) from None
 
     # PANNs expects 32000 Hz — resample from our canonical 22050 Hz
     import librosa
