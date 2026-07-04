@@ -38,3 +38,29 @@ jobs:
 
       - name: Test (pytest — synthetic data)
         run: uv run pytest
+
+  # SPEC P7: prove the PySpark jobs produce the same results as the pandas
+  # transforms. Runs natively on Linux (no winutils needed) — the acceptance
+  # evidence that the distributed path is correct.
+  spark-parity:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Java 11 (Spark 3.5 runtime)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "11"
+
+      - name: Install uv + Python 3.12
+        uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --frozen --extra dev
+
+      - name: Spark ↔ pandas parity (row-count + centroid)
+        run: uv run python spark/parity_check.py
