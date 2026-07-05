@@ -20,21 +20,23 @@
   orchestrator rebuilt to match docs, ffmpeg/libmp3lame installed, DSP
   feature-serialization gap closed (warehouse: 82 numeric feature cols;
   FAISS vector unchanged at 77). Phase-4 webapp still NOT in this repo copy.
-- **➡️ NEXT ACTION — P8 slice 1 REAL-LOGIN acceptance, then slice 2 (RAG `/ask`).**
-  Slice 1 (`src/webapp/`, FastAPI) is BUILT + locally verified; the remaining
-  slice-1 acceptance is Jordan doing a real localhost login (`uv run python
-  scripts/run_webapp.py` → http://127.0.0.1:8000 → Spotify → `/dashboard` with
-  his top tracks + overlap insight). Then **slice 2: `/ask`** grounded RAG over
-  a per-session `WarehouseAgent` (LLM w/ deterministic fallback), then 3
-  Dockerfile → 4 Cloud Run + domain + allowlist. Plan: [`docs/P8_PLAN.md`](docs/P8_PLAN.md).
-- **✅ P8 slice 1 (2026-07-05): FastAPI auth + dashboard, built + verified.**
-  Session-scoped PKCE (token in server session not the file cache; CSRF `state`
-  gate; session-id rotation on login), server-side `SessionStore` (TTL + sweep,
-  signed cookie), bridge-key feature-store overlap-join + acoustic insight,
-  Jinja2 UI. **15 new synthetic tests (CSRF-reject, TTL, join, zero-overlap,
-  routes) → 163 green; ruff clean.** Live smoke: `/`200, `/healthz`{ok},
-  `/login`→S256 authorize URL at the registered redirect, **no client_secret on
-  the wire (D-8)**. Stack = FastAPI + Jinja2 (design approved same day).
+- **➡️ NEXT ACTION — SPEC P8 slice 2: RAG `/ask` (DEFERRED by owner 2026-07-05 —
+  pilot paused as a working demo).** Grounded answer box over a per-session
+  `WarehouseAgent(modeled_dir=…)` (reuse the P5 sandbox): retrieve the visitor's
+  tracks + acoustic overlap + drift → LLM answer w/ deterministic fallback (D-5).
+  Then 3 Dockerfile → 4 Cloud Run + domain + allowlist; plus a polish/UX pass
+  (owner deferred revisions). Plan: [`docs/P8_PLAN.md`](docs/P8_PLAN.md).
+- **✅ P8 pilot slices 1 + 1.5 (2026-07-05): FastAPI webapp, VERIFIED LIVE with a
+  real Spotify login.** Slice 1: session-scoped PKCE (token in server session not
+  the file cache; CSRF `state` gate; session-id rotation), `SessionStore` (TTL +
+  sweep, signed cookie), bridge-key overlap-join insight, Jinja2 UI. Slice 1.5:
+  album art (`album_image_url` — schema-safe), top artists + genres, per-visitor
+  taste drift (`drift_profile` reuses the D-9 σ-shift; ≥2-track guard). **Live
+  acceptance: 41/41 corpus overlap, drift Moderate 0.211σ (20 vs 20), no
+  client_secret on the wire (D-8).** 18 webapp tests → **166 green**, ruff clean.
+  **PR #6 (`p8/slice-1`→main) OPEN** (PR #5 plan already merged). Run: `uv run
+  python scripts/run_webapp.py` → :8000 (needs `.env` SPOTIPY_CLIENT_ID +
+  SESSION_SECRET_KEY; `:8000/callback` registered in the Spotify dashboard).
 - **✅ P7 COMPLETE (2026-07-04): Spark↔pandas parity proven in CI.** The new
   `spark-parity` CI job runs `spark/parity_check.py` on real **Spark 4.1.2**
   (Java 17, Linux) every push/PR — GREEN: `features dedup 30=30`, `tracks dedup
@@ -460,3 +462,15 @@ narrative goes to `notes/engineering_journal.md`, plans to
   **Left off: slice-1 code uncommitted on `p8/plan` working tree; awaiting
   Jordan's real-login acceptance click-through, then commit + slice 2 (RAG
   `/ask`). Dev server may still be running on :8000.**
+- **2026-07-05 (session 11 cont. — P8 pilot VERIFIED LIVE + paused):** Real
+  login worked end-to-end (fixed a Windows cp1252 crash on reused pipeline
+  emoji prints → force UTF-8 in `run_webapp.py`; fixed the header auth-state +
+  `energy 0` formatting bugs Jordan spotted). Committed slice 1 (`p8/slice-1`,
+  `bc2cf41`). Then slice 1.5 enrichments (Jordan picked all 4): album art, top
+  artists+genres, taste drift (`drift_profile` — reuses D-9 σ-shift) — verified
+  live (41/41 overlap, **Moderate drift 0.211**, 20 vs 20), committed `3eff3c7`.
+  PR #5 (plan) MERGED to main; opened **PR #6 (`p8/slice-1`→main)** for the
+  pilot demo. 166 green, ruff clean. Dev server stopped (clean). **Left off:
+  owner PAUSED — pilot locked in as a working demo. Next when resumed: RAG
+  `/ask` (slice 2), then Dockerfile → Cloud Run, + a polish/UX pass. Merge
+  PR #6 when ready.**
