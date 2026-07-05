@@ -68,7 +68,7 @@ MODELED_DIR = _PROJECT_ROOT / "data" / "warehouse" / "modeled"
 #  COLUMN DESCRIPTIONS (Agent-Oriented Interface)
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-COLUMN_DESCRIPTIONS = {
+_BASE_COLUMN_DESCRIPTIONS = {
     # ── Identifiers ──
     "spotify_track_id": "Unique Spotify track identifier. Universal join key across all tables.",
     "time_range": "Listening recency window: 'short_term' (~4 weeks), 'medium_term' (~6 months), 'long_term' (several years).",
@@ -109,6 +109,62 @@ COLUMN_DESCRIPTIONS = {
     "estimated_key": "Estimated musical key as pitch class (0=C, 1=C#, ..., 11=B). Replaces Spotify's deprecated 'key' field.",
     "estimated_mode": "Estimated mode: 'major' or 'minor'. Replaces Spotify's deprecated 'mode' field.",
 }
+
+# Pitch classes for chroma columns (must match feature_extractor.to_summary_dict).
+_PITCH_CLASSES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
+
+
+def _generate_feature_descriptions() -> dict[str, str]:
+    """Programmatic descriptions for the systematic DSP feature families
+    (MFCCs, chroma, spectral contrast, spectral shape) so the full 82-dim
+    warehouse feature contract is self-documented without 66 hand-written
+    lines. _BASE_COLUMN_DESCRIPTIONS overrides these where it has richer prose.
+    """
+    d: dict[str, str] = {}
+    for i in range(13):
+        d[f"mfcc_mean_{i}"] = (
+            f"MFCC coefficient {i} mean: timbral-envelope component {i} — the "
+            "spectral 'shape' that distinguishes instruments. Higher indices "
+            "capture progressively finer detail."
+        )
+        d[f"mfcc_std_{i}"] = (
+            f"MFCC coefficient {i} standard deviation: how much timbral "
+            f"component {i} varies across the track."
+        )
+    for pc in _PITCH_CLASSES:
+        d[f"chroma_mean_{pc}"] = (
+            f"Mean chroma energy for pitch class {pc}: how present {pc} is across "
+            "the track (harmonic/key signal — replaces Spotify's deprecated 'key')."
+        )
+        d[f"chroma_std_{pc}"] = (
+            f"Variability of pitch class {pc}'s chroma energy across the track."
+        )
+    for i in range(7):
+        d[f"spectral_contrast_mean_{i}"] = (
+            f"Spectral contrast (peak-to-valley energy) mean in sub-band {i}: "
+            "high = clear harmonic content, low = noisy/percussive."
+        )
+        d[f"spectral_contrast_std_{i}"] = (
+            f"Variability of spectral contrast in sub-band {i} across the track."
+        )
+    d["spectral_bandwidth_mean"] = (
+        "Spectral bandwidth: weighted spread of the spectrum around its centroid. "
+        "Narrow = pure/tonal, wide = noisy/dense mix."
+    )
+    d["spectral_bandwidth_std"] = "Variability of spectral bandwidth across the track."
+    d["spectral_flatness_mean"] = (
+        "Spectral flatness (geometric/arithmetic mean ratio). Near 1 = noise-like, "
+        "near 0 = tonal. Complements harmonic_ratio."
+    )
+    d["spectral_rolloff_std"] = "Variability of the spectral rolloff frequency across the track."
+    d["beat_count"] = "Number of beats detected in the track (librosa beat tracking)."
+    d["duration_sec"] = "Analyzed audio duration in seconds."
+    return d
+
+
+# Full agent-readable contract: generated families first, hand-written base
+# overrides where present (richer prose for the headline columns).
+COLUMN_DESCRIPTIONS = {**_generate_feature_descriptions(), **_BASE_COLUMN_DESCRIPTIONS}
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

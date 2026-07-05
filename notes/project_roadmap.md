@@ -23,7 +23,7 @@ item below should strengthen that story.
 | W-4 | ✅ ~~Phase 5 not started~~ | ~~🟠~~ | Gated by W-1 | **RESOLVED 2026-07-03** (SPEC P1–P4: taste map, insight engine, σ-honest trend charts, single-file taste_report.html — `build_report.py` meets the "one command from a fresh warehouse" exit criterion) |
 | W-5 | **Env not reproducible** — conda + requirements.txt, no lockfile; heavy deps (pyspark, faiss, librosa) | 🟡 Low (until W-1 forces it) | Pre-uv era | Migrate to uv + `pyproject.toml` + lock; keep requirements.txt export for compat |
 | W-6 | **No CI** — tests exist but nothing runs them automatically | 🟡 Low | Never set up | GitHub Actions: ruff + pytest (synthetic-data tests make this free) — strong platform-DE signal |
-| W-7 | **Legacy code unintegrated** — `spotify/` v0 scripts, `00_tools/media_converter.py` | 🟡 Low | Accretion | Archive to `legacy/` or fold useful bits into `src/` |
+| W-7 | ✅ ~~Legacy code unintegrated~~ | ~~🟡~~ | Accretion | **RESOLVED 2026-07-04 (P6):** `spotify/` + `00_tools/` moved to `legacy/` (see `legacy/README.md`); excluded from ruff/tests/CI; nothing in `src/` imports them |
 | W-8 | **README is generic** — no results, no architecture diagram, no demo path for a recruiter/engineer reading 90 seconds | 🟡 Low (until Phase 5 gives results) | Pre-results | Portfolio-grade rewrite after Phase 5.1 lands |
 
 ## The gameplan
