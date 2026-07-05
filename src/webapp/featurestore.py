@@ -13,10 +13,13 @@ graceful, non-empty result rather than pretending.
 
 from __future__ import annotations
 
+import math
 from pathlib import Path
 from typing import Any, Optional, Union
 
 import pandas as pd
+
+from ..analysis.drift import DRIFT_FEATURE_COLS, compute_taste_drift
 
 # Interpretable features for the human-readable insight: (column, label, unit, "up" verb).
 _INSIGHT_FEATURES = [
@@ -131,6 +134,46 @@ class FeatureStore:
             else f"{n} of your top tracks overlap our acoustic corpus{genre_bit}."
         )
         return base
+
+
+    # ── per-visitor taste drift (reuses the σ-shift metric, D-9) ───────────
+    def drift_profile(self, per_range_ids: dict[str, list[str]]) -> Optional[dict[str, Any]]:
+        """
+        Recent-vs-all-time taste drift on the visitor's OWN overlapping tracks.
+
+        Builds a fact frame (their corpus-matched tracks × time_range) and runs
+        the canonical RMS σ-shift (`compute_taste_drift`). Returns None unless
+        both short_term and long_term have ≥2 overlapping tracks — below that a
+        centroid is too noisy to be honest about.
+        """
+        cols = [c for c in DRIFT_FEATURE_COLS if c in self._corpus.columns]
+        frames = []
+        for tr, ids in per_range_ids.items():
+            overlap = [t for t in dict.fromkeys(ids) if t in self.corpus_ids]
+            if len(overlap) < 2:
+                continue
+            sub = self._corpus.loc[overlap, cols].copy()
+            sub.insert(0, "spotify_track_id", overlap)
+            sub["time_range"] = tr
+            frames.append(sub.reset_index(drop=True))
+        if not frames:
+            return None
+        fact = pd.concat(frames, ignore_index=True)
+        if not {"short_term", "long_term"}.issubset(set(fact["time_range"])):
+            return None
+        try:
+            res = compute_taste_drift(fact, feature_cols=cols)
+            score = float(res["drift_score"])
+        except Exception:  # noqa: BLE001 — drift is a nice-to-have, never fatal
+            return None
+        if not math.isfinite(score):  # e.g. identical centroids → undefined shift
+            return None
+        return {
+            "score": round(score, 3),
+            "label": res.get("drift_label", ""),
+            "n_short": int((fact["time_range"] == "short_term").sum()),
+            "n_long": int((fact["time_range"] == "long_term").sum()),
+        }
 
 
 def _fmt(v: float) -> str:
