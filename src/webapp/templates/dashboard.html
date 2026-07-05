@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="dash">
+  <h1>Your taste, grounded in acoustics</h1>
+
+  {% if profile %}
+  <div class="insight {{ 'empty' if profile.overlap_count == 0 else 'hit' }}">
+    <div class="insight-badge">
+      {{ profile.overlap_count }} / {{ track_total }} tracks in the acoustic corpus
+    </div>
+    <p>{{ profile.message }}</p>
+    {% if profile.highlights %}
+    <ul class="highlights">
+      {% for h in profile.highlights %}<li>{{ h }}</li>{% endfor %}
+    </ul>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  <div class="ranges">
+    {% for rng in ranges %}
+    <div class="range">
+      <h2>{{ rng.label }}</h2>
+      {% if rng.tracks %}
+      <ol class="tracks">
+        {% for t in rng.tracks %}
+        <li class="{{ 'match' if t.in_corpus else '' }}">
+          <span class="tname">{{ t.name }}</span>
+          <span class="tartist">{{ t.artist }}</span>
+          {% if t.in_corpus %}<span class="tag">acoustic ✓</span>{% endif %}
+        </li>
+        {% endfor %}
+      </ol>
+      {% else %}
+      <p class="muted">No tracks for this range.</p>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+</section>
+{% endblock %}

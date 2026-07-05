@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="hero">
+  <h1>What does your Spotify say about your <em>vibe</em>?</h1>
+  <p class="lede">
+    Log in with your own Spotify account and this pilot pulls your top tracks,
+    then joins them against a local <strong>77-dimension acoustic corpus</strong>
+    built from audio DSP — the features Spotify's API no longer exposes.
+  </p>
+  {% if authed %}
+    <a class="btn" href="/dashboard">Open your dashboard →</a>
+  {% else %}
+    <a class="btn" href="/login">Log in with Spotify</a>
+  {% endif %}
+  <ul class="assurances">
+    <li><strong>No client secret.</strong> Auth is PKCE — you authorize your own account.</li>
+    <li><strong>Ephemeral.</strong> Your data lives in a server session that expires; nothing is sold or shared.</li>
+    <li><strong>Read-only.</strong> We never trigger downloads or modify your library.</li>
+  </ul>
+</section>
+{% endblock %}
