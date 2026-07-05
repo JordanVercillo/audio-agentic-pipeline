@@ -20,10 +20,19 @@
   orchestrator rebuilt to match docs, ffmpeg/libmp3lame installed, DSP
   feature-serialization gap closed (warehouse: 82 numeric feature cols;
   FAISS vector unchanged at 77). Phase-4 webapp still NOT in this repo copy.
-- **➡️ NEXT ACTION — SPEC P8: production-pilot webapp.** Public site, per-visitor
-  PKCE auth (no owner secret — D-8), pulls the visitor's listening history and
-  runs RAG over the P5 agent core; GCS/Cloud Run. Gated on Spotify dev-mode
-  ~25-user allowlist. Design: `SPEC.md` (D-7).
+- **➡️ NEXT ACTION — SPEC P8 slice 1: FastAPI auth + dashboard.** Build
+  `src/webapp/` — session-scoped PKCE (`/login` `/callback`, token in session
+  not the file cache, CSRF state gate), `/dashboard` showing the visitor's top
+  tracks + the bridge-key overlap-join acoustic insight; synthetic tests
+  (CSRF-reject, join, session TTL). Provable on localhost with a real login.
+  **P8 design APPROVED 2026-07-05: stack = FastAPI + Jinja2; full build plan +
+  module layout in [`docs/P8_PLAN.md`](docs/P8_PLAN.md)** (slices: 1 auth+dash →
+  2 RAG `/ask` → 3 Dockerfile → 4 Cloud Run + domain + allowlist). Reuses the
+  P5 `WarehouseAgent(modeled_dir=…)` sandbox per-session + `fetch_top_tracks`.
+  Jordan-actions before end-to-end: register `http://127.0.0.1:8000/callback`
+  in the Spotify dashboard; set `SESSION_SECRET_KEY` (infra, NOT a Spotify
+  secret — D-8). Gated on Spotify dev-mode ~25-user allowlist. Design: `SPEC.md`
+  (D-7), `docs/P8_PLAN.md`.
 - **✅ P7 COMPLETE (2026-07-04): Spark↔pandas parity proven in CI.** The new
   `spark-parity` CI job runs `spark/parity_check.py` on real **Spark 4.1.2**
   (Java 17, Linux) every push/PR — GREEN: `features dedup 30=30`, `tracks dedup
@@ -88,6 +97,8 @@ narrative goes to `notes/engineering_journal.md`, plans to
 | `scripts/build_report.py` | THE one command: fresh gold layer → regenerate all artifacts → `taste_report.html` (0.99 MB, offline). `--no-rebuild`, `--llm-polish`. |
 | `src/agent/` | SPEC P5: `warehouse_agent.py` (pure DuckDB retrieval core — 2-layer SQL security D-10; reused by P8 RAG) + `mcp_server.py` (FastMCP stdio: get_schema / query_warehouse / get_insights). Test: `test_agent.py` (30). Run: `python -m src.agent.mcp_server`. |
 | `docs/AGENT_ACCESS.md` | P5 artifact: MCP registration config (Claude Desktop/Code) + security model + live demo transcript. |
+| `docs/SCALING.md` | P7 artifact: honest 10K/1M-track scaling design (bottleneck = acquisition+DSP; GCS/BigQuery; Spark-vs-Dataflow; the `spark-parity` CI proof). |
+| `docs/P8_PLAN.md` | **P8 build plan (design approved 2026-07-05): FastAPI + Jinja2; `src/webapp/` module layout; session-scoped PKCE; feature-store overlap-join; per-session `WarehouseAgent` RAG; 4-slice sequence.** Not yet built. |
 | `artifacts/` | COMMITTED portfolio outputs (PNGs, reports) — unlike `data/`, these are deliverables. |
 | `legacy/` | Archived pre-pipeline v0 (moved 2026-07-04, P6): `legacy/spotify/` (secret-based v0 scripts) + `legacy/00_tools/` (media_converter). Excluded from ruff/tests/CI; nothing in `src/` imports it. See `legacy/README.md`. |
 | `data/` (gitignored) | `raw_audio/{track_id}.mp3` + `warehouse/{staging,cleansed,modeled}/` Parquet. Rebuild: `run_pipeline.py`. |
@@ -422,3 +433,16 @@ narrative goes to `notes/engineering_journal.md`, plans to
   pieces 4–6 on further stacked branches. **Left off: P6 done — next is
   SPEC P7 (Spark scale slice + docs/SCALING.md). Merge the P6 PR(s) when
   ready; pieces 4–6 rebase onto main after.**
+- **2026-07-05 (session 11 — SPEC P7 complete + P8 design):** P7 scale slice:
+  `spark/parity_check.py` proves PySpark == pandas (dedup 30/90, centroid parity
+  <1e-3) via a new `spark-parity` CI job on real **Spark 4.1.2** — caught a Java
+  bug (lock resolves pyspark 4.1.2, which dropped Java 8/11; bumped CI to Java 17;
+  journal #12). Wrote `docs/SCALING.md`. **PR #4 (p7→main) MERGED** — found that
+  #2-before-#3 had stranded P6 batch-2 on `p6/ci`, so #4 carried it to main too;
+  **main now current P0–P7.** Branch-tidy: pruned all 8 merged branches (local +
+  remote) → repo is `main`-only. Stopped a 21h-orphaned local Spark bg task (dead
+  process, stale UI chip). Then **P8 design APPROVED: FastAPI + Jinja2**, full
+  build plan in `docs/P8_PLAN.md` (4 slices). Warehouse audit ALL-GREEN (117
+  MP3s). **Left off: P8 design done — next is P8 slice 1 (`src/webapp/` FastAPI
+  auth + dashboard). Jordan: register `http://127.0.0.1:8000/callback` +
+  set `SESSION_SECRET_KEY` before end-to-end auth.**
