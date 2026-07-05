@@ -6,6 +6,12 @@
       "runtimeExecutable": "C:\\Users\\jverc\\anaconda3\\python.exe",
       "runtimeArgs": ["-m", "http.server", "8901", "--directory", "artifacts"],
       "port": 8901
+    },
+    {
+      "name": "webapp",
+      "runtimeExecutable": "uv",
+      "runtimeArgs": ["run", "python", "scripts/run_webapp.py"],
+      "port": 8000
     }
   ]
 }

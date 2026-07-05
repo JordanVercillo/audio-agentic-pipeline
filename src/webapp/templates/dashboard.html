@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="dash">
+  <h1>Your taste, grounded in acoustics</h1>
+
+  <div class="cards">
+    {% if profile %}
+    <div class="insight {{ 'empty' if profile.overlap_count == 0 else 'hit' }}">
+      <div class="insight-badge">
+        {{ profile.overlap_count }} / {{ track_total }} tracks in the acoustic corpus
+      </div>
+      <p>{{ profile.message }}</p>
+      {% if profile.highlights %}
+      <ul class="highlights">
+        {% for h in profile.highlights %}<li>{{ h }}</li>{% endfor %}
+      </ul>
+      {% endif %}
+    </div>
+    {% endif %}
+
+    {% if drift %}
+    <div class="insight drift">
+      <div class="insight-badge">Taste drift · recent vs all-time</div>
+      <p><strong>{{ drift.label }}</strong></p>
+      <p class="muted">RMS σ-shift of <strong>{{ drift.score }}</strong> — on average each
+        acoustic feature moved {{ drift.score }} standard deviations between your
+        last-4-weeks and all-time overlap ({{ drift.n_short }} vs {{ drift.n_long }} tracks).</p>
+    </div>
+    {% endif %}
+  </div>
+
+  {% if artists %}
+  <h2 class="section">Your top artists</h2>
+  <div class="artists">
+    {% for a in artists %}
+    <div class="artist">
+      {% if a.image %}<img class="avatar" src="{{ a.image }}" alt="" loading="lazy">{% endif %}
+      <div class="ameta">
+        <span class="aname">{{ a.name }}</span>
+        {% if a.genres %}<span class="genres">{{ a.genres }}</span>{% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <h2 class="section">Top tracks</h2>
+  <div class="ranges">
+    {% for rng in ranges %}
+    <div class="range">
+      <h3>{{ rng.label }}</h3>
+      {% if rng.tracks %}
+      <ol class="tracks">
+        {% for t in rng.tracks %}
+        <li class="{{ 'match' if t.in_corpus else '' }}">
+          <span class="rk">{{ t.rank }}</span>
+          {% if t.art %}<img class="art" src="{{ t.art }}" alt="" loading="lazy">{% endif %}
+          <span class="tmeta">
+            <span class="tname">{{ t.name }}</span>
+            <span class="tartist">{{ t.artist }}</span>
+          </span>
+          {% if t.in_corpus %}<span class="tag" title="in our acoustic corpus">✓</span>{% endif %}
+        </li>
+        {% endfor %}
+      </ol>
+      {% else %}
+      <p class="muted">No tracks for this range.</p>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+</section>
+{% endblock %}

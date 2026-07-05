@@ -597,6 +597,8 @@ def _track_to_record(
         "album_id": track.get("album", {}).get("id"),
         "album_type": track.get("album", {}).get("album_type"),
         "album_release_date": track.get("album", {}).get("release_date"),
+        # Album cover (not deprecated — present on the top-tracks response).
+        "album_image_url": (track.get("album", {}).get("images") or [{}])[0].get("url"),
     }
 
     if time_range:
