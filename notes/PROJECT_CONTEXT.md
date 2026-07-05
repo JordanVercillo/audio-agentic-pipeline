@@ -20,19 +20,21 @@
   orchestrator rebuilt to match docs, ffmpeg/libmp3lame installed, DSP
   feature-serialization gap closed (warehouse: 82 numeric feature cols;
   FAISS vector unchanged at 77). Phase-4 webapp still NOT in this repo copy.
-- **➡️ NEXT ACTION — SPEC P8 slice 1: FastAPI auth + dashboard.** Build
-  `src/webapp/` — session-scoped PKCE (`/login` `/callback`, token in session
-  not the file cache, CSRF state gate), `/dashboard` showing the visitor's top
-  tracks + the bridge-key overlap-join acoustic insight; synthetic tests
-  (CSRF-reject, join, session TTL). Provable on localhost with a real login.
-  **P8 design APPROVED 2026-07-05: stack = FastAPI + Jinja2; full build plan +
-  module layout in [`docs/P8_PLAN.md`](docs/P8_PLAN.md)** (slices: 1 auth+dash →
-  2 RAG `/ask` → 3 Dockerfile → 4 Cloud Run + domain + allowlist). Reuses the
-  P5 `WarehouseAgent(modeled_dir=…)` sandbox per-session + `fetch_top_tracks`.
-  Jordan-actions before end-to-end: register `http://127.0.0.1:8000/callback`
-  in the Spotify dashboard; set `SESSION_SECRET_KEY` (infra, NOT a Spotify
-  secret — D-8). Gated on Spotify dev-mode ~25-user allowlist. Design: `SPEC.md`
-  (D-7), `docs/P8_PLAN.md`.
+- **➡️ NEXT ACTION — P8 slice 1 REAL-LOGIN acceptance, then slice 2 (RAG `/ask`).**
+  Slice 1 (`src/webapp/`, FastAPI) is BUILT + locally verified; the remaining
+  slice-1 acceptance is Jordan doing a real localhost login (`uv run python
+  scripts/run_webapp.py` → http://127.0.0.1:8000 → Spotify → `/dashboard` with
+  his top tracks + overlap insight). Then **slice 2: `/ask`** grounded RAG over
+  a per-session `WarehouseAgent` (LLM w/ deterministic fallback), then 3
+  Dockerfile → 4 Cloud Run + domain + allowlist. Plan: [`docs/P8_PLAN.md`](docs/P8_PLAN.md).
+- **✅ P8 slice 1 (2026-07-05): FastAPI auth + dashboard, built + verified.**
+  Session-scoped PKCE (token in server session not the file cache; CSRF `state`
+  gate; session-id rotation on login), server-side `SessionStore` (TTL + sweep,
+  signed cookie), bridge-key feature-store overlap-join + acoustic insight,
+  Jinja2 UI. **15 new synthetic tests (CSRF-reject, TTL, join, zero-overlap,
+  routes) → 163 green; ruff clean.** Live smoke: `/`200, `/healthz`{ok},
+  `/login`→S256 authorize URL at the registered redirect, **no client_secret on
+  the wire (D-8)**. Stack = FastAPI + Jinja2 (design approved same day).
 - **✅ P7 COMPLETE (2026-07-04): Spark↔pandas parity proven in CI.** The new
   `spark-parity` CI job runs `spark/parity_check.py` on real **Spark 4.1.2**
   (Java 17, Linux) every push/PR — GREEN: `features dedup 30=30`, `tracks dedup
@@ -96,6 +98,7 @@ narrative goes to `notes/engineering_journal.md`, plans to
 | `src/export/` | SPEC P4: `portfolio.py` (pure Jinja2 render, autoescape — P8-safe) + `templates/portfolio.html`. Test: `test_export.py` (self-containment + XSS). |
 | `scripts/build_report.py` | THE one command: fresh gold layer → regenerate all artifacts → `taste_report.html` (0.99 MB, offline). `--no-rebuild`, `--llm-polish`. |
 | `src/agent/` | SPEC P5: `warehouse_agent.py` (pure DuckDB retrieval core — 2-layer SQL security D-10; reused by P8 RAG) + `mcp_server.py` (FastMCP stdio: get_schema / query_warehouse / get_insights). Test: `test_agent.py` (30). Run: `python -m src.agent.mcp_server`. |
+| `src/webapp/` | **SPEC P8 slice 1: FastAPI pilot.** `auth_web.py` (session-scoped PKCE — token in session, CSRF state gate, D-8 no secret), `sessions.py` (TTL `SessionStore` + signed cookie + rotate), `featurestore.py` (bridge-key overlap-join + acoustic insight), `app.py` (routes: `/ login callback dashboard logout healthz`), `config.py`, `templates/`, `static/`. Test: `test_webapp.py` (15). Run: `uv run python scripts/run_webapp.py` → :8000. |
 | `docs/AGENT_ACCESS.md` | P5 artifact: MCP registration config (Claude Desktop/Code) + security model + live demo transcript. |
 | `docs/SCALING.md` | P7 artifact: honest 10K/1M-track scaling design (bottleneck = acquisition+DSP; GCS/BigQuery; Spark-vs-Dataflow; the `spark-parity` CI proof). |
 | `docs/P8_PLAN.md` | **P8 build plan (design approved 2026-07-05): FastAPI + Jinja2; `src/webapp/` module layout; session-scoped PKCE; feature-store overlap-join; per-session `WarehouseAgent` RAG; 4-slice sequence.** Not yet built. |
@@ -446,3 +449,14 @@ narrative goes to `notes/engineering_journal.md`, plans to
   MP3s). **Left off: P8 design done — next is P8 slice 1 (`src/webapp/` FastAPI
   auth + dashboard). Jordan: register `http://127.0.0.1:8000/callback` +
   set `SESSION_SECRET_KEY` before end-to-end auth.**
+- **2026-07-05 (session 11 cont. — P8 slice 1 built):** Plan committed (PR #5,
+  `p8/plan`). Jordan registered the `:8000/callback` redirect URI + I generated
+  `SESSION_SECRET_KEY` into `.env` (gitignored; infra, not the Spotify secret).
+  Built `src/webapp/` (FastAPI + Jinja2): session-scoped PKCE, TTL SessionStore,
+  bridge-key overlap-join insight, dashboard. 15 tests → **163 green**, ruff
+  clean. Added web deps (fastapi/uvicorn/itsdangerous/python-multipart) + httpx
+  (dev) to pyproject/lock. Live-smoked on :8000 — landing renders, `/login`
+  builds the correct S256 authorize URL, no `client_secret` on the wire (D-8).
+  **Left off: slice-1 code uncommitted on `p8/plan` working tree; awaiting
+  Jordan's real-login acceptance click-through, then commit + slice 2 (RAG
+  `/ask`). Dev server may still be running on :8000.**

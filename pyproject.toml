@@ -40,10 +40,15 @@ dependencies = [
     # ── Agent Access Layer: MCP server + read-only SQL ──
     "mcp>=1.2.0",
     "duckdb>=1.1.0",
+    "fastapi>=0.139.0",
+    "uvicorn[standard]>=0.50.0",
+    "itsdangerous>=2.2.0",
+    "python-multipart>=0.0.32",
 ]
 
 [project.optional-dependencies]
 dev = [
+    "httpx>=0.28.1",
     "pytest>=8.0",
     "ruff>=0.6",
 ]
