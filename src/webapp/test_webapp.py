@@ -242,3 +242,105 @@ def test_login_redirects_to_spotify(client):
     loc = r.headers["location"]
     assert "accounts.spotify.com" in loc and "code_challenge=" in loc
     assert "client_secret" not in loc.lower()  # D-8
+
+
+# ── RAG /ask (slice 2) ─────────────────────────────────────────────────────
+_TASTE = {
+    "profile": {"overlap_count": 3, "dominant_genre": "Indie & Alt",
+                "highlights": ["tempo on par with the corpus (128 bpm)"]},
+    "drift": {"label": "Moderate drift (exploring new sounds)", "score": 0.21,
+              "n_short": 20, "n_long": 20},
+    "artists": [{"name": "Muse", "genres": "rock, alternative"}],
+    "ranges": [{"label": "Last 4 weeks",
+                "tracks": [{"name": "Hush", "artist": "Muse", "in_corpus": True}]}],
+}
+
+
+def test_rag_grounding_text_includes_facts():
+    from .rag import _grounding_text
+    txt = _grounding_text(_TASTE, {"tempo_bpm": "beats per minute"})
+    assert "Muse" in txt and "Indie & Alt" in txt
+    assert "Moderate drift" in txt and "tempo_bpm" in txt
+
+
+def test_rag_fallback_grounds_on_data_no_key(monkeypatch):
+    from .rag import TasteRAG
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    res = TasteRAG().answer("what's my vibe lately?", _TASTE)
+    assert res["source"] == "fallback"
+    assert "Muse" in res["answer"] and "Indie & Alt" in res["answer"]
+    assert "**" not in res["answer"]  # plain prose, no markdown
+
+
+def test_rag_llm_path_grounds_and_uses_model(monkeypatch):
+    import types
+
+    from .rag import TasteRAG
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+    captured: dict = {}
+
+    class FakeMessages:
+        def create(self, **kw):
+            captured.update(kw)
+            return types.SimpleNamespace(
+                stop_reason="end_turn",
+                content=[types.SimpleNamespace(type="text", text="Your recent vibe is upbeat indie.")])
+
+    class FakeClient:
+        def __init__(self, api_key=None):
+            self.messages = FakeMessages()
+
+    import anthropic
+    monkeypatch.setattr(anthropic, "Anthropic", FakeClient)
+
+    res = TasteRAG(model="claude-opus-4-8").answer("what's my vibe?", _TASTE)
+    assert res["source"] == "llm" and "indie" in res["answer"].lower()
+    assert captured["model"] == "claude-opus-4-8" and captured["max_tokens"] == 1024
+    prompt = captured["messages"][0]["content"]
+    assert "Muse" in prompt and "Moderate drift" in prompt  # grounded on their data
+
+
+def test_rag_llm_refusal_falls_back(monkeypatch):
+    import types
+
+    from .rag import TasteRAG
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+
+    class FakeClient:
+        def __init__(self, api_key=None):
+            self.messages = types.SimpleNamespace(
+                create=lambda **kw: types.SimpleNamespace(stop_reason="refusal", content=[]))
+
+    import anthropic
+    monkeypatch.setattr(anthropic, "Anthropic", FakeClient)
+    res = TasteRAG().answer("...", _TASTE)
+    assert res["source"] == "fallback" and "Muse" in res["answer"]
+
+
+def _seed_session(taste=None):
+    from .app import _signer, _store
+    sid = _store.new()
+    sess = _store.get(sid)
+    sess["token"] = {"access_token": "x"}  # authenticated
+    if taste is not None:
+        sess["taste"] = taste
+    return _signer.sign(sid)
+
+
+def test_ask_unauthenticated_redirects_home(client):
+    r = client.post("/ask", data={"q": "hi"}, follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "/"
+
+
+def test_ask_without_dashboard_redirects_to_dashboard(client):
+    client.cookies.set(config.SESSION_COOKIE, _seed_session(taste=None))
+    r = client.post("/ask", data={"q": "hi"}, follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "/dashboard"
+
+
+def test_ask_returns_grounded_answer(client, monkeypatch):
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    client.cookies.set(config.SESSION_COOKIE, _seed_session(taste=_TASTE))
+    r = client.post("/ask", data={"q": "what is my vibe lately?"})
+    assert r.status_code == 200
+    assert "vibe lately" in r.text and "Muse" in r.text  # question echoed + grounded answer

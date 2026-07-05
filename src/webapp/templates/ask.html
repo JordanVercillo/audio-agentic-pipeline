@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="dash">
+  <h1>Your taste, answered</h1>
+
+  <form class="ask" method="post" action="/ask">
+    <input type="text" name="q" required placeholder="Ask another question…"
+           aria-label="Ask a question about your taste">
+    <button type="submit">Ask</button>
+  </form>
+
+  <div class="qa">
+    <p class="q">{{ question }}</p>
+    <div class="a">{{ answer }}</div>
+    <p class="src">{{ 'Grounded in your data · LLM' if source == 'llm' else 'Grounded in your data' }}</p>
+  </div>
+
+  <a class="btn ghost" href="/dashboard">← Back to your dashboard</a>
+</section>
+{% endblock %}
