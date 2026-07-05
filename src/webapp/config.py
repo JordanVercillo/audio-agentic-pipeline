@@ -81,3 +81,9 @@ def get_session_secret() -> str:
 def anthropic_key() -> str | None:
     """Optional — enables LLM RAG answers (slice 2). Absent → deterministic fallback."""
     return os.environ.get("ANTHROPIC_API_KEY") or None
+
+
+# Default to the most capable model; override to a cheaper one (e.g.
+# claude-haiku-4-5) for the public pilot's cost profile via WEBAPP_LLM_MODEL.
+def rag_model() -> str:
+    return os.environ.get("WEBAPP_LLM_MODEL", "claude-opus-4-8")

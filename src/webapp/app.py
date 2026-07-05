@@ -21,7 +21,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any, Optional
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -29,6 +29,7 @@ from fastapi.templating import Jinja2Templates
 from ..ingestion.fetchers import fetch_top_artists, fetch_top_tracks
 from . import auth_web, config
 from .featurestore import FeatureStore
+from .rag import TasteRAG
 from .sessions import CookieSigner, SessionStore
 
 logger = logging.getLogger(__name__)
@@ -119,6 +120,23 @@ def _top_artists(client: Any, limit: int = 12) -> list[dict[str, Any]]:
     ]
 
 
+def _slim_taste(ctx: dict[str, Any]) -> dict[str, Any]:
+    """The grounding-relevant subset of the dashboard context, cached in-session for /ask."""
+    return {
+        "profile": ctx.get("profile"),
+        "drift": ctx.get("drift"),
+        "artists": [{"name": a["name"], "genres": a.get("genres", "")}
+                    for a in (ctx.get("artists") or [])],
+        "ranges": [
+            {"label": r["label"],
+             "tracks": [{"name": t["name"], "artist": t["artist"],
+                         "in_corpus": t.get("in_corpus", False)}
+                        for t in r["tracks"][:10]]}
+            for r in ctx.get("ranges", [])
+        ],
+    }
+
+
 def create_app() -> FastAPI:
     app = FastAPI(title="Vercillo Analytics — Taste Pilot", docs_url=None, redoc_url=None)
     app.mount("/static", StaticFiles(directory=str(_BASE / "static")), name="static")
@@ -185,7 +203,25 @@ def create_app() -> FastAPI:
                 request, "error.html",
                 {"detail": f"Could not load your data: {exc}", "authed": False},
                 status_code=502)
+        session["taste"] = _slim_taste(ctx)  # compact grounding for /ask
         return templates.TemplateResponse(request, "dashboard.html", {**ctx, "authed": True})
+
+    @app.post("/ask", response_class=HTMLResponse)
+    def ask(request: Request, q: str = Form("")):
+        session = request.state.session
+        if not auth_web.is_authenticated(session):
+            return RedirectResponse("/", status_code=303)
+        taste = session.get("taste")
+        if not taste:  # dashboard hasn't been loaded this session
+            return RedirectResponse("/dashboard", status_code=303)
+        question = (q or "").strip()
+        if not question:
+            return RedirectResponse("/dashboard", status_code=303)
+        result = TasteRAG(_feature_store()).answer(question, taste)
+        return templates.TemplateResponse(request, "ask.html", {
+            "authed": True, "question": question,
+            "answer": result["answer"], "source": result["source"],
+        })
 
     @app.get("/logout")
     def logout(request: Request):
