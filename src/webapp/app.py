@@ -26,7 +26,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from ..ingestion.fetchers import fetch_top_tracks
+from ..ingestion.fetchers import fetch_top_artists, fetch_top_tracks
 from . import auth_web, config
 from .featurestore import FeatureStore
 from .sessions import CookieSigner, SessionStore
@@ -66,19 +66,23 @@ def build_dashboard_context(client: Any, store: Optional[FeatureStore]) -> dict[
     """
     ranges: list[dict[str, Any]] = []
     all_ids: list[str] = []
+    per_range_ids: dict[str, list[str]] = {}
     for key, label in _TIME_RANGES:
         df = fetch_top_tracks(time_range=key, limit=20, sp=client)
-        tracks = []
+        tracks, ids_here = [], []
         if df is not None and not df.empty:
             for _, r in df.iterrows():
                 tid = r["spotify_track_id"]
                 all_ids.append(tid)
+                ids_here.append(tid)
                 tracks.append({
                     "rank": int(r.get("rank", 0)),
                     "name": r.get("track_name", ""),
                     "artist": r.get("artist_names", ""),
                     "id": tid,
+                    "art": r.get("album_image_url"),
                 })
+        per_range_ids[key] = ids_here
         ranges.append({"key": key, "label": label, "tracks": tracks})
 
     profile = store.profile(all_ids) if store is not None else None
@@ -87,7 +91,32 @@ def build_dashboard_context(client: Any, store: Optional[FeatureStore]) -> dict[
         for t in rng["tracks"]:
             t["in_corpus"] = t["id"] in overlap
 
-    return {"ranges": ranges, "profile": profile, "track_total": len(set(all_ids))}
+    drift = store.drift_profile(per_range_ids) if store is not None else None
+    return {
+        "ranges": ranges,
+        "profile": profile,
+        "drift": drift,
+        "artists": _top_artists(client),
+        "track_total": len(set(all_ids)),
+    }
+
+
+def _top_artists(client: Any, limit: int = 12) -> list[dict[str, Any]]:
+    """The visitor's top artists (with Spotify genres — which tracks don't expose)."""
+    try:
+        df = fetch_top_artists(time_range="medium_term", limit=limit, sp=client)
+    except Exception:  # noqa: BLE001 — a nice-to-have section, never fatal
+        return []
+    if df is None or df.empty:
+        return []
+    return [
+        {
+            "name": r.get("artist_name", ""),
+            "genres": r.get("genres", ""),
+            "image": r.get("image_url"),
+        }
+        for _, r in df.head(limit).iterrows()
+    ]
 
 
 def create_app() -> FastAPI:

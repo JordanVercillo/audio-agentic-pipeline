@@ -7,6 +7,7 @@ and the corpus is synthetic. Runs in the existing `lint-and-test` CI job.
 
 from __future__ import annotations
 
+import math
 import time
 
 import pandas as pd
@@ -143,25 +144,63 @@ def test_featurestore_missing_warehouse_raises(tmp_path):
         FeatureStore(tmp_path)
 
 
+def test_drift_profile(corpus_dir):
+    fs = FeatureStore(corpus_dir)
+    d = fs.drift_profile({
+        "short_term": ["trk0", "trk1"],
+        "medium_term": ["trk1", "trk2"],
+        "long_term": ["trk3", "trk4"],
+    })
+    assert d is not None and math.isfinite(d["score"])
+    assert d["n_short"] == 2 and d["n_long"] == 2 and d["label"]
+
+
+def test_drift_profile_insufficient_overlap_returns_none(corpus_dir):
+    fs = FeatureStore(corpus_dir)
+    # <2 overlapping tracks per window ⇒ too noisy ⇒ None (honest)
+    assert fs.drift_profile({"short_term": ["trk0"], "long_term": ["trk1"]}) is None
+
+
 # ── dashboard context (with a fake Spotify client) ─────────────────────────
 def test_build_dashboard_context(monkeypatch, corpus_dir):
-    def fake_fetch(time_range, limit=20, sp=None):
-        # visitor's top tracks — two overlap the corpus, one doesn't
+    per_range = {
+        "short_term": ["trk0", "trk1", "outsider"],
+        "medium_term": ["trk1", "trk2", "outsider"],
+        "long_term": ["trk2", "trk3", "outsider"],
+    }
+
+    def fake_tracks(time_range, limit=20, sp=None):
+        ids = per_range[time_range]
         return pd.DataFrame({
-            "spotify_track_id": ["trk0", "trk2", "outsider"],
-            "track_name": ["Song 0", "Song 2", "Outsider"],
-            "artist_names": ["Artist 0", "Artist 2", "Nobody"],
-            "rank": [1, 2, 3],
+            "spotify_track_id": ids,
+            "track_name": [f"Song {i}" for i in ids],
+            "artist_names": ["A"] * len(ids),
+            "rank": list(range(1, len(ids) + 1)),
+            "album_image_url": [f"http://img/{i}.jpg" for i in ids],
         })
 
-    monkeypatch.setattr("src.webapp.app.fetch_top_tracks", fake_fetch)
+    def fake_artists(time_range="medium_term", limit=12, sp=None):
+        return pd.DataFrame({
+            "artist_name": ["Muse", "Toploader"],
+            "genres": ["rock, alt", ""],
+            "image_url": ["http://a/muse.jpg", None],
+        })
+
+    monkeypatch.setattr("src.webapp.app.fetch_top_tracks", fake_tracks)
+    monkeypatch.setattr("src.webapp.app.fetch_top_artists", fake_artists)
     ctx = build_dashboard_context(client=object(), store=FeatureStore(corpus_dir))
+
     assert len(ctx["ranges"]) == 3
-    assert ctx["track_total"] == 3
-    # overlapping tracks flagged in_corpus
+    # album art carried through to the track view-model
+    assert ctx["ranges"][0]["tracks"][0]["art"] == "http://img/trk0.jpg"
+    # overlap flags (short_term: trk0, trk1 in corpus; outsider not)
     flags = {t["id"]: t["in_corpus"] for t in ctx["ranges"][0]["tracks"]}
-    assert flags == {"trk0": True, "trk2": True, "outsider": False}
-    assert ctx["profile"]["overlap_count"] == 2
+    assert flags == {"trk0": True, "trk1": True, "outsider": False}
+    # top-artists section (genres — which Spotify exposes for artists, not tracks)
+    assert [a["name"] for a in ctx["artists"]] == ["Muse", "Toploader"]
+    assert ctx["artists"][0]["genres"] == "rock, alt"
+    # per-visitor taste drift computed (short vs long overlap differ → finite)
+    assert ctx["drift"] is not None and math.isfinite(ctx["drift"]["score"])
 
 
 # ── routes ─────────────────────────────────────────────────────────────────
