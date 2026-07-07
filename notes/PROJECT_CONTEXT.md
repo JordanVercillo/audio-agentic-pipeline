@@ -20,9 +20,15 @@
   orchestrator rebuilt to match docs, ffmpeg/libmp3lame installed, DSP
   feature-serialization gap closed (warehouse: 82 numeric feature cols;
   FAISS vector unchanged at 77). Phase-4 webapp still NOT in this repo copy.
-- **➡️ NEXT ACTION — SPEC [`docs/APP_SPEC.md`](docs/APP_SPEC.md) Epic B (audio-features
-  dashboard: hover a track → its features, click → deep-dive with the
-  spectrogram + radar + pgvector "songs like this").** ✅ **Epic A COMPLETE
+- **➡️ NEXT ACTION — SPEC [`docs/APP_SPEC.md`](docs/APP_SPEC.md) Epic C (analytics &
+  drift dashboard: ML cluster the visitor's songs AND artists by acoustic
+  features, cluster-movement drift viz; Spark at scale).** ✅ **Epic B COMPLETE
+  (2026-07-07): hover a track → its features (`taste.track_summary`); deep-dive
+  `/song/{id}` — full features + **mel-spectrogram** (`/spectrogram/{id}`, served
+  from data/spectrograms) + inline-SVG **radar** (`taste.radar_svg`) + **"songs
+  like this"** (`FeatureCache.similar` — z-scored distance, pgvector in prod);
+  `seed_cache.py --spectrograms` renders them from owner MP3s. Proven: real 128KB
+  spectrogram + deep-dive render. 195 tests green.** ✅ **Epic A COMPLETE
   (2026-07-07): the shared feature cache + extraction + webapp wiring.** `src/store/`
   (SQLAlchemy, SQLite-dev/Postgres-prod): `FeatureCache` (get/missing/upsert/enqueue/
   claim_next/fail/job_status; TrackMeta) + `extractor.py` worker (yt-dlp → librosa

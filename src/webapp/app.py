@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from fastapi import FastAPI, Form, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -32,12 +32,19 @@ from . import auth_web, config
 from .featurestore import FeatureStore
 from .rag import TasteRAG
 from .sessions import CookieSigner, SessionStore
-from .taste import absolute_profile, drift_over_rows
+from .taste import absolute_profile, drift_over_rows, radar_svg, track_summary
 
 logger = logging.getLogger(__name__)
 
 _BASE = Path(__file__).resolve().parent
 templates = Jinja2Templates(directory=str(_BASE / "templates"))
+
+# Where the extraction worker / seed write mel-spectrogram PNGs (GCS in prod).
+_SPECTROGRAM_DIR = _BASE.parent.parent / "data" / "spectrograms"
+
+
+def _spectrogram_path(track_id: str) -> Path:
+    return _SPECTROGRAM_DIR / f"{Path(track_id).name}.png"  # .name strips path traversal
 
 _store = SessionStore(ttl_seconds=config.SESSION_TTL_SECONDS)
 _signer = CookieSigner(config.get_session_secret())
@@ -105,6 +112,7 @@ def build_dashboard_context(client: Any, cache: FeatureCache) -> dict[str, Any]:
     for rng in ranges:
         for t in rng["tracks"]:
             t["analyzed"] = t["id"] in analyzed
+            t["feat"] = track_summary(cached.get(t["id"]))  # hover tooltip
 
     rows = list(cached.values())
     per_range_rows = {k: [cached[i] for i in ids if i in cached]
@@ -241,6 +249,38 @@ def create_app() -> FastAPI:
             "authed": True, "question": question,
             "answer": result["answer"], "source": result["source"],
         })
+
+    @app.get("/song/{track_id}", response_class=HTMLResponse)
+    def song(request: Request, track_id: str):
+        if not auth_web.is_authenticated(request.state.session):
+            return RedirectResponse("/", status_code=303)
+        cache = _feature_cache()
+        features = cache.get([track_id]).get(track_id)
+        meta = cache.get_meta(track_id) or {}
+        ctx: dict[str, Any] = {
+            "authed": True, "track_id": track_id,
+            "name": meta.get("track_name") or track_id,
+            "artist": meta.get("artist_names") or "",
+            "analyzed": features is not None,
+        }
+        if features is not None:
+            ctx["summary"] = track_summary(features)
+            ctx["radar"] = radar_svg(features)
+            ctx["has_spectrogram"] = _spectrogram_path(track_id).exists()
+            ctx["similar"] = [
+                {"id": sid, "name": (cache.get_meta(sid) or {}).get("track_name") or sid,
+                 "artist": (cache.get_meta(sid) or {}).get("artist_names") or ""}
+                for sid, _dist in cache.similar(track_id, k=6)
+            ]
+        return templates.TemplateResponse(request, "song.html", ctx)
+
+    @app.get("/spectrogram/{track_id}")
+    def spectrogram(track_id: str):
+        path = _spectrogram_path(track_id)
+        if not path.exists():
+            from fastapi import HTTPException
+            raise HTTPException(status_code=404, detail="no spectrogram")
+        return FileResponse(path, media_type="image/png")
 
     @app.get("/logout")
     def logout(request: Request):

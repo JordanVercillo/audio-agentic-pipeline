@@ -89,6 +89,15 @@ def test_remember_and_get_meta(cache):
     assert cache.get_meta("nope") is None
 
 
+def test_similar_ranks_by_acoustic_distance(cache):
+    cache.upsert("a", {"tempo_bpm": 120, "rms_mean": 0.20, "spectral_centroid_mean": 2000})
+    cache.upsert("near", {"tempo_bpm": 122, "rms_mean": 0.21, "spectral_centroid_mean": 2010})
+    cache.upsert("far", {"tempo_bpm": 180, "rms_mean": 0.05, "spectral_centroid_mean": 4000})
+    sims = cache.similar("a", k=2)
+    assert [sid for sid, _d in sims] == ["near", "far"]  # nearer first
+    assert cache.similar("missing") == []
+
+
 # ── extraction worker (Epic A slice 2) — synthetic audio, no YouTube ────────
 def _synth_acquire(track_id, name, artist, dest_dir):
     """Injected acquire: write a synthetic WAV so the REAL DSP path runs offline."""
