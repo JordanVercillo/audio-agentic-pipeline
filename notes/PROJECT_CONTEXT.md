@@ -20,9 +20,25 @@
   orchestrator rebuilt to match docs, ffmpeg/libmp3lame installed, DSP
   feature-serialization gap closed (warehouse: 82 numeric feature cols;
   FAISS vector unchanged at 77). Phase-4 webapp still NOT in this repo copy.
-- **➡️ NEXT ACTION — SPEC [`docs/APP_SPEC.md`](docs/APP_SPEC.md) Epic C (analytics &
-  drift dashboard: ML cluster the visitor's songs AND artists by acoustic
-  features, cluster-movement drift viz; Spark at scale).** ✅ **Epic B COMPLETE
+- **➡️ NEXT ACTION — SPEC [`docs/APP_SPEC.md`](docs/APP_SPEC.md) Epic E (self-host &
+  share: free HTTPS tunnel + stable URL, two-process run procedure, backup
+  script + restore drill, `/privacy`, allowlist) — then Epic D (RAG
+  classification).** ✅ **Epic C COMPLETE (2026-07-07): population clustering +
+  analytics dashboard.** `src/store/clusters.py`: versioned KMeans models
+  (silhouette-chosen k) over ALL cached tracks + per-artist acoustic centroids;
+  cluster naming via top-|z| `_CHARACTER_DIMS` (shared vocabulary w/ journal #9);
+  online nearest-centroid assignment for new tracks; PCA (default) / UMAP map
+  coords; tables `cluster_models`/`track_clusters`/`artist_profiles`. Webapp
+  `/analytics` (`src/webapp/analytics.py` + template): **acoustic signature**
+  (top-|z| vs population), cluster composition per window + **movement story**,
+  the **cluster-map SVG** (population dim, user's songs ringed+colored),
+  **artists-who-sound-alike buckets** (user's artists bolded). Categorical
+  palette VALIDATED via the dataviz skill script (6 colors, dark surface, fixed
+  order). Train: `uv run python scripts/train_clusters.py`. **Real-data proof:
+  117 tracks → k=2 "Dark · Smooth"/"Bright · Noisy" (silhouette 0.115 — honest,
+  homogeneous corpus), 59 artists → 2 buckets. Journal #13 (one all-None ghost
+  track poisoned column intersection → coverage-based selection). 208 tests
+  green.** ✅ **Epic B COMPLETE
   (2026-07-07): hover a track → its features (`taste.track_summary`); deep-dive
   `/song/{id}` — full features + **mel-spectrogram** (`/spectrogram/{id}`, served
   from data/spectrograms) + inline-SVG **radar** (`taste.radar_svg`) + **"songs

@@ -27,8 +27,10 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from ..ingestion.fetchers import fetch_top_artists, fetch_top_tracks
+from ..store import clusters as cl
 from ..store.cache import FeatureCache
 from . import auth_web, config
+from .analytics import acoustic_signature, cluster_color, cluster_composition, scatter_svg
 from .featurestore import FeatureStore
 from .rag import TasteRAG
 from .sessions import CookieSigner, SessionStore
@@ -119,6 +121,7 @@ def build_dashboard_context(client: Any, cache: FeatureCache) -> dict[str, Any]:
                       for k, ids in per_range_ids.items()}
     return {
         "ranges": ranges,
+        "range_ids": per_range_ids,
         "profile": absolute_profile(rows),
         "drift": drift_over_rows(per_range_rows),
         "artists": _top_artists(client),
@@ -152,6 +155,7 @@ def _slim_taste(ctx: dict[str, Any]) -> dict[str, Any]:
         "profile": ctx.get("profile"),
         "drift": ctx.get("drift"),
         "coverage": ctx.get("coverage"),
+        "range_ids": ctx.get("range_ids"),  # for /analytics
         "artists": [{"name": a["name"], "genres": a.get("genres", "")}
                     for a in (ctx.get("artists") or [])],
         "ranges": [
@@ -249,6 +253,67 @@ def create_app() -> FastAPI:
             "authed": True, "question": question,
             "answer": result["answer"], "source": result["source"],
         })
+
+    @app.get("/analytics", response_class=HTMLResponse)
+    def analytics(request: Request):
+        session = request.state.session
+        if not auth_web.is_authenticated(session):
+            return RedirectResponse("/", status_code=303)
+        taste = session.get("taste") or {}
+        range_ids: dict[str, list[str]] = taste.get("range_ids") or {}
+        if not range_ids:
+            return RedirectResponse("/dashboard", status_code=303)
+
+        cache = _feature_cache()
+        all_ids = [t for ids in range_ids.values() for t in ids]
+        cached = cache.get(all_ids)
+
+        ctx: dict[str, Any] = {"authed": True, "trained": False,
+                               "coverage": taste.get("coverage"),
+                               "drift": taste.get("drift")}
+        # Signature works even before any model is trained (population stats only).
+        population = list(cache.all_features().values())
+        ctx["signature"] = acoustic_signature(list(cached.values()), population)
+
+        model = cl.latest_model(cache, "song")
+        if model is not None:
+            ctx["trained"] = True
+            assigned = cl.track_assignments(cache, model.id)
+            for tid, feats in cached.items():  # online-assign cache hits the model missed
+                if tid not in assigned:
+                    cid = cl.assign_track(cache, model, tid, feats)
+                    if cid is not None:
+                        assigned[tid] = {"cluster_id": cid, "map_x": None, "map_y": None}
+
+            labels: dict[str, str] = model.labels
+            per_window = {w: [assigned[t]["cluster_id"] for t in ids if t in assigned]
+                          for w, ids in range_ids.items()}
+            ctx["composition"] = cluster_composition(per_window, labels)
+            ctx["legend"] = [{"cluster_id": int(c), "label": lbl,
+                              "color": cluster_color(int(c))}
+                             for c, lbl in sorted(labels.items(), key=lambda kv: int(kv[0]))]
+
+            meta = cache.all_meta()
+            population_pts = [{"id": t, "x": a["map_x"], "y": a["map_y"],
+                               "cluster_id": a["cluster_id"]}
+                              for t, a in assigned.items()]
+            user_pts = [{**p, "name": (meta.get(p["id"]) or {}).get("track_name", ""),
+                         "artist": (meta.get(p["id"]) or {}).get("artist_names", "")}
+                        for p in population_pts if p["id"] in cached]
+            ctx["cluster_map"] = scatter_svg(population_pts, user_pts)
+
+        artist_model = cl.latest_model(cache, "artist")
+        if artist_model is not None:
+            user_artists = {a["name"] for a in (taste.get("artists") or [])}
+            buckets = cl.artist_buckets(cache, artist_model.id)
+            ctx["artist_buckets"] = [
+                {"label": artist_model.labels.get(str(cid), f"Cluster {cid}"),
+                 "color": cluster_color(cid),
+                 "artists": [{**a, "mine": a["artist"] in user_artists}
+                             for a in members[:10]]}
+                for cid, members in sorted(buckets.items())
+            ]
+        return templates.TemplateResponse(request, "analytics.html", ctx)
 
     @app.get("/song/{track_id}", response_class=HTMLResponse)
     def song(request: Request, track_id: str):

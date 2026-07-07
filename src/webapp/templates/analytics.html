@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="dash">
+  <h1>Your taste, mapped</h1>
+
+  {% if signature %}
+  <h2 class="section">Your acoustic signature</h2>
+  <div class="sig">
+    {% for s in signature %}
+    <div class="sig-row">
+      <span class="sig-name">{{ s.feature }}</span>
+      <span class="sig-bar"><span class="sig-fill {{ 'neg' if s.z < 0 else '' }}"
+            style="width: {{ (s.strength * 100)|round }}%"></span></span>
+      <span class="sig-word">{{ s.word }} than the corpus <b>({{ '%+.1f'|format(s.z) }}σ)</b></span>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {% if drift %}
+  <div class="insight drift" style="margin-top:1rem">
+    <div class="insight-badge">Taste drift · recent vs all-time</div>
+    <p><strong>{{ drift.label }}</strong> — RMS σ-shift {{ drift.score }}.</p>
+  </div>
+  {% endif %}
+
+  {% if trained %}
+    {% if composition and composition.movement %}
+    <div class="insight" style="margin-top:1rem">
+      <div class="insight-badge">Cluster movement</div>
+      <p>{{ composition.movement }}</p>
+    </div>
+    {% endif %}
+
+    <h2 class="section">Your songs, bucketed by sound</h2>
+    {% if legend %}
+    <div class="legend">
+      {% for c in legend %}
+      <span class="chip"><span class="dot" style="background: {{ c.color }}"></span>{{ c.label }}</span>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    {% if composition %}
+    <div class="comps">
+      {% for window, segs in composition.windows.items() %}
+      <div class="comp">
+        <h3>{{ {'short_term': 'Last 4 weeks', 'medium_term': 'Last 6 months',
+                'long_term': 'All time'}.get(window, window) }}</h3>
+        <div class="comp-bar">
+          {% for s in segs %}
+          <span class="comp-seg" style="flex-grow: {{ s.count }}; background: {{ s.color }}"
+                title="{{ s.label }} — {{ s.share }}%"></span>
+          {% endfor %}
+        </div>
+        <ul class="comp-list">
+          {% for s in segs %}
+          <li><span class="dot" style="background: {{ s.color }}"></span>
+              {{ s.label }} <b>{{ s.share }}%</b></li>
+          {% endfor %}
+        </ul>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    {% if cluster_map %}
+    <h2 class="section">The acoustic map</h2>
+    <div class="map-card">
+      {{ cluster_map|safe }}
+      <p class="cap">Every cached song, positioned by its 77-dim acoustic features
+        (2-D projection). Bright dots are yours — hover one for its name.</p>
+    </div>
+    {% endif %}
+  {% else %}
+  <div class="insight empty" style="margin-top:1rem">
+    <div class="insight-badge">Clusters not trained yet</div>
+    <p class="muted">Run <code>uv run python scripts/train_clusters.py</code> once the
+      cache has songs — buckets, the movement story, and the acoustic map appear here.</p>
+  </div>
+  {% endif %}
+
+  {% if artist_buckets %}
+  <h2 class="section">Artists who sound alike</h2>
+  <div class="abuckets">
+    {% for b in artist_buckets %}
+    <div class="abucket" style="border-left-color: {{ b.color }}">
+      <h3><span class="dot" style="background: {{ b.color }}"></span>{{ b.label }}</h3>
+      <ul>
+        {% for a in b.artists %}
+        <li class="{{ 'mine' if a.mine else '' }}">{{ a.artist }}
+          <small>{{ a.track_count }} track{{ 's' if a.track_count != 1 else '' }}</small></li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+</section>
+{% endblock %}

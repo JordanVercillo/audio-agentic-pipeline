@@ -132,7 +132,45 @@ ol.tracks li:hover .feat-pop { display: flex; }
 a.artist { text-decoration: none; }
 a.artist:hover { border-color: var(--spotify); }
 
+/* ── analytics (Epic C) ── */
+.sig { display: grid; gap: .45rem; background: var(--panel); border: 1px solid var(--line);
+  border-radius: 12px; padding: 1rem 1.2rem; }
+.sig-row { display: grid; grid-template-columns: 7.5rem 1fr 1.4fr; gap: .8rem; align-items: center; }
+.sig-name { font-weight: 600; font-size: .9rem; }
+.sig-bar { height: 8px; background: var(--panel-2); border-radius: 999px; overflow: hidden; }
+.sig-fill { display: block; height: 100%; border-radius: 999px; background: var(--spotify); }
+.sig-fill.neg { background: #7aa2ff; }
+.sig-word { color: var(--muted); font-size: .85rem; }
+.sig-word b { color: var(--ink); font-variant-numeric: tabular-nums; }
+
+.legend { display: flex; flex-wrap: wrap; gap: .5rem 1rem; margin: 0 0 .75rem; }
+.chip { display: inline-flex; align-items: center; gap: .4rem; color: var(--muted); font-size: .8rem; }
+.dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; flex: 0 0 auto; }
+
+.comps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; }
+.comp { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 1rem 1.1rem; }
+.comp h3 { font-size: .9rem; margin: 0 0 .6rem; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; }
+.comp-bar { display: flex; gap: 2px; height: 14px; border-radius: 6px; overflow: hidden; }
+.comp-seg { display: block; min-width: 4px; }
+.comp-list { list-style: none; margin: .7rem 0 0; padding: 0; display: grid; gap: .25rem; }
+.comp-list li { display: flex; align-items: center; gap: .45rem; color: var(--muted); font-size: .83rem; }
+.comp-list b { color: var(--ink); margin-left: auto; font-variant-numeric: tabular-nums; }
+
+.map-card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 1rem; }
+.cluster-map { width: 100%; height: auto; display: block; }
+
+.abuckets { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 1rem; }
+.abucket { background: var(--panel); border: 1px solid var(--line); border-left-width: 3px;
+  border-radius: 12px; padding: .9rem 1.1rem; }
+.abucket h3 { display: flex; align-items: center; gap: .5rem; font-size: .95rem; margin: 0 0 .6rem; }
+.abucket ul { list-style: none; margin: 0; padding: 0; display: grid; gap: .3rem; }
+.abucket li { display: flex; justify-content: space-between; gap: .5rem; color: var(--muted); font-size: .88rem; }
+.abucket li.mine { color: var(--ink); font-weight: 600; }
+.abucket small { color: var(--muted); font-weight: 400; }
+
 @media (max-width: 720px) {
-  .ranges, .cards, .song-grid { grid-template-columns: 1fr; }
+  .ranges, .cards, .song-grid, .comps { grid-template-columns: 1fr; }
   .hero h1 { font-size: 1.7rem; }
+  .sig-row { grid-template-columns: 6rem 1fr; }
+  .sig-word { grid-column: 1 / -1; }
 }
