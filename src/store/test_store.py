@@ -7,6 +7,8 @@ SQLite temp file, no Postgres and no real audio — exercises the cache read/wri
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from .cache import FeatureCache
@@ -79,3 +81,68 @@ def test_second_instance_sees_persisted_cache(tmp_path):
     FeatureCache(url=url).upsert("shared", _FEATURES)
     # a fresh process/instance (e.g. a worker vs the web app) sees the same cache
     assert FeatureCache(url=url).get(["shared"])["shared"]["tempo_bpm"] == 128.0
+
+
+def test_remember_and_get_meta(cache):
+    cache.remember_meta([{"spotify_track_id": "m1", "track_name": "Hush", "artist_names": "Muse"}])
+    assert cache.get_meta("m1")["track_name"] == "Hush"
+    assert cache.get_meta("nope") is None
+
+
+# ── extraction worker (Epic A slice 2) — synthetic audio, no YouTube ────────
+def _synth_acquire(track_id, name, artist, dest_dir):
+    """Injected acquire: write a synthetic WAV so the REAL DSP path runs offline."""
+    import soundfile as sf
+
+    from ..dsp.audio_loader import generate_test_signal
+    sig = generate_test_signal(frequency_hz=220.0, duration_sec=5.0)
+    path = Path(dest_dir)
+    path.mkdir(parents=True, exist_ok=True)
+    out = path / f"{track_id}.wav"
+    sf.write(out, sig.waveform, sig.sr)
+    return out
+
+
+def test_extract_one_runs_real_dsp_on_synthetic_audio(cache, tmp_path):
+    from .extractor import extract_one
+    cache.remember_meta([{"spotify_track_id": "s1", "track_name": "Test", "artist_names": "Synth"}])
+    cache.enqueue(["s1"])
+    tid = cache.claim_next()
+    ok = extract_one(cache, tid, audio_dir=tmp_path / "audio",
+                     spectrogram_dir=tmp_path / "spec", acquire=_synth_acquire)
+    assert ok is True
+    feats = cache.get(["s1"])["s1"]
+    assert "tempo_bpm" in feats and "rms_mean" in feats  # real 82-col dict from DSP
+    assert (tmp_path / "spec" / "s1.png").exists()       # mel-spectrogram rendered
+    assert cache.missing(["s1"]) == []                   # cached → job done
+    assert not (tmp_path / "audio" / "s1.wav").exists()  # audio deleted (D-15)
+
+
+def test_extract_one_no_metadata_fails(cache, tmp_path):
+    from .extractor import extract_one
+    cache.enqueue(["s2"])  # queued but no remember_meta → no search query
+    cache.claim_next()
+    ok = extract_one(cache, "s2", audio_dir=tmp_path / "a",
+                     spectrogram_dir=tmp_path / "s", acquire=_synth_acquire)
+    assert ok is False and cache.job_status(["s2"])["failed"] == 1
+
+
+def test_extract_one_acquire_failure_fails(cache, tmp_path):
+    from .extractor import extract_one
+    cache.remember_meta([{"spotify_track_id": "s3", "track_name": "X", "artist_names": "Y"}])
+    cache.enqueue(["s3"])
+    cache.claim_next()
+    ok = extract_one(cache, "s3", audio_dir=tmp_path / "a", spectrogram_dir=tmp_path / "s",
+                     acquire=lambda *a: None)  # acquisition returns nothing
+    assert ok is False and cache.job_status(["s3"])["failed"] == 1
+
+
+def test_drain_processes_the_queue(cache, tmp_path):
+    from .extractor import drain
+    cache.remember_meta([{"spotify_track_id": f"d{i}", "track_name": f"T{i}", "artist_names": "A"}
+                         for i in range(2)])
+    cache.enqueue(["d0", "d1"])
+    res = drain(cache, audio_dir=tmp_path / "a", spectrogram_dir=tmp_path / "s",
+                acquire=_synth_acquire)
+    assert res == {"done": 2, "failed": 0}
+    assert cache.missing(["d0", "d1"]) == []
