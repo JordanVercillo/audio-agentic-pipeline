@@ -161,46 +161,70 @@ def test_drift_profile_insufficient_overlap_returns_none(corpus_dir):
     assert fs.drift_profile({"short_term": ["trk0"], "long_term": ["trk1"]}) is None
 
 
-# ── dashboard context (with a fake Spotify client) ─────────────────────────
-def test_build_dashboard_context(monkeypatch, corpus_dir):
+# ── cache-sourced taste logic (Epic A slice 3) ─────────────────────────────
+def _feat(tempo, rms=0.20, cent=2100.0):
+    return {"tempo_bpm": tempo, "rms_mean": rms, "spectral_centroid_mean": cent,
+            "zcr_mean": 0.05, "harmonic_ratio": 0.8}
+
+
+def test_absolute_profile_bands():
+    from .taste import absolute_profile
+    prof = absolute_profile([_feat(128), _feat(132)])
+    assert prof["n"] == 2 and prof["highlights"]
+    assert "upbeat" in prof["message"]  # 130 bpm → upbeat band
+    assert absolute_profile([]) is None
+
+
+def test_drift_over_rows_finite_when_windows_differ():
+    from .taste import drift_over_rows
+    d = drift_over_rows({
+        "short_term": [_feat(120), _feat(122)],
+        "long_term": [_feat(140), _feat(142)],
+    })
+    assert d is not None and math.isfinite(d["score"])
+    assert d["n_short"] == 2 and d["n_long"] == 2
+
+
+def test_drift_over_rows_insufficient_returns_none():
+    from .taste import drift_over_rows
+    assert drift_over_rows({"short_term": [_feat(120)], "long_term": [_feat(140)]}) is None
+
+
+# ── dashboard context: reads the cache, flags analyzed, queues misses ───────
+def test_build_dashboard_context(monkeypatch, tmp_path):
+    from ..store.cache import FeatureCache
+    cache = FeatureCache(url=f"sqlite:///{tmp_path / 'c.db'}")
+    for tid, tempo in [("trk0", 120), ("trk1", 122), ("trk2", 140), ("trk3", 142)]:
+        cache.upsert(tid, _feat(tempo))  # already-analyzed
     per_range = {
-        "short_term": ["trk0", "trk1", "outsider"],
-        "medium_term": ["trk1", "trk2", "outsider"],
-        "long_term": ["trk2", "trk3", "outsider"],
+        "short_term": ["trk0", "trk1", "newmiss"],
+        "medium_term": ["trk1", "trk2", "newmiss"],
+        "long_term": ["trk2", "trk3", "newmiss"],
     }
 
     def fake_tracks(time_range, limit=20, sp=None):
         ids = per_range[time_range]
         return pd.DataFrame({
-            "spotify_track_id": ids,
-            "track_name": [f"Song {i}" for i in ids],
-            "artist_names": ["A"] * len(ids),
-            "rank": list(range(1, len(ids) + 1)),
-            "album_image_url": [f"http://img/{i}.jpg" for i in ids],
-        })
+            "spotify_track_id": ids, "track_name": [f"S {i}" for i in ids],
+            "artist_names": ["A"] * len(ids), "rank": list(range(1, len(ids) + 1)),
+            "album_image_url": [f"http://img/{i}.jpg" for i in ids]})
 
     def fake_artists(time_range="medium_term", limit=12, sp=None):
-        return pd.DataFrame({
-            "artist_name": ["Muse", "Toploader"],
-            "genres": ["rock, alt", ""],
-            "image_url": ["http://a/muse.jpg", None],
-        })
+        return pd.DataFrame({"artist_name": ["Muse"], "genres": ["rock"], "image_url": [None]})
 
     monkeypatch.setattr("src.webapp.app.fetch_top_tracks", fake_tracks)
     monkeypatch.setattr("src.webapp.app.fetch_top_artists", fake_artists)
-    ctx = build_dashboard_context(client=object(), store=FeatureStore(corpus_dir))
+    ctx = build_dashboard_context(client=object(), cache=cache)
 
-    assert len(ctx["ranges"]) == 3
-    # album art carried through to the track view-model
-    assert ctx["ranges"][0]["tracks"][0]["art"] == "http://img/trk0.jpg"
-    # overlap flags (short_term: trk0, trk1 in corpus; outsider not)
-    flags = {t["id"]: t["in_corpus"] for t in ctx["ranges"][0]["tracks"]}
-    assert flags == {"trk0": True, "trk1": True, "outsider": False}
-    # top-artists section (genres — which Spotify exposes for artists, not tracks)
-    assert [a["name"] for a in ctx["artists"]] == ["Muse", "Toploader"]
-    assert ctx["artists"][0]["genres"] == "rock, alt"
-    # per-visitor taste drift computed (short vs long overlap differ → finite)
+    assert ctx["ranges"][0]["tracks"][0]["art"] == "http://img/trk0.jpg"  # album art
+    flags = {t["id"]: t["analyzed"] for t in ctx["ranges"][0]["tracks"]}
+    assert flags == {"trk0": True, "trk1": True, "newmiss": False}  # cache hits vs miss
+    assert ctx["coverage"] == {"analyzed": 4, "total": 5, "analyzing": 1}
+    assert ctx["profile"]["n"] == 4  # absolute profile over the 4 analyzed songs
     assert ctx["drift"] is not None and math.isfinite(ctx["drift"]["score"])
+    assert [a["name"] for a in ctx["artists"]] == ["Muse"]
+    # the miss was queued for extraction
+    assert cache.job_status(["newmiss"])["queued"] == 1
 
 
 # ── routes ─────────────────────────────────────────────────────────────────
@@ -244,23 +268,25 @@ def test_login_redirects_to_spotify(client):
     assert "client_secret" not in loc.lower()  # D-8
 
 
-# ── RAG /ask (slice 2) ─────────────────────────────────────────────────────
+# ── RAG /ask (slice 2, updated for cache-sourced profile in slice 3) ────────
 _TASTE = {
-    "profile": {"overlap_count": 3, "dominant_genre": "Indie & Alt",
-                "highlights": ["tempo on par with the corpus (128 bpm)"]},
+    "coverage": {"analyzed": 12, "total": 15, "analyzing": 3},
+    "profile": {"n": 12, "highlights": ["Tempo: 128 bpm — upbeat", "Energy: 0.21 — moderate"],
+                "message": "Across your 12 analyzed tracks: upbeat tempo, moderate energy, "
+                           "bright brightness."},
     "drift": {"label": "Moderate drift (exploring new sounds)", "score": 0.21,
               "n_short": 20, "n_long": 20},
     "artists": [{"name": "Muse", "genres": "rock, alternative"}],
     "ranges": [{"label": "Last 4 weeks",
-                "tracks": [{"name": "Hush", "artist": "Muse", "in_corpus": True}]}],
+                "tracks": [{"name": "Hush", "artist": "Muse", "analyzed": True}]}],
 }
 
 
 def test_rag_grounding_text_includes_facts():
     from .rag import _grounding_text
     txt = _grounding_text(_TASTE, {"tempo_bpm": "beats per minute"})
-    assert "Muse" in txt and "Indie & Alt" in txt
-    assert "Moderate drift" in txt and "tempo_bpm" in txt
+    assert "12 of 15" in txt and "upbeat tempo" in txt  # coverage + absolute profile
+    assert "Muse" in txt and "Moderate drift" in txt and "tempo_bpm" in txt
 
 
 def test_rag_fallback_grounds_on_data_no_key(monkeypatch):
@@ -268,7 +294,7 @@ def test_rag_fallback_grounds_on_data_no_key(monkeypatch):
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     res = TasteRAG().answer("what's my vibe lately?", _TASTE)
     assert res["source"] == "fallback"
-    assert "Muse" in res["answer"] and "Indie & Alt" in res["answer"]
+    assert "Muse" in res["answer"] and "analyzed tracks" in res["answer"]
     assert "**" not in res["answer"]  # plain prose, no markdown
 
 

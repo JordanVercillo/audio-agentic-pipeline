@@ -11,16 +11,20 @@
   </form>
 
   <div class="cards">
-    {% if profile %}
-    <div class="insight {{ 'empty' if profile.overlap_count == 0 else 'hit' }}">
+    {% if coverage %}
+    <div class="insight {{ 'hit' if profile else 'empty' }}">
       <div class="insight-badge">
-        {{ profile.overlap_count }} / {{ track_total }} tracks in the acoustic corpus
+        {{ coverage.analyzed }} / {{ coverage.total }} songs analyzed{% if coverage.analyzing %}
+        · {{ coverage.analyzing }} analyzing…{% endif %}
       </div>
+      {% if profile %}
       <p>{{ profile.message }}</p>
-      {% if profile.highlights %}
       <ul class="highlights">
         {% for h in profile.highlights %}<li>{{ h }}</li>{% endfor %}
       </ul>
+      {% else %}
+      <p class="muted">Your songs are being analyzed — their acoustic features
+        (tempo, energy, brightness) will appear here as each one finishes.</p>
       {% endif %}
     </div>
     {% endif %}
@@ -31,7 +35,7 @@
       <p><strong>{{ drift.label }}</strong></p>
       <p class="muted">RMS σ-shift of <strong>{{ drift.score }}</strong> — on average each
         acoustic feature moved {{ drift.score }} standard deviations between your
-        last-4-weeks and all-time overlap ({{ drift.n_short }} vs {{ drift.n_long }} tracks).</p>
+        last-4-weeks and all-time analyzed songs ({{ drift.n_short }} vs {{ drift.n_long }} tracks).</p>
     </div>
     {% endif %}
   </div>
@@ -59,14 +63,14 @@
       {% if rng.tracks %}
       <ol class="tracks">
         {% for t in rng.tracks %}
-        <li class="{{ 'match' if t.in_corpus else '' }}">
+        <li class="{{ 'match' if t.analyzed else '' }}">
           <span class="rk">{{ t.rank }}</span>
           {% if t.art %}<img class="art" src="{{ t.art }}" alt="" loading="lazy">{% endif %}
           <span class="tmeta">
             <span class="tname">{{ t.name }}</span>
             <span class="tartist">{{ t.artist }}</span>
           </span>
-          {% if t.in_corpus %}<span class="tag" title="in our acoustic corpus">✓</span>{% endif %}
+          {% if t.analyzed %}<span class="tag" title="acoustic features extracted">✓</span>{% endif %}
         </li>
         {% endfor %}
       </ol>

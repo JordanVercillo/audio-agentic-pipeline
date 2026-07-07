@@ -44,14 +44,16 @@ _MAX_TOKENS = 1024  # a taste answer is deliberately short — well under stream
 def _grounding_text(taste: dict[str, Any], glossary: dict[str, str]) -> str:
     """Render the visitor's retrieved facts as the grounding block for the prompt."""
     lines: list[str] = []
+    cov = taste.get("coverage") or {}
+    if cov:
+        lines.append(
+            f"Analyzed songs: {cov.get('analyzed', 0)} of {cov.get('total', 0)} of your "
+            f"top tracks have local audio features ({cov.get('analyzing', 0)} still analyzing).")
     prof = taste.get("profile") or {}
-    if prof:
-        head = f"Acoustic corpus overlap: {prof.get('overlap_count', 0)} of your top tracks"
-        if prof.get("dominant_genre"):
-            head += f", leaning {prof['dominant_genre']}"
-        lines.append(head + ".")
-        for h in prof.get("highlights", []):
-            lines.append(f"  - {h}")
+    if prof.get("message"):
+        lines.append(prof["message"])
+    for h in prof.get("highlights", []):
+        lines.append(f"  - {h}")
     drift = taste.get("drift")
     if drift:
         lines.append(
@@ -120,17 +122,15 @@ class TasteRAG:
         prof = taste.get("profile") or {}
         drift = taste.get("drift")
         artists = taste.get("artists") or []
-        bits: list[str] = []
-        if prof.get("dominant_genre"):
-            bits.append(f"your acoustic overlap leans {prof['dominant_genre']}")
+        parts: list[str] = []
+        if prof.get("message"):
+            parts.append(prof["message"])
         if artists:
-            bits.append(f"your top artist is {artists[0]['name']}")
-        if drift:
-            bits.append("your recent-vs-all-time taste shows "
-                        f"{drift['label'].split('(')[0].strip().lower()}")
-        if prof.get("highlights"):
-            bits.append(prof["highlights"][0])
-        if not bits:
-            return ("There isn't enough overlap with our acoustic corpus to profile your "
-                    "taste yet — your dashboard still shows your top tracks and artists.")
-        return "Based on your listening, " + "; ".join(bits) + "."
+            parts.append(f"Your most-played artist is {artists[0]['name']}.")
+        if drift and drift.get("label"):
+            parts.append("Recent vs all-time, your taste shows "
+                         f"{drift['label'].split('(')[0].strip().lower()}.")
+        if not parts:
+            return ("Your songs are still being analyzed — check back shortly for your "
+                    "acoustic profile, or see your top tracks and artists on the dashboard.")
+        return " ".join(parts)

@@ -20,19 +20,22 @@
   orchestrator rebuilt to match docs, ffmpeg/libmp3lame installed, DSP
   feature-serialization gap closed (warehouse: 82 numeric feature cols;
   FAISS vector unchanged at 77). Phase-4 webapp still NOT in this repo copy.
-- **➡️ NEXT ACTION — build the FULL APP per [`docs/APP_SPEC.md`](docs/APP_SPEC.md)
-  (owner vision, 2026-07-07). Build order: Epic A first — the shared,
-  track-keyed FEATURE-CACHE DB (Postgres + pgvector) + per-user ASYNC
-  extraction** (yt-dlp → librosa 77-dim + mel-spectrogram → DB/GCS; analyze each
-  song once, ever — D-11/D-12). Then B (audio-features dashboard: hover +
-  deep-dive + spectrogram), C (ML clustering of songs AND artists + drift
-  dashboard), E-partial (Dockerfile → Cloud Run so real users seed the cache),
-  D (RAG classification, Phase 2), E-full (domain, allowlist, opt-in
-  longitudinal snapshots — D-13). **This supersedes P8's "visitors never
-  trigger acquisition" non-goal (D-11).** P8 pilot slices 1/1.5/2 are the
-  foundation (done). Deferred P8 deploy (Dockerfile → Cloud Run) folds into
-  Epic E. Owner still to do: GCP/domain, Spotify prod redirect + extended-quota
-  request, prod `SESSION_SECRET_KEY` (+ optional `ANTHROPIC_API_KEY`).
+- **➡️ NEXT ACTION — SPEC [`docs/APP_SPEC.md`](docs/APP_SPEC.md) Epic B (audio-features
+  dashboard: hover a track → its features, click → deep-dive with the
+  spectrogram + radar + pgvector "songs like this").** ✅ **Epic A COMPLETE
+  (2026-07-07): the shared feature cache + extraction + webapp wiring.** `src/store/`
+  (SQLAlchemy, SQLite-dev/Postgres-prod): `FeatureCache` (get/missing/upsert/enqueue/
+  claim_next/fail/job_status; TrackMeta) + `extractor.py` worker (yt-dlp → librosa
+  77-dim + mel-spectrogram → cache; audio transient, D-15) + `scripts/{run_extraction_worker,
+  seed_cache}.py`. Webapp now sources the dashboard from the cache (`src/webapp/taste.py`:
+  absolute acoustic profile + own-drift): reads hits, flags **analyzed**, queues
+  misses, shows **"N of M analyzed · K analyzing…"** — retires owner-corpus overlap
+  (D-11). **To demo real features: `uv run python scripts/seed_cache.py` warms the
+  cache from the owner warehouse; a worker drains new misses.** Then B → C (ML
+  clustering songs AND artists + drift viz) → E-partial (Dockerfile→Cloud Run) → D
+  (RAG classification) → E-full. Owner still to do: GCP/domain, Spotify prod redirect
+  + extended-quota request, prod `SESSION_SECRET_KEY` (+ optional Postgres
+  `DATABASE_URL`, `ANTHROPIC_API_KEY`).
 - **✅ P8 slice 2 (2026-07-05): RAG `/ask` grounded taste Q&A — the last of the 4
   pilot features.** `rag.py` (`TasteRAG`): grounds on the visitor's overlap
   insight + drift + top artists + top tracks + gold `column_descriptions`
