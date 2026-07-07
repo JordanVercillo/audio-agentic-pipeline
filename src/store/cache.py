@@ -14,7 +14,9 @@ Worker loop:
 
 from __future__ import annotations
 
+import math
 import os
+import statistics
 from collections import Counter
 from pathlib import Path
 from typing import Any, Optional
@@ -23,6 +25,13 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 
 from .models import Base, ExtractionJob, TrackFeatures, TrackMeta, utcnow
+
+# Feature columns used for "songs like this" (whatever's present rides along).
+_SIMILARITY_COLS = [
+    "tempo_bpm", "rms_mean", "zcr_mean", "spectral_centroid_mean",
+    "spectral_rolloff_mean", "spectral_bandwidth_mean", "harmonic_ratio",
+    "onset_strength_mean", *(f"mfcc_mean_{i}" for i in range(5)),
+]
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 _DEFAULT_SQLITE = f"sqlite:///{_PROJECT_ROOT / 'data' / 'feature_cache.db'}"
@@ -168,6 +177,38 @@ class FeatureCache:
                 job.status = JOB_FAILED
                 job.last_error = (error or "")[:500]
                 s.commit()
+
+    def similar(self, track_id: str, k: int = 6) -> list[tuple[str, float]]:
+        """Nearest cached tracks by z-scored acoustic distance → [(id, distance)].
+
+        Portable (works on SQLite + Postgres). Loads the cached population and
+        computes distance in Python — fine at pilot scale; prod swaps in pgvector
+        (`ORDER BY vector <-> :target`) over the Epic-B Vector(77) column.
+        """
+        with self._Session() as s:
+            target = s.get(TrackFeatures, track_id)
+            if target is None:
+                return []
+            pop = s.execute(select(TrackFeatures)).scalars().all()
+        if len(pop) < 2:
+            return []
+
+        cols = [c for c in _SIMILARITY_COLS
+                if any((r.features or {}).get(c) is not None for r in pop)]
+        if not cols:
+            return []
+        means = {c: statistics.fmean(float((r.features or {}).get(c) or 0.0) for r in pop) for c in cols}
+        stds = {c: (statistics.pstdev(float((r.features or {}).get(c) or 0.0) for r in pop) or 1.0)
+                for c in cols}
+
+        def zvec(feats: dict) -> list[float]:
+            return [(float((feats or {}).get(c) or 0.0) - means[c]) / stds[c] for c in cols]
+
+        tz = zvec(target.features)
+        dists = [(r.spotify_track_id, math.dist(tz, zvec(r.features)))
+                 for r in pop if r.spotify_track_id != track_id]
+        dists.sort(key=lambda x: x[1])
+        return dists[:k]
 
     def job_status(self, track_ids: list[str]) -> dict[str, int]:
         """Progress for a visitor's set: total / cached / queued / running / failed."""

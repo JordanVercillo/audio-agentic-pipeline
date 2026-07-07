@@ -190,6 +190,47 @@ def test_drift_over_rows_insufficient_returns_none():
     assert drift_over_rows({"short_term": [_feat(120)], "long_term": [_feat(140)]}) is None
 
 
+def test_track_summary_and_radar_svg():
+    from .taste import radar_svg, track_summary
+    s = track_summary({"tempo_bpm": 128, "rms_mean": 0.20, "spectral_centroid_mean": 2400})
+    assert s["tempo"] == "128 bpm" and s["brightness"] == "2400 Hz"
+    assert track_summary(None) is None
+    svg = radar_svg({"tempo_bpm": 128, "rms_mean": 0.20, "spectral_centroid_mean": 2400})
+    assert svg.startswith("<svg") and "polygon" in svg and "Tempo" in svg
+
+
+# ── deep-dive routes (Epic B) ──────────────────────────────────────────────
+def test_song_unauthenticated_redirects(client):
+    r = client.get("/song/x", follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "/"
+
+
+def test_song_deep_dive_renders_features_and_similar(client, monkeypatch, tmp_path):
+    from ..store.cache import FeatureCache
+    tc = FeatureCache(url=f"sqlite:///{tmp_path / 'c.db'}")
+    tc.upsert("sng1", _feat(128))
+    tc.upsert("sng2", _feat(130))
+    tc.remember_meta([{"spotify_track_id": "sng1", "track_name": "Hush", "artist_names": "Muse"},
+                      {"spotify_track_id": "sng2", "track_name": "Other", "artist_names": "Band"}])
+    monkeypatch.setattr("src.webapp.app._feature_cache", lambda: tc)
+    client.cookies.set(config.SESSION_COOKIE, _seed_session(taste=None))
+    r = client.get("/song/sng1")
+    assert r.status_code == 200
+    assert "Hush" in r.text and "<svg" in r.text          # name + radar
+    assert "Songs like this" in r.text and "Other" in r.text  # nearest neighbor
+
+
+def test_spectrogram_404_when_missing(client):
+    assert client.get("/spectrogram/nope").status_code == 404
+
+
+def test_spectrogram_serves_png(client, monkeypatch, tmp_path):
+    monkeypatch.setattr("src.webapp.app._SPECTROGRAM_DIR", tmp_path)
+    (tmp_path / "pic.png").write_bytes(b"\x89PNG\r\n\x1a\n")
+    r = client.get("/spectrogram/pic")
+    assert r.status_code == 200 and r.headers["content-type"] == "image/png"
+
+
 # ── dashboard context: reads the cache, flags analyzed, queues misses ───────
 def test_build_dashboard_context(monkeypatch, tmp_path):
     from ..store.cache import FeatureCache

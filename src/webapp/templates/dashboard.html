@@ -67,10 +67,18 @@
           <span class="rk">{{ t.rank }}</span>
           {% if t.art %}<img class="art" src="{{ t.art }}" alt="" loading="lazy">{% endif %}
           <span class="tmeta">
-            <span class="tname">{{ t.name }}</span>
+            {% if t.analyzed %}<a class="tname" href="/song/{{ t.id }}">{{ t.name }}</a>
+            {% else %}<span class="tname">{{ t.name }}</span>{% endif %}
             <span class="tartist">{{ t.artist }}</span>
           </span>
           {% if t.analyzed %}<span class="tag" title="acoustic features extracted">✓</span>{% endif %}
+          {% if t.feat %}
+          <div class="feat-pop" role="tooltip">
+            <span><b>{{ t.feat.tempo }}</b> tempo</span>
+            <span><b>{{ t.feat.energy }}</b> energy</span>
+            <span><b>{{ t.feat.brightness }}</b> bright</span>
+          </div>
+          {% endif %}
         </li>
         {% endfor %}
       </ol>
