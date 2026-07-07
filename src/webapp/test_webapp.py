@@ -161,46 +161,111 @@ def test_drift_profile_insufficient_overlap_returns_none(corpus_dir):
     assert fs.drift_profile({"short_term": ["trk0"], "long_term": ["trk1"]}) is None
 
 
-# ── dashboard context (with a fake Spotify client) ─────────────────────────
-def test_build_dashboard_context(monkeypatch, corpus_dir):
+# ── cache-sourced taste logic (Epic A slice 3) ─────────────────────────────
+def _feat(tempo, rms=0.20, cent=2100.0):
+    return {"tempo_bpm": tempo, "rms_mean": rms, "spectral_centroid_mean": cent,
+            "zcr_mean": 0.05, "harmonic_ratio": 0.8}
+
+
+def test_absolute_profile_bands():
+    from .taste import absolute_profile
+    prof = absolute_profile([_feat(128), _feat(132)])
+    assert prof["n"] == 2 and prof["highlights"]
+    assert "upbeat" in prof["message"]  # 130 bpm → upbeat band
+    assert absolute_profile([]) is None
+
+
+def test_drift_over_rows_finite_when_windows_differ():
+    from .taste import drift_over_rows
+    d = drift_over_rows({
+        "short_term": [_feat(120), _feat(122)],
+        "long_term": [_feat(140), _feat(142)],
+    })
+    assert d is not None and math.isfinite(d["score"])
+    assert d["n_short"] == 2 and d["n_long"] == 2
+
+
+def test_drift_over_rows_insufficient_returns_none():
+    from .taste import drift_over_rows
+    assert drift_over_rows({"short_term": [_feat(120)], "long_term": [_feat(140)]}) is None
+
+
+def test_track_summary_and_radar_svg():
+    from .taste import radar_svg, track_summary
+    s = track_summary({"tempo_bpm": 128, "rms_mean": 0.20, "spectral_centroid_mean": 2400})
+    assert s["tempo"] == "128 bpm" and s["brightness"] == "2400 Hz"
+    assert track_summary(None) is None
+    svg = radar_svg({"tempo_bpm": 128, "rms_mean": 0.20, "spectral_centroid_mean": 2400})
+    assert svg.startswith("<svg") and "polygon" in svg and "Tempo" in svg
+
+
+# ── deep-dive routes (Epic B) ──────────────────────────────────────────────
+def test_song_unauthenticated_redirects(client):
+    r = client.get("/song/x", follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "/"
+
+
+def test_song_deep_dive_renders_features_and_similar(client, monkeypatch, tmp_path):
+    from ..store.cache import FeatureCache
+    tc = FeatureCache(url=f"sqlite:///{tmp_path / 'c.db'}")
+    tc.upsert("sng1", _feat(128))
+    tc.upsert("sng2", _feat(130))
+    tc.remember_meta([{"spotify_track_id": "sng1", "track_name": "Hush", "artist_names": "Muse"},
+                      {"spotify_track_id": "sng2", "track_name": "Other", "artist_names": "Band"}])
+    monkeypatch.setattr("src.webapp.app._feature_cache", lambda: tc)
+    client.cookies.set(config.SESSION_COOKIE, _seed_session(taste=None))
+    r = client.get("/song/sng1")
+    assert r.status_code == 200
+    assert "Hush" in r.text and "<svg" in r.text          # name + radar
+    assert "Songs like this" in r.text and "Other" in r.text  # nearest neighbor
+
+
+def test_spectrogram_404_when_missing(client):
+    assert client.get("/spectrogram/nope").status_code == 404
+
+
+def test_spectrogram_serves_png(client, monkeypatch, tmp_path):
+    monkeypatch.setattr("src.webapp.app._SPECTROGRAM_DIR", tmp_path)
+    (tmp_path / "pic.png").write_bytes(b"\x89PNG\r\n\x1a\n")
+    r = client.get("/spectrogram/pic")
+    assert r.status_code == 200 and r.headers["content-type"] == "image/png"
+
+
+# ── dashboard context: reads the cache, flags analyzed, queues misses ───────
+def test_build_dashboard_context(monkeypatch, tmp_path):
+    from ..store.cache import FeatureCache
+    cache = FeatureCache(url=f"sqlite:///{tmp_path / 'c.db'}")
+    for tid, tempo in [("trk0", 120), ("trk1", 122), ("trk2", 140), ("trk3", 142)]:
+        cache.upsert(tid, _feat(tempo))  # already-analyzed
     per_range = {
-        "short_term": ["trk0", "trk1", "outsider"],
-        "medium_term": ["trk1", "trk2", "outsider"],
-        "long_term": ["trk2", "trk3", "outsider"],
+        "short_term": ["trk0", "trk1", "newmiss"],
+        "medium_term": ["trk1", "trk2", "newmiss"],
+        "long_term": ["trk2", "trk3", "newmiss"],
     }
 
     def fake_tracks(time_range, limit=20, sp=None):
         ids = per_range[time_range]
         return pd.DataFrame({
-            "spotify_track_id": ids,
-            "track_name": [f"Song {i}" for i in ids],
-            "artist_names": ["A"] * len(ids),
-            "rank": list(range(1, len(ids) + 1)),
-            "album_image_url": [f"http://img/{i}.jpg" for i in ids],
-        })
+            "spotify_track_id": ids, "track_name": [f"S {i}" for i in ids],
+            "artist_names": ["A"] * len(ids), "rank": list(range(1, len(ids) + 1)),
+            "album_image_url": [f"http://img/{i}.jpg" for i in ids]})
 
     def fake_artists(time_range="medium_term", limit=12, sp=None):
-        return pd.DataFrame({
-            "artist_name": ["Muse", "Toploader"],
-            "genres": ["rock, alt", ""],
-            "image_url": ["http://a/muse.jpg", None],
-        })
+        return pd.DataFrame({"artist_name": ["Muse"], "genres": ["rock"], "image_url": [None]})
 
     monkeypatch.setattr("src.webapp.app.fetch_top_tracks", fake_tracks)
     monkeypatch.setattr("src.webapp.app.fetch_top_artists", fake_artists)
-    ctx = build_dashboard_context(client=object(), store=FeatureStore(corpus_dir))
+    ctx = build_dashboard_context(client=object(), cache=cache)
 
-    assert len(ctx["ranges"]) == 3
-    # album art carried through to the track view-model
-    assert ctx["ranges"][0]["tracks"][0]["art"] == "http://img/trk0.jpg"
-    # overlap flags (short_term: trk0, trk1 in corpus; outsider not)
-    flags = {t["id"]: t["in_corpus"] for t in ctx["ranges"][0]["tracks"]}
-    assert flags == {"trk0": True, "trk1": True, "outsider": False}
-    # top-artists section (genres — which Spotify exposes for artists, not tracks)
-    assert [a["name"] for a in ctx["artists"]] == ["Muse", "Toploader"]
-    assert ctx["artists"][0]["genres"] == "rock, alt"
-    # per-visitor taste drift computed (short vs long overlap differ → finite)
+    assert ctx["ranges"][0]["tracks"][0]["art"] == "http://img/trk0.jpg"  # album art
+    flags = {t["id"]: t["analyzed"] for t in ctx["ranges"][0]["tracks"]}
+    assert flags == {"trk0": True, "trk1": True, "newmiss": False}  # cache hits vs miss
+    assert ctx["coverage"] == {"analyzed": 4, "total": 5, "analyzing": 1}
+    assert ctx["profile"]["n"] == 4  # absolute profile over the 4 analyzed songs
     assert ctx["drift"] is not None and math.isfinite(ctx["drift"]["score"])
+    assert [a["name"] for a in ctx["artists"]] == ["Muse"]
+    # the miss was queued for extraction
+    assert cache.job_status(["newmiss"])["queued"] == 1
 
 
 # ── routes ─────────────────────────────────────────────────────────────────
@@ -242,3 +307,107 @@ def test_login_redirects_to_spotify(client):
     loc = r.headers["location"]
     assert "accounts.spotify.com" in loc and "code_challenge=" in loc
     assert "client_secret" not in loc.lower()  # D-8
+
+
+# ── RAG /ask (slice 2, updated for cache-sourced profile in slice 3) ────────
+_TASTE = {
+    "coverage": {"analyzed": 12, "total": 15, "analyzing": 3},
+    "profile": {"n": 12, "highlights": ["Tempo: 128 bpm — upbeat", "Energy: 0.21 — moderate"],
+                "message": "Across your 12 analyzed tracks: upbeat tempo, moderate energy, "
+                           "bright brightness."},
+    "drift": {"label": "Moderate drift (exploring new sounds)", "score": 0.21,
+              "n_short": 20, "n_long": 20},
+    "artists": [{"name": "Muse", "genres": "rock, alternative"}],
+    "ranges": [{"label": "Last 4 weeks",
+                "tracks": [{"name": "Hush", "artist": "Muse", "analyzed": True}]}],
+}
+
+
+def test_rag_grounding_text_includes_facts():
+    from .rag import _grounding_text
+    txt = _grounding_text(_TASTE, {"tempo_bpm": "beats per minute"})
+    assert "12 of 15" in txt and "upbeat tempo" in txt  # coverage + absolute profile
+    assert "Muse" in txt and "Moderate drift" in txt and "tempo_bpm" in txt
+
+
+def test_rag_fallback_grounds_on_data_no_key(monkeypatch):
+    from .rag import TasteRAG
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    res = TasteRAG().answer("what's my vibe lately?", _TASTE)
+    assert res["source"] == "fallback"
+    assert "Muse" in res["answer"] and "analyzed tracks" in res["answer"]
+    assert "**" not in res["answer"]  # plain prose, no markdown
+
+
+def test_rag_llm_path_grounds_and_uses_model(monkeypatch):
+    import types
+
+    from .rag import TasteRAG
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+    captured: dict = {}
+
+    class FakeMessages:
+        def create(self, **kw):
+            captured.update(kw)
+            return types.SimpleNamespace(
+                stop_reason="end_turn",
+                content=[types.SimpleNamespace(type="text", text="Your recent vibe is upbeat indie.")])
+
+    class FakeClient:
+        def __init__(self, api_key=None):
+            self.messages = FakeMessages()
+
+    import anthropic
+    monkeypatch.setattr(anthropic, "Anthropic", FakeClient)
+
+    res = TasteRAG(model="claude-opus-4-8").answer("what's my vibe?", _TASTE)
+    assert res["source"] == "llm" and "indie" in res["answer"].lower()
+    assert captured["model"] == "claude-opus-4-8" and captured["max_tokens"] == 1024
+    prompt = captured["messages"][0]["content"]
+    assert "Muse" in prompt and "Moderate drift" in prompt  # grounded on their data
+
+
+def test_rag_llm_refusal_falls_back(monkeypatch):
+    import types
+
+    from .rag import TasteRAG
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+
+    class FakeClient:
+        def __init__(self, api_key=None):
+            self.messages = types.SimpleNamespace(
+                create=lambda **kw: types.SimpleNamespace(stop_reason="refusal", content=[]))
+
+    import anthropic
+    monkeypatch.setattr(anthropic, "Anthropic", FakeClient)
+    res = TasteRAG().answer("...", _TASTE)
+    assert res["source"] == "fallback" and "Muse" in res["answer"]
+
+
+def _seed_session(taste=None):
+    from .app import _signer, _store
+    sid = _store.new()
+    sess = _store.get(sid)
+    sess["token"] = {"access_token": "x"}  # authenticated
+    if taste is not None:
+        sess["taste"] = taste
+    return _signer.sign(sid)
+
+
+def test_ask_unauthenticated_redirects_home(client):
+    r = client.post("/ask", data={"q": "hi"}, follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "/"
+
+
+def test_ask_without_dashboard_redirects_to_dashboard(client):
+    client.cookies.set(config.SESSION_COOKIE, _seed_session(taste=None))
+    r = client.post("/ask", data={"q": "hi"}, follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "/dashboard"
+
+
+def test_ask_returns_grounded_answer(client, monkeypatch):
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    client.cookies.set(config.SESSION_COOKIE, _seed_session(taste=_TASTE))
+    r = client.post("/ask", data={"q": "what is my vibe lately?"})
+    assert r.status_code == 200
+    assert "vibe lately" in r.text and "Muse" in r.text  # question echoed + grounded answer

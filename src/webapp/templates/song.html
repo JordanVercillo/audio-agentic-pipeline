@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="dash song">
+  <a class="back" href="/dashboard">← Back to your dashboard</a>
+  <h1>{{ name }}</h1>
+  <p class="muted artist-line">{{ artist }}</p>
+
+  {% if analyzed %}
+  <div class="song-grid">
+    <div class="song-spec">
+      {% if has_spectrogram %}
+      <img class="spectrogram" src="/spectrogram/{{ track_id }}"
+           alt="mel-spectrogram of {{ name }}" loading="lazy">
+      <p class="cap">Mel-spectrogram — mel-frequency over time, from the extracted audio.</p>
+      {% else %}
+      <div class="spec-pending">Spectrogram is being generated…</div>
+      {% endif %}
+      <div class="summary-row">
+        <span><b>{{ summary.tempo }}</b><small>tempo</small></span>
+        <span><b>{{ summary.energy }}</b><small>energy</small></span>
+        <span><b>{{ summary.brightness }}</b><small>brightness</small></span>
+      </div>
+    </div>
+    <div class="song-radar">
+      {{ radar|safe }}
+      <p class="cap">Acoustic fingerprint — each axis normalized across the corpus.</p>
+    </div>
+  </div>
+
+  {% if similar %}
+  <h2 class="section">Songs like this</h2>
+  <div class="artists">
+    {% for s in similar %}
+    <a class="artist" href="/song/{{ s.id }}">
+      <div class="ameta">
+        <span class="aname">{{ s.name }}</span>
+        <span class="genres">{{ s.artist }}</span>
+      </div>
+    </a>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {% else %}
+  <p class="lede">This song is queued for analysis — its acoustic features and
+    spectrogram will appear here once a worker has extracted them.</p>
+  <a class="btn" href="/dashboard">Back to your dashboard</a>
+  {% endif %}
+</section>
+{% endblock %}

@@ -44,6 +44,8 @@ dependencies = [
     "uvicorn[standard]>=0.50.0",
     "itsdangerous>=2.2.0",
     "python-multipart>=0.0.32",
+    "anthropic>=0.116.0",
+    "sqlalchemy>=2.0.51",
 ]
 
 [project.optional-dependencies]

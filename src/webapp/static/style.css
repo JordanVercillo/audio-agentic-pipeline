@@ -34,6 +34,23 @@ main { max-width: 980px; margin: 0 auto; padding: 2rem 1.5rem 3rem; }
 .assurances strong { color: var(--ink); }
 
 .dash h1 { font-size: 1.7rem; letter-spacing: -.02em; margin: 0 0 1.25rem; }
+
+.ask { display: flex; gap: .5rem; margin: 0 0 1.5rem; }
+.ask input {
+  flex: 1; background: var(--panel-2); border: 1px solid var(--line); color: var(--ink);
+  border-radius: 999px; padding: .7rem 1.1rem; font-size: 1rem;
+}
+.ask input:focus { outline: none; border-color: var(--spotify); }
+.ask button {
+  background: var(--spotify); color: var(--spotify-ink); font-weight: 700;
+  border: 0; border-radius: 999px; padding: .7rem 1.4rem; font-size: 1rem; cursor: pointer;
+}
+.qa { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 1.25rem 1.4rem; }
+.qa .q { color: var(--muted); font-weight: 600; margin: 0 0 .6rem; }
+.qa .q::before { content: "“"; } .qa .q::after { content: "”"; }
+.qa .a { font-size: 1.15rem; line-height: 1.6; }
+.qa .src { color: var(--muted); font-size: .75rem; text-transform: uppercase; letter-spacing: .04em; margin: 1rem 0 0; }
+.btn.ghost { background: transparent; color: var(--ink); border: 1px solid var(--line); }
 .insight {
   background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--spotify);
   border-radius: 12px; padding: 1.1rem 1.25rem; margin-bottom: 1.75rem;
@@ -76,7 +93,46 @@ ol.tracks li.match { background: var(--hit); }
   border: 1px solid var(--spotify); border-radius: 999px; width: 1.3rem; height: 1.3rem; display: grid; place-items: center; }
 .muted { color: var(--muted); }
 
+/* ── track hover tooltip (Epic B) ── */
+ol.tracks li { position: relative; }
+a.tname { color: var(--ink); text-decoration: none; }
+a.tname:hover { color: var(--spotify); }
+.feat-pop {
+  position: absolute; left: 2.2rem; bottom: calc(100% - .25rem); z-index: 5;
+  background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px;
+  padding: .5rem .75rem; display: none; gap: .9rem; white-space: nowrap;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, .45); font-size: .8rem;
+}
+.feat-pop span { color: var(--muted); }
+.feat-pop b { color: var(--ink); }
+ol.tracks li:hover .feat-pop { display: flex; }
+
+/* ── deep-dive (Epic B) ── */
+.song .back { color: var(--muted); font-size: .85rem; }
+.song h1 { margin: .6rem 0 .1rem; }
+.artist-line { margin: 0 0 1.25rem; }
+.song-grid { display: grid; grid-template-columns: 1.6fr 1fr; gap: 1.25rem; align-items: start; }
+.song-spec, .song-radar {
+  background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 1rem;
+}
+.spectrogram { width: 100%; border-radius: 8px; display: block; }
+.spec-pending {
+  aspect-ratio: 16 / 7; display: grid; place-items: center; color: var(--muted);
+  background: var(--panel-2); border-radius: 8px;
+}
+.cap { color: var(--muted); font-size: .75rem; margin: .5rem 0 0; }
+.summary-row { display: flex; gap: 1.5rem; margin-top: .9rem; }
+.summary-row span { display: flex; flex-direction: column; }
+.summary-row b { font-size: 1.15rem; }
+.summary-row small { color: var(--muted); text-transform: uppercase; letter-spacing: .04em; font-size: .68rem; }
+.radar { width: 100%; height: auto; }
+.radar-ring, .radar-axis { fill: none; stroke: var(--line); }
+.radar-poly { fill: var(--spotify); fill-opacity: .28; stroke: var(--spotify); stroke-width: 1.5; }
+.radar-label { fill: var(--muted); font-size: 10px; }
+a.artist { text-decoration: none; }
+a.artist:hover { border-color: var(--spotify); }
+
 @media (max-width: 720px) {
-  .ranges, .cards { grid-template-columns: 1fr; }
+  .ranges, .cards, .song-grid { grid-template-columns: 1fr; }
   .hero h1 { font-size: 1.7rem; }
 }

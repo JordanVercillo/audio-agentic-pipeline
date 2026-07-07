@@ -57,6 +57,18 @@ class FeatureStore:
             if {"spotify_track_id", "genre_bucket"}.issubset(ca.columns):
                 self._genre = dict(zip(ca["spotify_track_id"], ca["genre_bucket"], strict=False))
 
+        # Agent-readable feature descriptions (for RAG grounding — SPEC P8).
+        self.descriptions: dict[str, str] = {}
+        cd_path = self.modeled_dir / "column_descriptions.parquet"
+        if cd_path.exists():
+            cd = pd.read_parquet(cd_path)
+            if {"column_name", "description"}.issubset(cd.columns):
+                self.descriptions = dict(zip(cd["column_name"], cd["description"], strict=False))
+
+    def feature_glossary(self, cols: list[str]) -> dict[str, str]:
+        """Descriptions for the named feature columns (subset of column_descriptions)."""
+        return {c: self.descriptions[c] for c in cols if c in self.descriptions}
+
     # ── the join ──────────────────────────────────────────────────────────
     def profile(self, track_ids: list[str]) -> dict[str, Any]:
         """

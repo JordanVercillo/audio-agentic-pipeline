@@ -21,20 +21,30 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any, Optional
 
-from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi import FastAPI, Form, Request
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from ..ingestion.fetchers import fetch_top_artists, fetch_top_tracks
+from ..store.cache import FeatureCache
 from . import auth_web, config
 from .featurestore import FeatureStore
+from .rag import TasteRAG
 from .sessions import CookieSigner, SessionStore
+from .taste import absolute_profile, drift_over_rows, radar_svg, track_summary
 
 logger = logging.getLogger(__name__)
 
 _BASE = Path(__file__).resolve().parent
 templates = Jinja2Templates(directory=str(_BASE / "templates"))
+
+# Where the extraction worker / seed write mel-spectrogram PNGs (GCS in prod).
+_SPECTROGRAM_DIR = _BASE.parent.parent / "data" / "spectrograms"
+
+
+def _spectrogram_path(track_id: str) -> Path:
+    return _SPECTROGRAM_DIR / f"{Path(track_id).name}.png"  # .name strips path traversal
 
 _store = SessionStore(ttl_seconds=config.SESSION_TTL_SECONDS)
 _signer = CookieSigner(config.get_session_secret())
@@ -49,54 +59,71 @@ _TIME_RANGES = [
 
 @lru_cache(maxsize=1)
 def _feature_store() -> Optional[FeatureStore]:
-    """The gold acoustic corpus, loaded once. None if the warehouse isn't built."""
+    """The gold corpus — used only for the RAG feature glossary now. None if unbuilt."""
     try:
         return FeatureStore(config.MODELED_DIR)
     except FileNotFoundError as exc:
-        logger.warning("Feature store unavailable (%s) — overlap insight disabled.", exc)
+        logger.warning("Feature store unavailable (%s) — RAG glossary disabled.", exc)
         return None
 
 
-def build_dashboard_context(client: Any, store: Optional[FeatureStore]) -> dict[str, Any]:
-    """
-    Fetch the visitor's top tracks (3 ranges) and join against the corpus.
+@lru_cache(maxsize=1)
+def _feature_cache() -> FeatureCache:
+    """The shared, track-keyed feature cache (Epic A) — the dashboard's feature source."""
+    return FeatureCache()
 
-    Pure w.r.t. I/O boundaries: `client` supplies the tracks (mockable in tests),
-    `store` supplies the corpus. Returns the template context.
+
+def build_dashboard_context(client: Any, cache: FeatureCache) -> dict[str, Any]:
+    """
+    Fetch the visitor's top tracks (3 ranges) and describe their OWN analyzed
+    songs from the shared cache: hits render real acoustic features now, misses
+    are queued for background extraction (analyze once, ever — D-11).
+
+    `client` supplies the tracks and `cache` the features — both mockable in tests.
     """
     ranges: list[dict[str, Any]] = []
     all_ids: list[str] = []
     per_range_ids: dict[str, list[str]] = {}
+    meta_items: list[dict[str, Any]] = []
     for key, label in _TIME_RANGES:
         df = fetch_top_tracks(time_range=key, limit=20, sp=client)
         tracks, ids_here = [], []
         if df is not None and not df.empty:
             for _, r in df.iterrows():
                 tid = r["spotify_track_id"]
+                name, artist = r.get("track_name", ""), r.get("artist_names", "")
                 all_ids.append(tid)
                 ids_here.append(tid)
-                tracks.append({
-                    "rank": int(r.get("rank", 0)),
-                    "name": r.get("track_name", ""),
-                    "artist": r.get("artist_names", ""),
-                    "id": tid,
-                    "art": r.get("album_image_url"),
-                })
+                meta_items.append(
+                    {"spotify_track_id": tid, "track_name": name, "artist_names": artist})
+                tracks.append({"rank": int(r.get("rank", 0)), "name": name,
+                               "artist": artist, "id": tid, "art": r.get("album_image_url")})
         per_range_ids[key] = ids_here
         ranges.append({"key": key, "label": label, "tracks": tracks})
 
-    profile = store.profile(all_ids) if store is not None else None
-    overlap = set(profile["overlap_ids"]) if profile else set()
+    # The shared cache: remember metadata (for the worker's search), read hits,
+    # queue misses for extraction, report coverage.
+    cache.remember_meta(meta_items)
+    cached = cache.get(all_ids)          # {id: features} — the visitor's OWN analyzed songs
+    cache.enqueue(all_ids)               # misses → extraction queue (idempotent)
+    coverage = cache.job_status(all_ids)
+
+    analyzed = set(cached)
     for rng in ranges:
         for t in rng["tracks"]:
-            t["in_corpus"] = t["id"] in overlap
+            t["analyzed"] = t["id"] in analyzed
+            t["feat"] = track_summary(cached.get(t["id"]))  # hover tooltip
 
-    drift = store.drift_profile(per_range_ids) if store is not None else None
+    rows = list(cached.values())
+    per_range_rows = {k: [cached[i] for i in ids if i in cached]
+                      for k, ids in per_range_ids.items()}
     return {
         "ranges": ranges,
-        "profile": profile,
-        "drift": drift,
+        "profile": absolute_profile(rows),
+        "drift": drift_over_rows(per_range_rows),
         "artists": _top_artists(client),
+        "coverage": {"analyzed": coverage["cached"], "total": coverage["total"],
+                     "analyzing": coverage["queued"] + coverage["running"]},
         "track_total": len(set(all_ids)),
     }
 
@@ -117,6 +144,24 @@ def _top_artists(client: Any, limit: int = 12) -> list[dict[str, Any]]:
         }
         for _, r in df.head(limit).iterrows()
     ]
+
+
+def _slim_taste(ctx: dict[str, Any]) -> dict[str, Any]:
+    """The grounding-relevant subset of the dashboard context, cached in-session for /ask."""
+    return {
+        "profile": ctx.get("profile"),
+        "drift": ctx.get("drift"),
+        "coverage": ctx.get("coverage"),
+        "artists": [{"name": a["name"], "genres": a.get("genres", "")}
+                    for a in (ctx.get("artists") or [])],
+        "ranges": [
+            {"label": r["label"],
+             "tracks": [{"name": t["name"], "artist": t["artist"],
+                         "analyzed": t.get("analyzed", False)}
+                        for t in r["tracks"][:10]]}
+            for r in ctx.get("ranges", [])
+        ],
+    }
 
 
 def create_app() -> FastAPI:
@@ -176,7 +221,7 @@ def create_app() -> FastAPI:
             return RedirectResponse("/", status_code=303)
         try:
             client = auth_web.client_from_session(session)
-            ctx = build_dashboard_context(client, _feature_store())
+            ctx = build_dashboard_context(client, _feature_cache())
         except Exception as exc:  # noqa: BLE001 — show a clean error, drop the session
             logger.exception("dashboard build failed")
             _store.delete(request.state.sid)
@@ -185,7 +230,57 @@ def create_app() -> FastAPI:
                 request, "error.html",
                 {"detail": f"Could not load your data: {exc}", "authed": False},
                 status_code=502)
+        session["taste"] = _slim_taste(ctx)  # compact grounding for /ask
         return templates.TemplateResponse(request, "dashboard.html", {**ctx, "authed": True})
+
+    @app.post("/ask", response_class=HTMLResponse)
+    def ask(request: Request, q: str = Form("")):
+        session = request.state.session
+        if not auth_web.is_authenticated(session):
+            return RedirectResponse("/", status_code=303)
+        taste = session.get("taste")
+        if not taste:  # dashboard hasn't been loaded this session
+            return RedirectResponse("/dashboard", status_code=303)
+        question = (q or "").strip()
+        if not question:
+            return RedirectResponse("/dashboard", status_code=303)
+        result = TasteRAG(_feature_store()).answer(question, taste)
+        return templates.TemplateResponse(request, "ask.html", {
+            "authed": True, "question": question,
+            "answer": result["answer"], "source": result["source"],
+        })
+
+    @app.get("/song/{track_id}", response_class=HTMLResponse)
+    def song(request: Request, track_id: str):
+        if not auth_web.is_authenticated(request.state.session):
+            return RedirectResponse("/", status_code=303)
+        cache = _feature_cache()
+        features = cache.get([track_id]).get(track_id)
+        meta = cache.get_meta(track_id) or {}
+        ctx: dict[str, Any] = {
+            "authed": True, "track_id": track_id,
+            "name": meta.get("track_name") or track_id,
+            "artist": meta.get("artist_names") or "",
+            "analyzed": features is not None,
+        }
+        if features is not None:
+            ctx["summary"] = track_summary(features)
+            ctx["radar"] = radar_svg(features)
+            ctx["has_spectrogram"] = _spectrogram_path(track_id).exists()
+            ctx["similar"] = [
+                {"id": sid, "name": (cache.get_meta(sid) or {}).get("track_name") or sid,
+                 "artist": (cache.get_meta(sid) or {}).get("artist_names") or ""}
+                for sid, _dist in cache.similar(track_id, k=6)
+            ]
+        return templates.TemplateResponse(request, "song.html", ctx)
+
+    @app.get("/spectrogram/{track_id}")
+    def spectrogram(track_id: str):
+        path = _spectrogram_path(track_id)
+        if not path.exists():
+            from fastapi import HTTPException
+            raise HTTPException(status_code=404, detail="no spectrogram")
+        return FileResponse(path, media_type="image/png")
 
     @app.get("/logout")
     def logout(request: Request):
