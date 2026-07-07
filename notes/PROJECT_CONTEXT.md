@@ -20,12 +20,27 @@
   orchestrator rebuilt to match docs, ffmpeg/libmp3lame installed, DSP
   feature-serialization gap closed (warehouse: 82 numeric feature cols;
   FAISS vector unchanged at 77). Phase-4 webapp still NOT in this repo copy.
-- **➡️ NEXT ACTION — SPEC P8 slice 2: RAG `/ask` (DEFERRED by owner 2026-07-05 —
-  pilot paused as a working demo).** Grounded answer box over a per-session
-  `WarehouseAgent(modeled_dir=…)` (reuse the P5 sandbox): retrieve the visitor's
-  tracks + acoustic overlap + drift → LLM answer w/ deterministic fallback (D-5).
-  Then 3 Dockerfile → 4 Cloud Run + domain + allowlist; plus a polish/UX pass
-  (owner deferred revisions). Plan: [`docs/P8_PLAN.md`](docs/P8_PLAN.md).
+- **➡️ NEXT ACTION — build the FULL APP per [`docs/APP_SPEC.md`](docs/APP_SPEC.md)
+  (owner vision, 2026-07-07). Build order: Epic A first — the shared,
+  track-keyed FEATURE-CACHE DB (Postgres + pgvector) + per-user ASYNC
+  extraction** (yt-dlp → librosa 77-dim + mel-spectrogram → DB/GCS; analyze each
+  song once, ever — D-11/D-12). Then B (audio-features dashboard: hover +
+  deep-dive + spectrogram), C (ML clustering of songs AND artists + drift
+  dashboard), E-partial (Dockerfile → Cloud Run so real users seed the cache),
+  D (RAG classification, Phase 2), E-full (domain, allowlist, opt-in
+  longitudinal snapshots — D-13). **This supersedes P8's "visitors never
+  trigger acquisition" non-goal (D-11).** P8 pilot slices 1/1.5/2 are the
+  foundation (done). Deferred P8 deploy (Dockerfile → Cloud Run) folds into
+  Epic E. Owner still to do: GCP/domain, Spotify prod redirect + extended-quota
+  request, prod `SESSION_SECRET_KEY` (+ optional `ANTHROPIC_API_KEY`).
+- **✅ P8 slice 2 (2026-07-05): RAG `/ask` grounded taste Q&A — the last of the 4
+  pilot features.** `rag.py` (`TasteRAG`): grounds on the visitor's overlap
+  insight + drift + top artists + top tracks + gold `column_descriptions`
+  glossary; LLM (`claude-opus-4-8`, `WEBAPP_LLM_MODEL` override) with
+  deterministic fallback (D-5); never raises. POST `/ask` over an in-session
+  `taste` context cached at `/dashboard`. 7 tests → **173 green**, ruff clean.
+  Committed on `p8/slice-1` (updates PR #6). Live-test of `/ask` still pending
+  owner; no `ANTHROPIC_API_KEY` set yet → deterministic fallback runs.
 - **✅ P8 pilot slices 1 + 1.5 (2026-07-05): FastAPI webapp, VERIFIED LIVE with a
   real Spotify login.** Slice 1: session-scoped PKCE (token in server session not
   the file cache; CSRF `state` gate; session-id rotation), `SessionStore` (TTL +
@@ -103,7 +118,8 @@ narrative goes to `notes/engineering_journal.md`, plans to
 | `src/webapp/` | **SPEC P8 slice 1: FastAPI pilot.** `auth_web.py` (session-scoped PKCE — token in session, CSRF state gate, D-8 no secret), `sessions.py` (TTL `SessionStore` + signed cookie + rotate), `featurestore.py` (bridge-key overlap-join + acoustic insight), `app.py` (routes: `/ login callback dashboard logout healthz`), `config.py`, `templates/`, `static/`. Test: `test_webapp.py` (15). Run: `uv run python scripts/run_webapp.py` → :8000. |
 | `docs/AGENT_ACCESS.md` | P5 artifact: MCP registration config (Claude Desktop/Code) + security model + live demo transcript. |
 | `docs/SCALING.md` | P7 artifact: honest 10K/1M-track scaling design (bottleneck = acquisition+DSP; GCS/BigQuery; Spark-vs-Dataflow; the `spark-parity` CI proof). |
-| `docs/P8_PLAN.md` | **P8 build plan (design approved 2026-07-05): FastAPI + Jinja2; `src/webapp/` module layout; session-scoped PKCE; feature-store overlap-join; per-session `WarehouseAgent` RAG; 4-slice sequence.** Not yet built. |
+| `docs/P8_PLAN.md` | P8 build plan (FastAPI + Jinja2; session PKCE; feature-store overlap-join; RAG; 4-slice sequence). Slices 1, 1.5, 2 BUILT. |
+| `docs/APP_SPEC.md` | **THE long-term product spec (2026-07-07): per-user extraction + shared track-keyed feature-cache DB (Postgres+pgvector, D-11/D-12), audio-features dashboard w/ hover+deep-dive+spectrogram, ML clustering of songs AND artists, drift dashboard, RAG classification (Phase 2). Epics A–E + build order + decisions D-11…D-15. Extends `SPEC.md`.** |
 | `artifacts/` | COMMITTED portfolio outputs (PNGs, reports) — unlike `data/`, these are deliverables. |
 | `legacy/` | Archived pre-pipeline v0 (moved 2026-07-04, P6): `legacy/spotify/` (secret-based v0 scripts) + `legacy/00_tools/` (media_converter). Excluded from ruff/tests/CI; nothing in `src/` imports it. See `legacy/README.md`. |
 | `data/` (gitignored) | `raw_audio/{track_id}.mp3` + `warehouse/{staging,cleansed,modeled}/` Parquet. Rebuild: `run_pipeline.py`. |
@@ -474,3 +490,15 @@ narrative goes to `notes/engineering_journal.md`, plans to
   owner PAUSED — pilot locked in as a working demo. Next when resumed: RAG
   `/ask` (slice 2), then Dockerfile → Cloud Run, + a polish/UX pass. Merge
   PR #6 when ready.**
+- **2026-07-07 (session 12 — RAG slice 2 + FULL-APP VISION SPEC):** Built P8
+  slice 2 (RAG `/ask`, `rag.py` — grounded LLM w/ deterministic fallback, 7
+  tests → 173 green), committed on `p8/slice-1` (PR #6). Then owner set the
+  long-term vision; wrote **[`docs/APP_SPEC.md`](docs/APP_SPEC.md)** — the full
+  product spec: per-user extraction + **shared track-keyed feature-cache DB
+  (Postgres+pgvector)**, audio-features dashboard (hover/deep-dive/spectrogram),
+  ML clustering of songs AND artists, drift dashboard, RAG classification
+  (Phase 2); Epics A–E, build order, decisions **D-11…D-15** (D-11 supersedes
+  P8's no-acquisition non-goal; D-13 flags longitudinal drift needs opt-in
+  snapshots). **Left off: vision spec approved-pending; next concrete build =
+  Epic A (feature-cache DB + async extraction). Owner still owns GCP/domain +
+  Spotify prod config. `/ask` live-test + PR #6 merge still pending owner.**
