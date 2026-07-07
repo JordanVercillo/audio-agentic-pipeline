@@ -22,7 +22,7 @@ from typing import Any, Optional
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 
-from .models import Base, ExtractionJob, TrackFeatures, utcnow
+from .models import Base, ExtractionJob, TrackFeatures, TrackMeta, utcnow
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 _DEFAULT_SQLITE = f"sqlite:///{_PROJECT_ROOT / 'data' / 'feature_cache.db'}"
@@ -99,6 +99,31 @@ class FeatureCache:
                 job.status = JOB_DONE
                 job.last_error = None
             s.commit()
+
+    # ── track metadata (for the worker's YouTube query) ─────────────────────
+    def remember_meta(self, items: list[dict]) -> None:
+        """Upsert minimal metadata (name/artist) so the worker can search for the audio."""
+        if not items:
+            return
+        with self._Session() as s:
+            for it in items:
+                tid = it.get("spotify_track_id") or it.get("id")
+                if not tid:
+                    continue
+                s.merge(TrackMeta(
+                    spotify_track_id=tid,
+                    track_name=it.get("track_name") or it.get("name"),
+                    artist_names=it.get("artist_names") or it.get("artist"),
+                    album_name=it.get("album_name")))
+            s.commit()
+
+    def get_meta(self, track_id: str) -> Optional[dict]:
+        with self._Session() as s:
+            m = s.get(TrackMeta, track_id)
+            if m is None:
+                return None
+            return {"spotify_track_id": m.spotify_track_id, "track_name": m.track_name,
+                    "artist_names": m.artist_names, "album_name": m.album_name}
 
     # ── queue ──────────────────────────────────────────────────────────────
     def enqueue(self, track_ids: list[str]) -> list[str]:

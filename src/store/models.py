@@ -42,6 +42,17 @@ class TrackFeatures(Base):
     extracted_at = Column(DateTime, default=utcnow)
 
 
+class TrackMeta(Base):
+    """Minimal metadata for the YouTube search query (set when a miss is enqueued)."""
+
+    __tablename__ = "track_meta"
+
+    spotify_track_id = Column(String, primary_key=True)
+    track_name = Column(String)
+    artist_names = Column(String)
+    album_name = Column(String)
+
+
 class ExtractionJob(Base):
     __tablename__ = "extraction_jobs"
 
