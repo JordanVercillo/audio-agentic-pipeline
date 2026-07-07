@@ -80,6 +80,20 @@ class FeatureCache:
             ).scalars().all()
         return {r.spotify_track_id: r.features for r in rows}
 
+    def all_features(self) -> dict[str, dict]:
+        """Every cached track's features — the clustering population (Epic C)."""
+        with self._Session() as s:
+            rows = s.execute(select(TrackFeatures)).scalars().all()
+        return {r.spotify_track_id: r.features for r in rows}
+
+    def all_meta(self) -> dict[str, dict]:
+        """Every track's metadata, keyed by bridge key."""
+        with self._Session() as s:
+            rows = s.execute(select(TrackMeta)).scalars().all()
+        return {m.spotify_track_id: {
+            "track_name": m.track_name, "artist_names": m.artist_names,
+        } for m in rows}
+
     def cached_ids(self, track_ids: list[str]) -> set[str]:
         if not track_ids:
             return set()

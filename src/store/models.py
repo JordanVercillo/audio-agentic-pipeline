@@ -62,3 +62,47 @@ class ExtractionJob(Base):
     last_error = Column(String)
     requested_at = Column(DateTime, default=utcnow)
     updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
+
+
+class ClusterModel(Base):
+    """A versioned clustering model (APP_SPEC Epic C) — enough state to assign
+    new tracks online: the scaler stats + centroids in scaled space."""
+
+    __tablename__ = "cluster_models"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    kind = Column(String, nullable=False)          # "song" | "artist"
+    k = Column(Integer, nullable=False)
+    silhouette = Column(Float)
+    feature_cols = Column(JSON, nullable=False)    # ordered list of columns used
+    scaler_mean = Column(JSON, nullable=False)     # per-column population mean
+    scaler_std = Column(JSON, nullable=False)      # per-column population std
+    centroids = Column(JSON, nullable=False)       # k × d, in scaled+normalized space
+    labels = Column(JSON, nullable=False)          # {"0": "Loud · Fast", ...}
+    trained_at = Column(DateTime, default=utcnow)
+
+
+class TrackCluster(Base):
+    """A track's cluster assignment + 2-D map coordinates (bridge-key keyed)."""
+
+    __tablename__ = "track_clusters"
+
+    spotify_track_id = Column(String, primary_key=True)
+    model_id = Column(Integer, nullable=False)
+    cluster_id = Column(Integer, nullable=False)
+    map_x = Column(Float)   # 2-D embedding (UMAP/PCA) — nullable for online assigns
+    map_y = Column(Float)
+
+
+class ArtistProfile(Base):
+    """An artist's acoustic bucket, derived from their cached tracks' centroid.
+
+    Keyed by primary-artist NAME for now (the cache meta stores names; Spotify
+    artist ids can replace the key later without changing the shape)."""
+
+    __tablename__ = "artist_profiles"
+
+    artist_key = Column(String, primary_key=True)
+    track_count = Column(Integer, nullable=False, default=0)
+    model_id = Column(Integer)
+    cluster_id = Column(Integer)

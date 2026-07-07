@@ -281,3 +281,25 @@ facts; only the lock knows the second one, and only CI runs it.
 > *Test the environment you ship, not the one that's convenient. If it didn't
 > run from the frozen lock, "it ran" is a statement about your PATH, not your
 > code.*
+
+## Epic C — population clustering
+
+### 13. One ghost track poisoned every feature column (2026-07-07)
+
+First real-data training run: "skipped (not enough cached tracks)" — on a cache
+holding 118 tracks. The debugger said `all_features()` returned all 118. The
+culprit was the ONE track whose audio was never acquired (the audit's known
+soft warning): its feature dict is all-None, and `select_feature_cols` required
+a column to be present in EVERY row. One sparse row → zero usable columns →
+training silently declined. Synthetic tests never caught it because synthetic
+corpora are, by construction, complete.
+
+**The realization:** intersection semantics are brittle exactly where real data
+lives — the requirement isn't "present everywhere," it's "present enough to
+train on." Coverage (≥90% of rows) + excluding incomplete rows from the run is
+the honest version: the ghost sits out and gets assigned when its features
+arrive, instead of vetoing the population.
+
+> *Never let one degenerate row define the schema. Select columns by coverage,
+> filter rows by completeness — and keep one deliberately-sparse row in the
+> test fixtures, because synthetic data is too polite to break you.*

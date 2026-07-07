@@ -231,6 +231,83 @@ def test_spectrogram_serves_png(client, monkeypatch, tmp_path):
     assert r.status_code == 200 and r.headers["content-type"] == "image/png"
 
 
+# ── analytics view logic (Epic C) ──────────────────────────────────────────
+def test_acoustic_signature_ranks_the_extreme_feature():
+    from .analytics import acoustic_signature
+    population = [_feat(t) for t in (90, 100, 110, 120, 130, 140)]
+    user = [_feat(150), _feat(155)]  # much faster than the population
+    sig = acoustic_signature(user, population)
+    assert sig and sig[0]["feature"] == "Tempo"
+    assert sig[0]["z"] > 0 and sig[0]["word"] == "faster"
+    assert acoustic_signature([], population) == []
+
+
+def test_cluster_composition_movement_sentence():
+    from .analytics import cluster_composition
+    labels = {"0": "Loud · Fast", "1": "Quiet · Slow"}
+    comp = cluster_composition(
+        {"short_term": [0, 0, 0, 1], "long_term": [0, 1, 1, 1]}, labels)
+    assert comp["windows"]["short_term"][0]["label"] == "Loud · Fast"
+    assert "Loud · Fast" in comp["movement"] and "toward" in comp["movement"]
+    # identical windows → no movement story
+    same = cluster_composition({"short_term": [0, 1], "long_term": [0, 1]}, labels)
+    assert same["movement"] is None
+
+
+def test_scatter_svg_layers_user_over_population():
+    from .analytics import scatter_svg
+    population = [{"id": f"p{i}", "x": float(i), "y": float(i % 3), "cluster_id": i % 2}
+                  for i in range(8)]
+    user = [dict(population[0], name="Mine", artist="Me")]
+    svg = scatter_svg(population, user)
+    assert svg.startswith("<svg") and 'stroke="#171a21"' in svg  # ringed user dot
+    assert "<title>Mine — Me</title>" in svg
+    assert scatter_svg(population[:2], []) is None  # too few points
+
+
+def test_analytics_unauthenticated_redirects(client):
+    r = client.get("/analytics", follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "/"
+
+
+def test_analytics_without_dashboard_redirects(client):
+    client.cookies.set(config.SESSION_COOKIE, _seed_session(taste={"range_ids": {}}))
+    r = client.get("/analytics", follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "/dashboard"
+
+
+def test_analytics_renders_clusters_signature_and_map(client, monkeypatch, tmp_path):
+    from ..store.cache import FeatureCache
+    from ..store.clusters import train_artist_clusters, train_song_clusters
+    from ..store.test_clusters import _blob_a, _blob_b
+
+    tc = FeatureCache(url=f"sqlite:///{tmp_path / 'an.db'}")
+    meta = []
+    for i in range(6):
+        tc.upsert(f"a{i}", _blob_a(i))
+        tc.upsert(f"b{i}", _blob_b(i))
+        meta.append({"spotify_track_id": f"a{i}", "track_name": f"Slow {i}",
+                     "artist_names": f"CalmArtist{i // 2}"})
+        meta.append({"spotify_track_id": f"b{i}", "track_name": f"Fast {i}",
+                     "artist_names": f"LoudArtist{i // 2}"})
+    tc.remember_meta(meta)
+    assert train_song_clusters(tc, coords="pca") is not None
+    assert train_artist_clusters(tc) is not None
+    monkeypatch.setattr("src.webapp.app._feature_cache", lambda: tc)
+
+    taste = {"range_ids": {"short_term": ["b0", "b1", "a0"],
+                           "medium_term": ["b1", "b2"],
+                           "long_term": ["a0", "a1", "a2"]},
+             "artists": [{"name": "LoudArtist0", "genres": ""}]}
+    client.cookies.set(config.SESSION_COOKIE, _seed_session(taste=taste))
+    r = client.get("/analytics")
+    assert r.status_code == 200
+    assert "acoustic signature" in r.text.lower()
+    assert "cluster-map" in r.text                     # the SVG map rendered
+    assert "Artists who sound alike" in r.text and "LoudArtist0" in r.text
+    assert 'class="comp-bar"' in r.text                # composition bars
+
+
 # ── dashboard context: reads the cache, flags analyzed, queues misses ───────
 def test_build_dashboard_context(monkeypatch, tmp_path):
     from ..store.cache import FeatureCache
