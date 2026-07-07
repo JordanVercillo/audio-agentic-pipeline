@@ -28,7 +28,14 @@
   from data/spectrograms) + inline-SVG **radar** (`taste.radar_svg`) + **"songs
   like this"** (`FeatureCache.similar` — z-scored distance, pgvector in prod);
   `seed_cache.py --spectrograms` renders them from owner MP3s. Proven: real 128KB
-  spectrogram + deep-dive render. 195 tests green.** ✅ **Epic A COMPLETE
+  spectrogram + deep-dive render. 195 tests green.** **APP_SPEC is now v2
+  (2026-07-07, owner constraint): LOCAL-FIRST at $0 — no GCP/BQ/Cloud Run;
+  hosting = owner PC + free HTTPS tunnel (Cloudflare/Tailscale) (D-16); serving
+  DB = SQLite+WAL default with `DATABASE_URL`→local-Docker-Postgres upgrade
+  (D-12 amended); the DB IS the queue (worker `--loop`); cache = backed-up asset
+  (D-17); residential IP is BETTER for yt-dlp than cloud. Owner actions now
+  $0: Cloudflare account + domain DNS, Spotify redirect for the tunnel URL +
+  extended-quota request, optional ANTHROPIC_API_KEY.** ✅ **Epic A COMPLETE
   (2026-07-07): the shared feature cache + extraction + webapp wiring.** `src/store/`
   (SQLAlchemy, SQLite-dev/Postgres-prod): `FeatureCache` (get/missing/upsert/enqueue/
   claim_next/fail/job_status; TrackMeta) + `extractor.py` worker (yt-dlp → librosa
@@ -128,7 +135,7 @@ narrative goes to `notes/engineering_journal.md`, plans to
 | `docs/AGENT_ACCESS.md` | P5 artifact: MCP registration config (Claude Desktop/Code) + security model + live demo transcript. |
 | `docs/SCALING.md` | P7 artifact: honest 10K/1M-track scaling design (bottleneck = acquisition+DSP; GCS/BigQuery; Spark-vs-Dataflow; the `spark-parity` CI proof). |
 | `docs/P8_PLAN.md` | P8 build plan (FastAPI + Jinja2; session PKCE; feature-store overlap-join; RAG; 4-slice sequence). Slices 1, 1.5, 2 BUILT. |
-| `docs/APP_SPEC.md` | **THE long-term product spec (2026-07-07): per-user extraction + shared track-keyed feature-cache DB (Postgres+pgvector, D-11/D-12), audio-features dashboard w/ hover+deep-dive+spectrogram, ML clustering of songs AND artists, drift dashboard, RAG classification (Phase 2). Epics A–E + build order + decisions D-11…D-15. Extends `SPEC.md`.** |
+| `docs/APP_SPEC.md` | **THE long-term product spec, v2 LOCAL-FIRST (2026-07-07): $0 external spend — owner-PC hosting via free HTTPS tunnel, SQLite+WAL serving cache (`DATABASE_URL`→Postgres upgrade), DB-as-queue worker `--loop`, clustering + acoustic signature + spectrograms + drift, RAG classification (Phase 2). Epics A✅ B✅ C→E→D + decisions D-11…D-17. Extends `SPEC.md`; supersedes its own v1 cloud assumptions.** |
 | `artifacts/` | COMMITTED portfolio outputs (PNGs, reports) — unlike `data/`, these are deliverables. |
 | `legacy/` | Archived pre-pipeline v0 (moved 2026-07-04, P6): `legacy/spotify/` (secret-based v0 scripts) + `legacy/00_tools/` (media_converter). Excluded from ruff/tests/CI; nothing in `src/` imports it. See `legacy/README.md`. |
 | `data/` (gitignored) | `raw_audio/{track_id}.mp3` + `warehouse/{staging,cleansed,modeled}/` Parquet. Rebuild: `run_pipeline.py`. |

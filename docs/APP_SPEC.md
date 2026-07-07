@@ -1,37 +1,41 @@
-# Vercillo Analytics — Full Application Spec & Long-Term Roadmap
+# Vercillo Analytics — Full Application Spec & Long-Term Roadmap (v2, local-first)
 
-**Status:** vision spec — 2026-07-07. Written now that the **P8 pilot is a working
-demo** (PKCE auth → dashboard → acoustic overlap, drift, top artists, grounded
-RAG `/ask`). This document defines the *long-term product* the pilot grows into.
+**Status:** vision spec v2 — 2026-07-07. v1 was written the day the P8 pilot
+became a working demo; **v2 revises it under the owner's cost constraint: zero
+external spend — no GCP/BigQuery/Cloud Run. All development AND hosting stay
+local (the owner's PC) until the app outgrows it.** Epics A and B have shipped
+since v1; statuses below are current.
 
-**Relationship to existing docs.** `SPEC.md` (phases P0–P8, decision log D-1…D-10)
-and `CLAUDE.md` (ground rules) remain in force — they are the foundation. This
-doc **extends** them with the full-app product architecture and adds new
-decisions (**D-11+**). Where this doc and SPEC.md's P8 non-goals differ (notably
-"visitors never trigger acquisition"), **this doc supersedes for the long-term
-app** — see §4 and D-11.
+**Relationship to existing docs.** `SPEC.md` (P0–P8, decisions D-1…D-10) and
+`CLAUDE.md` ground rules remain in force. This doc extends them with the
+full-app architecture and decisions **D-11+**. Where it conflicts with SPEC.md's
+P8 non-goals (notably "visitors never trigger acquisition"), this doc supersedes
+(D-11). Cloud designs in `docs/SCALING.md` remain the *documented migration
+path*, not a build target (D-16).
 
 ---
 
 ## 0. TL;DR
 
-A public, PKCE-authenticated web app (no owner secret — D-8) where any listener:
+A PKCE-authenticated web app (no owner secret — D-8), **running entirely on the
+owner's PC at $0/month**, where any allowlisted listener:
 
 1. **Sees their Spotify top songs & artists** across Spotify's three time windows
    (short / medium / long term — the only windows the 2026 API exposes).
 2. **Sees the local-DSP audio features** of those songs — tempo, energy, timbre,
-   77-dim acoustic vectors — **extracted from YouTube-sourced audio via librosa**,
-   and **cached forever in a shared database** so no song is ever analyzed twice.
-3. **Explores a data-science layer**: ML clustering of their songs *and* artists by
-   acoustic features, taste-drift analytics across the time windows, a **mel-
-   spectrogram per song**, and **hover-to-inspect + deep-dive** on any track.
-4. **Gets a grounded RAG taste classification** (Phase 2): an archetype + narrative
-   grounded strictly on their own clustered features and drift.
+   77-dim vectors — extracted from YouTube-sourced audio via librosa and **cached
+   forever in a local database** so no song is ever analyzed twice.
+3. **Explores a data-science layer**: ML clustering of their songs *and* artists,
+   taste-drift analytics, a **mel-spectrogram per song**, **hover-to-inspect +
+   deep-dive** on any track, and their **acoustic signature** (the features where
+   their taste deviates most from the population).
+4. **Gets a grounded RAG taste classification** (Phase 2): an archetype +
+   narrative grounded strictly on their own clustered features and drift.
 
-It is deliberately an **analytics-engineering showcase**: public APIs, audio
-feature engineering (librosa), a medallion warehouse + Spark, ML clustering, a
-serving database, and an agent-ready RAG layer — the exact surface a Data
-Platform / Data Engineer loop wants to see.
+Deliberately an **analytics-engineering showcase**: public APIs, audio feature
+engineering (librosa), a medallion warehouse + Spark, ML clustering, a serving
+database, and an agent-ready RAG layer — with the *right-sizing judgment* to run
+it all on one machine and the documented path to scale off it.
 
 ---
 
@@ -40,14 +44,16 @@ Platform / Data Engineer loop wants to see.
 > "A user logs in, sees their top Spotify songs and artists by the periods
 > Spotify allows, then views the **top audio features** extracted from those songs
 > (YouTube WAV or any extraction method). A second dashboard shows **drift over
-> time** and tried-and-tested attributes — really interesting bucketing of
-> **similar artists via ML clustering**, and **bucketing songs in your top-3
-> windows via clustering** on their audio features. A fun data-science project
-> highlighting strong analytics-engineering, Spark, and feature engineering
-> leveraging APIs and librosa. Include a **spectrogram of each song**. On polish:
-> **hover a song → see its audio features**, click into a **deep dive**. **Cache
-> all extracted features to a database** so we don't re-extract. **RAG
-> classification** of the user's top songs as a Phase 2."
+> time** — really interesting bucketing of **similar artists via ML clustering**,
+> and **bucketing songs in your top-3 windows via clustering** on their audio
+> features. A fun data-science project highlighting strong analytics-engineering,
+> Spark, and feature engineering leveraging APIs and librosa. Include a
+> **spectrogram of each song**. On polish: **hover a song → see its audio
+> features**, click into a **deep dive**. **Cache all extracted features to a
+> database** so we don't re-extract. **RAG classification** as Phase 2."
+>
+> **v2 constraint:** "no external cost like BQ/GCP — keep all development local
+> and host via my PC before moving to external vendors."
 
 ---
 
@@ -56,166 +62,175 @@ Platform / Data Engineer loop wants to see.
 | Flow | What the user does | What the app shows |
 |---|---|---|
 | **Login** | Authorizes their own Spotify (PKCE, `user-top-read`) | — |
-| **Top items** | Lands on the dashboard | Top tracks + artists, per time window, with album art |
-| **Audio features** | Views the features tab / hovers a track | Per-song acoustic features from the cache; "analyzing…" for misses |
-| **Deep dive** | Clicks a song | Full 77-dim breakdown, **mel-spectrogram**, radar, nearest-neighbor "songs like this", its cluster |
-| **Analytics** | Opens the analytics dashboard | Song clusters across the 3 windows, **artist clusters**, taste-drift trajectory |
-| **Ask / classify** | Asks a question or requests a profile | Grounded RAG answer + (Phase 2) a taste archetype |
+| **Top items** | Lands on the dashboard | Top tracks + artists, per time window, album art |
+| **Audio features** | Hovers a track | Its tempo/energy/brightness from the cache; "analyzing…" for misses |
+| **Deep dive** | Clicks a song | Feature breakdown, **mel-spectrogram**, radar, "songs like this", its cluster (Epic C) |
+| **Analytics** | Opens the analytics dashboard | Song clusters across the 3 windows, **artist clusters**, drift trajectory, **acoustic signature** |
+| **Ask / classify** | Asks a question / requests a profile | Grounded RAG answer + (Phase 2) a taste archetype |
 
 **Privacy invariant (D-7 preserved):** the user's *listening data* stays
 session-ephemeral. The *feature cache* is **track-keyed and user-agnostic** — it
-stores acoustics of songs, not who listened to them (see §6).
+stores acoustics of songs, not who listened to them.
 
 ---
 
-## 3. What exists today (honest baseline)
+## 3. What exists today (honest baseline, post-Epics A+B)
 
 | Layer | Status |
 |---|---|
-| Pipeline P0–P7 (Spotify → YouTube → 77-dim librosa DSP → Parquet medallion → MCP), Spark parity, CI | ✅ on `main` |
-| Song clustering (`analysis/clustering.py`: KMeans + silhouette, 77-dim, UMAP, coarse-genre buckets) | ✅ exists (owner corpus) |
-| Taste drift (`analysis/drift.py`: RMS σ-shift, D-9) | ✅ exists |
-| P8 pilot webapp (`src/webapp/`): PKCE auth, dashboard, **bridge-key overlap** insight, per-visitor drift, top artists, RAG `/ask` | ✅ built, verified live (PR #6) |
-| **Per-user audio extraction** for arbitrary visitors | ❌ pilot reads the owner's 117-track corpus only |
-| **Shared feature-cache database** | ❌ warehouse is Parquet files, not a serving DB |
-| Artist clustering · spectrograms · hover/deep-dive · analytics dashboard · RAG classification | ❌ this spec |
-
-The pilot proves auth, the feature-store join, drift, and grounded RAG. The full
-app's central new work is **turning the owner-only corpus into a self-growing,
-shared, per-user feature cache** — everything else builds on that.
+| Pipeline P0–P7 (Spotify → YouTube → 77-dim DSP → Parquet medallion → MCP), Spark parity in CI | ✅ on `main` |
+| Clustering + drift analytics (`analysis/`: KMeans+silhouette, UMAP, σ-shift D-9) | ✅ (owner corpus; per-user in Epic C) |
+| P8 pilot webapp: PKCE auth, dashboard, drift, top artists, RAG `/ask` | ✅ merged (PR #6) |
+| **Epic A — shared feature cache + async extraction** (`src/store/`: SQLAlchemy cache, DB-backed queue, yt-dlp→librosa→spectrogram worker, seed script; dashboard reads cache, queues misses, shows coverage) | ✅ built (PR #7) |
+| **Epic B — features experience** (hover tooltip, `/song/{id}` deep-dive: spectrogram + radar + "songs like this") | ✅ built (PR #7) |
+| Epic C — clustering dashboards (songs + artists) + drift viz + acoustic signature | ❌ next |
+| Epic D — RAG taste classification | ❌ Phase 2 |
+| Epic E — self-host & share (tunnel, worker loop, backups, privacy page) | ❌ after C |
 
 ---
 
-## 4. The core architectural shift
+## 4. The core architectural shift (unchanged from v1)
 
-The pilot's non-goal was *"visitors never trigger acquisition — they read the
-owner's derived feature store."* The full-app vision requires the opposite:
-**every visitor's songs get their real features**. The way to make that scale
-(and stay cheap, polite, and legal) is a **shared, track-keyed feature cache**:
+Every visitor's songs get their real features via a **shared, track-keyed
+feature cache**: cache hit → instant features; miss → queued for async
+extraction; a miss extracted for one visitor is cached for all. **Analyze each
+song once, ever** (D-11). Extraction never blocks a request.
 
-- On login, fetch the visitor's ~50 top tracks × 3 windows (≤150, fewer unique).
-- **Cache lookup** each `spotify_track_id` in the database.
-  - **Hit** → show real features instantly (the common case, grows over time).
-  - **Miss** → enqueue for **async extraction**; show "analyzing…" and refresh.
-- A miss extracted for *one* visitor is cached for *all* — popular tracks are
-  analyzed once, ever. **Cache hit-rate rises with every user**: the classic
-  "shared derived store" pattern, and a strong data-eng story.
-- **Extraction never blocks a request.** A worker pool (Cloud Run Jobs pulling a
-  queue) does yt-dlp → librosa DSP → 77-dim vector + mel-spectrogram → write DB.
-
-This is idempotency (a ground rule) elevated to a multi-tenant serving cache.
-**D-11** records the shift.
+**v2 addition — why local-first strengthens this:** YouTube aggressively
+throttles and blocks datacenter/cloud IP ranges. yt-dlp from a residential
+connection is *more reliable* than from any cloud worker. The extraction layer —
+the app's riskiest dependency — actively prefers the PC. Local-first is not a
+compromise here; it's the better engineering call (D-16).
 
 ---
 
-## 5. System architecture
+## 5. System architecture (local-first)
 
 ```
- Visitor ──PKCE (no secret, D-8)──> FastAPI  (Cloud Run)
-                                      │
-      ┌───────────────────────────────┼───────────────────────────────┐
-      │ ONLINE (per request)          │ user data ephemeral (D-7)      │
-      │                               │                                │
-      │  Spotify Web API ── top tracks/artists (short/med/long) ──┐    │
-      │                                                           ▼    │
-      │  cache lookup ─────────────────>  ┌──────────────────────────┐ │
-      │                                   │  Postgres + pgvector     │ │  ← shared,
-      │  hit → features + spectrogram ◄───│  track_features(77-dim   │ │    track-keyed,
-      │                                   │   vector), spectrogram_  │ │    user-agnostic
-      │  miss → enqueue ──────────┐       │   uri, cluster_id,       │ │
-      │                           │       │  artist_profiles, models │ │
-      │  analytics/RAG ◄──────────┼───────└──────────────────────────┘ │
-      └───────────────────────────┼────────────────────────────────────┘
-                                  ▼
-                         ┌───────────────────┐
-                         │ Extraction queue  │  (Cloud Tasks / Pub-Sub)
-                         └─────────┬─────────┘
-                                   ▼
-                    Workers (Cloud Run Jobs): yt-dlp → librosa DSP
-                    → 77-dim vector + mel-spectrogram → Postgres + GCS
-
- OFFLINE (batch):  Postgres ──snapshot──> GCS Parquet medallion ──> Spark
-   (feature_transform · KMeans/HDBSCAN clustering · drift · artist centroids)
-   ──> cluster models + assignments written back to Postgres.  MCP agent reads gold.
+ Visitor ── HTTPS ── free tunnel (Cloudflare Tunnel / Tailscale Funnel) ──┐
+                    (Spotify requires HTTPS for non-loopback redirects)   │
+ ┌────────────────────────────── OWNER'S PC ────────────────────────────▼─────┐
+ │                                                                            │
+ │  FastAPI (uvicorn :8000) ── PKCE, no secret (D-8); sessions ephemeral (D-7)│
+ │       │                                                                    │
+ │       ├─ Spotify Web API → top tracks/artists (short/med/long)             │
+ │       ├─ cache lookup ──► SQLite + WAL  (data/feature_cache.db)            │
+ │       │   hit → features + spectrogram    [DATABASE_URL swaps in Postgres] │
+ │       │   miss → INSERT extraction_jobs   ◄── THE DB IS THE QUEUE          │
+ │       └─ analytics / RAG read the same cache                               │
+ │                                                                            │
+ │  Worker process (run_extraction_worker.py --loop)                          │
+ │      polls extraction_jobs → yt-dlp (residential IP) → librosa 77-dim      │
+ │      + mel-spectrogram → cache; audio deleted after (D-15)                 │
+ │      spectrograms → data/spectrograms/*.png                                │
+ │                                                                            │
+ │  OFFLINE (same PC): Parquet medallion + Spark local[*] + scikit-learn      │
+ │      cache snapshot → clustering / drift / artist centroids → results      │
+ │      written back to the cache DB.  MCP agent reads the gold layer.        │
+ └────────────────────────────────────────────────────────────────────────────┘
 ```
 
-**Two data planes, one bridge key.** Postgres = **online serving + cache**
-(low-latency point lookups, pgvector similarity). Parquet/GCS + Spark = **offline
-analytics + ML training** (clustering, drift, heavy compute). They stay in sync
-by snapshot; both are keyed on `spotify_track_id` (never a second ID — ground
-rule). See **D-12**.
+**Two data planes, one bridge key, one machine.** The serving plane is the
+SQLAlchemy cache (SQLite+WAL now; Postgres via `DATABASE_URL` when needed). The
+analytics plane stays Parquet + local Spark. Both key on `spotify_track_id`.
+
+**Cost ledger (the v2 constraint, auditable):**
+
+| Item | Cost |
+|---|---|
+| Hosting (owner PC) + HTTPS tunnel (Cloudflare/Tailscale free tier) | $0 |
+| Serving DB (SQLite; optional local Docker Postgres) | $0 |
+| Storage (local disk: cache DB, spectrograms, Parquet) | $0 |
+| Spark (`local[*]`), scikit-learn, librosa, yt-dlp | $0 |
+| CI (GitHub Actions free tier) | $0 |
+| LLM answers | **$0 default** (deterministic fallback, D-5); `ANTHROPIC_API_KEY` is the *only* optional spend; Ollama is a $0 LLM alternative |
+| Domain `vercilloanalytics.com` | already owned (its DNS on Cloudflare free tier gives the tunnel a stable URL) |
 
 ---
 
-## 6. Data model (Postgres serving DB)
+## 6. Data model (the cache DB)
 
-Track-keyed and user-agnostic (privacy invariant). Feature columns follow the
-**exact 77-dim / 82-column DSP contract** already frozen (`clustering.py`
-`VECTOR_77_COLUMNS`, `serializer.to_summary_dict`) — the cache does not invent a
-new schema.
+Track-keyed and user-agnostic. Feature columns follow the frozen 77-dim /
+82-column DSP contract — the cache invents no new schema. Portable SQLAlchemy:
+**SQLite + WAL by default** (webapp + worker are two processes; WAL makes
+concurrent reader/writer safe), Postgres+pgvector via `DATABASE_URL` with zero
+code change (D-12 amended).
 
-| Table | Key | Holds |
-|---|---|---|
-| `track_features` | `spotify_track_id` | 77-dim `vector(77)` (pgvector) + the 82 named feature cols, `dsp_version`, `extraction_source`, `extracted_at`, `spectrogram_uri` (GCS) |
-| `track_meta` | `spotify_track_id` | name, primary artist id, album, isrc, duration_ms |
-| `artist_meta` | `artist_id` | name, genres, followers, image_uri |
-| `artist_profiles` | `artist_id` | **acoustic centroid** `vector(77)` (mean of the artist's cached tracks), `cluster_id` |
-| `song_cluster_model` / `artist_cluster_model` | version | k, centroids, silhouette, `trained_at` (models are versioned artifacts) |
-| `extraction_jobs` | `spotify_track_id` | `status` (queued/running/done/failed), attempts, requested_at, last_error |
+| Table | Key | Holds | Status |
+|---|---|---|---|
+| `track_features` | `spotify_track_id` | 82-col feature JSON + promoted columns, `spectrogram_uri`, provenance | ✅ |
+| `track_meta` | `spotify_track_id` | name, artists, album (the worker's YouTube query) | ✅ |
+| `extraction_jobs` | `spotify_track_id` | queued/running/done/failed, attempts, last_error | ✅ |
+| `artist_profiles` | `artist_id` | acoustic centroid (mean of the artist's cached tracks), `cluster_id` | Epic C |
+| `song_cluster_model` / `artist_cluster_model` | version | k, centroids, silhouette, trained_at | Epic C |
 
-- **`pgvector`** gives free nearest-neighbor: "songs like this," "artists like
-  this," and cluster assignment — the engine behind the clustering vision.
-- **User listening data is never stored** — top-track lists are fetched fresh per
-  login and held only in the session (D-7). The cache stores *songs*, not *people*.
-- **Longitudinal drift caveat (important):** Spotify exposes only 3 fixed windows,
-  not raw history. *True* drift-over-time (a monthly trajectory) requires
-  **snapshotting a consenting user's top tracks over time** — which needs opt-in
-  accounts + a scheduled job (**D-13**). Until then, "drift" = the σ-shift across
-  the 3 windows (already built), framed honestly as a 3-point trajectory.
+- **Similarity** ("songs like this"): z-scored acoustic distance in Python —
+  correct and fast at pilot scale (≤ a few thousand cached tracks). On Postgres
+  the same call swaps to a pgvector `ORDER BY embedding <-> :target`. Documented
+  upgrade, not a dependency.
+- **User listening data is never stored** — fetched fresh per login, held only in
+  the session (D-7).
+- **Longitudinal drift caveat (D-13):** Spotify exposes 3 fixed windows, not
+  history. True drift-over-time needs opt-in accounts + scheduled snapshots (a
+  Task-Scheduler job on the PC — still $0). Until then, drift = the σ-shift
+  across the 3 windows, framed honestly as a 3-point trajectory.
 
 ---
 
 ## 7. Feature epics
 
-### Epic A — Feature cache DB + per-user async extraction *(foundational)*
-The unlock for everything else. Postgres+pgvector schema; cache read/write;
-extraction worker (yt-dlp → librosa → 77-dim + spectrogram → DB/GCS); queue;
-"analyzing… N of M done" dashboard state with refresh; shared track-keyed cache.
-**Accept:** a returning visitor's already-cached songs render instantly; a new
-song is enqueued, extracted once, and served to every later visitor; audio bytes
-are never stored or served — only derived features + the spectrogram PNG.
+### Epic A — Feature cache + per-user async extraction ✅ *(shipped)*
+`FeatureCache` (get/missing/upsert/enqueue/claim_next/fail/job_status),
+DB-backed queue, extraction worker (yt-dlp → librosa → 77-dim + spectrogram →
+cache; audio deleted, D-15), seed script, dashboard wiring ("N of M analyzed ·
+K analyzing…"). **Accepted:** cached songs render instantly; a new song is
+extracted once and served to every later visitor; audio never stored.
 
-### Epic B — Audio-features dashboard (the "features & drift" polish)
-Per-song features from the cache; **hover a track → tooltip** (tempo, energy,
-key, brightness); **deep-dive page** per song: full 77-dim breakdown, **mel-
-spectrogram**, radar chart, pgvector **nearest-neighbor "songs like this,"** and
-its cluster. **Accept:** hovering any cached track shows its features; the
-deep-dive renders the spectrogram + neighbors for any cached song.
+### Epic B — Audio-features experience ✅ *(shipped)*
+Hover a track → tempo/energy/brightness tooltip. Deep-dive `/song/{id}`: acoustic
+summary, **mel-spectrogram**, inline-SVG radar, **"songs like this."**
+**Accepted:** hover works on any cached track; deep-dive renders spectrogram +
+neighbors end-to-end (proven on real owner audio).
 
-### Epic C — Analytics & drift dashboard (the data-science showcase)
-- **Song clustering** across the 3 windows: KMeans/HDBSCAN on 77-dim features →
-  each top song placed in an acoustic cluster; a UMAP map colored by cluster;
-  drift shown as songs *moving between clusters* short→long term.
-- **Artist clustering**: derive an **acoustic centroid per artist** (mean of the
-  artist's cached track features), cluster artists in that space (genre as a
-  secondary signal) → "artists who *sound* alike, not just tagged alike."
-- **Drift dashboard**: the σ-shift (D-9) as a headline + per-feature deltas ("your
-  recent listening is 12% faster, brighter") + the cluster-movement view.
-- Runs on Spark at corpus scale; scikit-learn for per-user online clustering.
-**Accept:** a user sees their songs and artists bucketed with a readable label
-per cluster, and a drift readout that is non-tautological and grounded.
+### Epic C — Analytics & drift dashboard *(next — the data-science showcase)*
+- **Song clustering** across the 3 windows: KMeans (silhouette-chosen k) on the
+  77-dim features → each top song in an acoustic bucket; UMAP map colored by
+  cluster; **drift as songs moving between clusters** short→long term.
+- **Artist clustering**: acoustic centroid per artist (mean of their cached
+  tracks) → cluster artists in sound-space; genres as secondary labels —
+  "artists who *sound* alike, not just tagged alike."
+- **Acoustic signature**: the features where the user deviates most from the
+  cached population (|z| ranked) — the "your top audio features" of the vision.
+- **Drift dashboard**: σ-shift headline + per-feature deltas + cluster-movement.
+- Population-scale training runs on **local Spark** (the parity-tested jobs);
+  per-user assignment is scikit-learn online. Cluster models are versioned rows
+  in the cache DB.
+**Accept:** a user sees their songs and artists bucketed with readable labels,
+their acoustic signature, and a grounded, non-tautological drift readout.
 
 ### Epic D — RAG taste classification *(Phase 2)*
-Beyond `/ask`: classify the user's taste into an **archetype** and a short
-narrative, grounded strictly on their clustered features + drift + top items
-(reuses the P8 RAG core; deterministic fallback holds — D-5). **Accept:** the
-profile cites the user's real clusters/features/artists and invents nothing.
+Beyond `/ask`: classify the user's taste into an **archetype** + short narrative,
+grounded strictly on their clusters, signature, drift, and top items (reuses the
+P8 RAG core; deterministic fallback holds — D-5, so Phase 2 still runs at $0).
+**Accept:** the profile cites the user's real clusters/features/artists and
+invents nothing.
 
-### Epic E — Deploy & harden
-Containerize (Dockerfile); Cloud Run + `vercilloanalytics.com`; `/privacy` page;
-allowlist + extended-quota request; opt-in accounts + scheduled snapshots for
-real longitudinal drift (D-13). **Accept:** SPEC P8 acceptance met on the public
-URL, no Spotify secret in the deploy env, sessions expire, privacy note published.
+### Epic E — Self-host & share *(replaces v1 "Deploy & harden" — D-16)*
+Run the pilot from the PC for allowlisted testers, at $0:
+- **Free HTTPS tunnel** (Cloudflare Tunnel or Tailscale Funnel) → stable URL
+  (optionally `vercilloanalytics.com` via free Cloudflare DNS); register that
+  redirect URI in the Spotify dashboard (HTTPS required for non-loopback).
+- **Worker loop** (`--loop`) + a documented two-process run procedure (webapp +
+  worker); optional Task Scheduler autostart. Docker/compose optional, not required.
+- **Backups (D-17):** the cache is an asset (hours of extraction) — a script zips
+  `feature_cache.db` + `spectrograms/` on a schedule. Still gitignored, never
+  committed.
+- `/privacy` page; session TTLs verified; allowlist + extended-quota request.
+- **Explicit non-goal:** no cloud migration until the PC is outgrown; when that
+  day comes, `docs/SCALING.md` + `DATABASE_URL` are the prepared path.
+**Accept:** an allowlisted tester on a phone, outside the home network, logs in
+over HTTPS and gets the full experience served by the PC; deploy env holds no
+Spotify secret; the cache survives a reboot and a restore-from-backup drill.
 
 ---
 
@@ -224,96 +239,105 @@ URL, no Spotify secret in the deploy env, sessions expire, privacy note publishe
 | Piece | Technique | Portfolio signal |
 |---|---|---|
 | Audio feature extraction | librosa DSP → 77-dim vector (frozen contract) | feature engineering on raw audio |
-| Song buckets | KMeans + silhouette-chosen k; UMAP 2-D; HDBSCAN option | unsupervised ML, deterministic + reproducible |
-| Artist buckets | acoustic centroid per artist → cluster | derived features + aggregation, not just tags |
-| Nearest neighbors | pgvector cosine/L2 on 77-dim | vector search / similarity |
-| Drift | RMS σ-shift on standardized centroids (D-9) | multivariate effect size, honest metric |
+| Song buckets | KMeans + silhouette k; UMAP 2-D | unsupervised ML, deterministic + reproducible |
+| Artist buckets | acoustic centroid per artist → cluster | derived features, not just tags |
+| Acoustic signature | \|z\| vs cached population | interpretable per-user statistics |
+| Nearest neighbors | z-scored distance now; pgvector when on Postgres | vector similarity, right-sized |
+| Drift | RMS σ-shift on standardized centroids (D-9) | honest multivariate effect size |
 | Spectrograms | librosa mel-spectrogram → PNG | signal processing, visual craft |
-| Scale | Spark feature_transform + parity-tested jobs | distributed data engineering |
-| Agent access | MCP + grounded RAG over the gold layer | "AI agents on data infrastructure" |
+| Scale | Spark `local[*]`, parity-tested in CI | distributed engineering without cloud spend |
+| Agent access | MCP + grounded RAG over the gold layer | AI agents on data infrastructure |
 
-Every dashboard element traces to a real acoustic feature — the whole product is
-"your taste, in the language of the audio itself."
+Plus the v2 meta-signal: **right-sizing** — SQLite/WAL at 25 users with a clean
+abstraction to Postgres, one machine doing serving + extraction + training, and
+a written migration path. Knowing what *not* to build is the senior skill.
 
 ---
 
-## 9. Tech stack
+## 9. Tech stack (v2)
 
 | Concern | Choice | Note |
 |---|---|---|
 | Auth | Spotify **PKCE** (public client id only) | no secret anywhere (D-8) |
-| Backend | **FastAPI** + Jinja + **HTMX** for hover/refresh | React only if interactivity demands it (D-14) |
-| Serving DB / cache | **Cloud SQL Postgres + pgvector** | point lookups + similarity; first stateful infra (D-12) |
-| Object store | **GCS** | spectrogram PNGs + Parquet warehouse |
-| Batch / ML | **Parquet medallion + Spark**, scikit-learn, UMAP | clustering/drift training at scale |
-| Extraction | **yt-dlp + librosa**, Cloud Run Jobs + a queue | async, shared cache, rate-limited |
-| LLM / RAG | **Anthropic** (`claude-opus-4-8`, `WEBAPP_LLM_MODEL` override) | grounded; deterministic fallback (D-5) |
-| Deploy | **Cloud Run** + custom domain | no Spotify secret in env |
+| Backend | **FastAPI** + Jinja (+ HTMX when refresh UX needs it) | React only if a view demands it (D-14) |
+| Serving DB / cache | **SQLite + WAL** via SQLAlchemy; `DATABASE_URL` → local Docker Postgres+pgvector when needed | right-sized; zero-ops (D-12 amended) |
+| Queue | **the `extraction_jobs` table** + polling worker | no queue service; the DB is the queue |
+| Files | local `data/` (cache DB, spectrograms, Parquet) | backed up per D-17 |
+| Batch / ML | Parquet medallion + **Spark `local[*]`**, scikit-learn, UMAP | zero cloud |
+| Extraction | **yt-dlp + librosa** worker `--loop` on the PC | residential IP beats cloud IPs |
+| LLM / RAG | deterministic fallback ($0) · optional Anthropic key · optional Ollama | D-5 holds |
+| Hosting | **owner PC + free HTTPS tunnel** (+ owned domain via free DNS) | D-16; Cloud Run only post-outgrowth |
 
 ---
 
-## 10. Roadmap (build order)
+## 10. Roadmap (current)
 
-1. **Epic A** — cache DB + async extraction *(foundational; do first)*
-2. **Epic B** — audio-features dashboard + hover + deep-dive + spectrogram
-3. **Epic C** — clustering (songs + artists) + drift dashboard
-4. **Epic E (partial)** — Dockerfile + Cloud Run early, so real users seed the cache
-5. **Epic D** — RAG classification (Phase 2)
-6. **Epic E (full)** — domain, allowlist, opt-in longitudinal snapshots, privacy
+1. ~~Epic A — cache + async extraction~~ ✅
+2. ~~Epic B — hover + deep-dive + spectrogram~~ ✅
+3. **Epic C — clustering (songs + artists) + acoustic signature + drift viz** ← next
+4. **Epic E — self-host & share** (tunnel, worker loop, backups, privacy) — so real
+   allowlisted users warm the cache from real traffic
+5. **Epic D — RAG classification** (Phase 2, richest once C's clusters exist)
+6. Polish pass (owner-flagged) — ongoing
 
-Ship A→B behind the allowlist first so the cache warms on real traffic; layer C/D
-on the growing cache; harden in E. Each epic lands in reviewable slices with
-synthetic tests (ground rule) and CI.
+Each epic lands in reviewable slices with synthetic tests (ground rule) and CI,
+**pushed after every section** (owner cadence).
 
 ---
 
-## 11. Key decisions (new — extends SPEC.md D-1…D-10)
+## 11. Key decisions (extends SPEC.md D-1…D-10)
 
 | # | Decision | Rationale |
 |---|---|---|
-| **D-11** | **Per-user extraction via a shared, track-keyed feature cache** (supersedes P8's "visitors never trigger acquisition") | The vision needs every visitor's real features; the shared cache makes it scale (analyze each song once, ever) and stays polite/cheap |
-| **D-12** | **Two data planes: Postgres+pgvector (online cache/serving) + Parquet/Spark (offline analytics/ML), synced by snapshot, one bridge key** | Parquet can't do concurrent row upserts or low-latency lookups; a DB can. pgvector adds similarity search. Analytics/Spark stay on Parquet |
-| **D-13** | **True longitudinal drift requires opt-in accounts + scheduled snapshots**; until then drift = σ-shift across Spotify's 3 windows | Spotify exposes 3 fixed windows, not history — be honest; real trajectories need consented persistence |
-| **D-14** | **Stay FastAPI + Jinja + HTMX**; adopt React only if a view demands rich client state | Server-rendered is enough for hover/deep-dive; keeps the stack lean and the DE story front-and-center |
-| **D-15** | **Never store or serve audio — only derived features + spectrogram images**; extraction rate-limited and research-framed | Legal/ToS posture (see §12); consistent with the existing "MP3s never committed" rule |
+| **D-11** | Per-user extraction via a shared, track-keyed feature cache (supersedes P8's "visitors never trigger acquisition") | Every visitor gets real features; each song analyzed once, ever |
+| **D-12** *(amended v2)* | **Serving DB = SQLAlchemy over SQLite+WAL (default) with `DATABASE_URL` → local Docker Postgres+pgvector as the upgrade; cloud DB only after outgrowing the PC.** Parquet+Spark stay the analytics plane | At ≤25 users / thousands of tracks, SQLite is the *correct* size: zero-ops, zero-cost, WAL handles the two-process (web + worker) pattern. The abstraction is already built — Postgres is a config change, not a rewrite |
+| **D-13** | True longitudinal drift needs opt-in accounts + scheduled snapshots (PC Task Scheduler); until then drift = σ-shift across the 3 windows | Spotify exposes windows, not history — stay honest |
+| **D-14** | FastAPI + Jinja (+ HTMX); React only if demanded | Lean stack, DE story front-and-center |
+| **D-15** | Never store or serve audio — derived features + spectrograms only; extraction rate-limited, research-framed | Legal/ToS posture; audio transient by construction |
+| **D-16** *(new v2)* | **Local-first: all development and hosting on the owner's PC at $0 external spend; public access via a free HTTPS tunnel; cloud (Cloud Run/GCS/BQ) is a documented migration path, not a build target** | Owner constraint; and yt-dlp genuinely works better from a residential IP than from cloud ranges — the riskiest layer *prefers* the PC |
+| **D-17** *(new v2)* | **The cache is an asset**: `data/` stays gitignored, but the cache DB + spectrograms get a scheduled local backup | Features now embody hours of extraction work; "rebuildable" is true but expensive — a backup script is cheap insurance |
 
 ---
 
-## 12. Risks & mitigations
+## 12. Risks & mitigations (v2)
 
 | Risk | Mitigation |
 |---|---|
-| **YouTube ToS / copyright** on extracting audio for many users' songs | Store **only derived features + spectrograms**, never audio (D-15); rate-limit + idempotent cache (analyze once); keep the pilot **allowlisted + research-framed**; document the posture; design so an official audio-analysis source can replace YouTube if one appears |
-| Extraction cost/latency (cold cache, 5–30 s/track) | Async workers + shared cache (hit-rate climbs); "analyzing…" UX; pre-warm popular tracks; the **derived store is the artifact**, audio is transient |
-| Spotify Dev-Mode ~25-user cap | Ship allowlisted; submit + document the extended-quota request (honest gate, SPEC P8) |
-| Longitudinal drift over-claim | D-13 — 3-window σ-shift now, opt-in monthly snapshots later; never claim a trajectory we don't have |
-| First stateful infra (Postgres) raises ops burden | Managed Cloud SQL; keep schema tight; synthetic tests + migrations; Parquet/Spark path unchanged |
-| Cold-start empty cache for a new user | Show cached subset instantly + progress; seed the cache with popular tracks; overlap insight still works from the owner corpus |
+| **YouTube ToS / copyright** on extraction | Derived features + spectrograms only, never audio (D-15); rate-limited, idempotent (once ever); allowlisted + research-framed; swappable if an official audio source appears |
+| Extraction latency on a cold cache (5–30 s/track) | Async worker + shared cache; "analyzing…" UX; seed script pre-warms; residential IP maximizes acquisition success |
+| **PC uptime** — the app is up only when the PC is | Acceptable and *stated* for an allowlisted pilot ("demo hours"); Task Scheduler autostart on reboot; the honest gate before any cloud move |
+| **Home-network exposure** | Tunnel means **no inbound port-forward and the home IP is never published**; HTTPS end-to-end; sessions signed + TTL'd; no Spotify secret exists to leak (D-8) |
+| SQLite single-writer limits | WAL + short transactions + a single worker process — correct at pilot scale; `DATABASE_URL` → Postgres is the pressure valve (D-12) |
+| Data loss (disk failure eats the cache) | D-17 scheduled backups + restore drill in Epic E acceptance |
+| Spotify Dev-Mode ~25-user cap | Allowlist; submit + document the extended-quota request (the honest gate) |
+| LLM cost creep (if a key is set) | $0 deterministic default; key optional; cap `max_tokens`; Ollama documented as the free LLM path |
+| Longitudinal drift over-claim | D-13 — 3-window σ-shift now; opt-in snapshots later; never claim a trajectory we don't have |
 
 ---
 
 ## 13. Non-goals & ground rules preserved
 
-- **Bridge key `spotify_track_id` only** — the DB, cache, spectrogram names, and
-  vectors all key on it. No second ID system, ever.
-- **No secrets — PKCE only** (D-8). Infra creds (session key, DB password,
-  optional LLM key) are not the Spotify secret.
-- **2026 API reality** — acoustic characteristics come from **local DSP only**;
-  `/audio-features` and `popularity` stay gone.
+- **Bridge key `spotify_track_id` only** — cache, spectrogram filenames, vectors,
+  cluster tables. No second ID system, ever.
+- **No secrets — PKCE only** (D-8). Infra creds (session key, optional LLM key)
+  are not the Spotify secret.
+- **2026 API reality** — acoustic characteristics from local DSP only.
 - **Synthetic-data tests** — extraction/cluster/drift logic tested without real
-  API calls or downloaded audio.
+  API calls or downloaded audio (the worker tests run real DSP on generated signals).
 - **Parquet for the warehouse; audio never committed/served** (D-15).
-- **Not streaming, not multi-tenant-at-rest by default** (user data ephemeral,
-  D-7; the cache is song-keyed, not person-keyed).
+- **No cloud until outgrowth** (D-16) — and no orchestrator theater, no streaming
+  pretensions (unchanged from SPEC.md).
 
 ---
 
-## 14. "Officially ready" — the definition of done for this phase of work
+## 14. "Officially ready" — definition of done for this phase
 
-The app is ready to set aside when: a logged-in allowlisted user sees their top
-songs & artists, the **real audio features** of their cached songs (with hover +
-deep-dive + spectrogram), an **analytics dashboard** clustering their songs and
-artists and showing drift, and a **grounded RAG answer/classification** — all
-served from a **shared feature cache** that grew from real use, deployed on Cloud
-Run with no Spotify secret. Everything past that (richer longitudinal drift,
-scale, extra polish) is enhancement, not blocker.
+The app is ready to set aside when: an allowlisted tester, **outside the home
+network, over HTTPS served from the owner's PC**, logs in and sees their top
+songs & artists; the real audio features of their cached songs (hover +
+deep-dive + spectrogram); an analytics dashboard clustering their songs and
+artists with their acoustic signature and honest drift; and a grounded RAG
+answer/classification — all from a shared feature cache that grew from real use,
+**at $0 external spend**, with backups proven by a restore drill. Everything
+past that (extended quota, cloud migration, richer longitudinal drift) is
+enhancement, not blocker.

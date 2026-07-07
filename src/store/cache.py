@@ -21,7 +21,7 @@ from collections import Counter
 from pathlib import Path
 from typing import Any, Optional
 
-from sqlalchemy import create_engine, select
+from sqlalchemy import create_engine, event, select
 from sqlalchemy.orm import sessionmaker
 
 from .models import Base, ExtractionJob, TrackFeatures, TrackMeta, utcnow
@@ -55,6 +55,16 @@ class FeatureCache:
         if url.startswith("sqlite:///") and ":memory:" not in url:
             Path(url[len("sqlite:///"):]).parent.mkdir(parents=True, exist_ok=True)
         self.engine = create_engine(url, future=True)
+        if url.startswith("sqlite"):
+            # WAL: the webapp and the extraction worker are two PROCESSES sharing
+            # this file — WAL allows a reader and the writer to coexist, and
+            # busy_timeout waits out short write locks instead of erroring (D-12).
+            @event.listens_for(self.engine, "connect")
+            def _sqlite_pragmas(dbapi_conn, _record):  # pragma: no cover - trivial
+                cur = dbapi_conn.cursor()
+                cur.execute("PRAGMA journal_mode=WAL")
+                cur.execute("PRAGMA busy_timeout=5000")
+                cur.close()
         Base.metadata.create_all(self.engine)
         self._Session = sessionmaker(self.engine, expire_on_commit=False)
 

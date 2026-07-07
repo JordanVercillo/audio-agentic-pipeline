@@ -76,6 +76,14 @@ def test_job_status_progress(cache):
     assert st == {"total": 3, "cached": 1, "queued": 1, "running": 1, "failed": 0}
 
 
+def test_sqlite_wal_enabled_for_file_db(tmp_path):
+    # webapp + worker share the file across processes — WAL must be on (D-12).
+    c = FeatureCache(url=f"sqlite:///{tmp_path / 'w.db'}")
+    with c.engine.connect() as conn:
+        mode = conn.exec_driver_sql("PRAGMA journal_mode").scalar()
+    assert str(mode).lower() == "wal"
+
+
 def test_second_instance_sees_persisted_cache(tmp_path):
     url = f"sqlite:///{tmp_path / 'shared.db'}"
     FeatureCache(url=url).upsert("shared", _FEATURES)
