@@ -42,7 +42,21 @@
   the acoustic map, artist buckets: Muse 31-track "Noisy · Bright" vs "Smooth ·
   Dark"). External reachability separately proven via curl through the
   Cloudflare edge. **ALL EPICS A–E OF APP_SPEC v2 ARE BUILT AND LIVE, at $0.**
-- **➡️ NEXT ACTION — closeout + polish.** ① **Merge PR #7** (the whole app is
+- **➡️ NEXT ACTION — OWNER DECISION on [`docs/VISION_SPECS.md`](docs/VISION_SPECS.md)
+  (2026-07-08): two visions specced + aggro/value-audited.** **Vision A** (LLM-KB
+  review → 3 surgical upgrades: A1 gold eval set for `/ask`+`/classify` w/
+  deterministic grader in CI, A2 structured-output JSON contracts, A3 optional
+  Ollama $0-LLM path; + 2 deliberate rejections — no vector-store RAG (KB's own
+  "small structured corpora don't need vectors"), no fine-tuning yet). **Vision
+  B** (Audio-Feature Explorer: rebuild Spotify's DEPRECATED audio-features
+  fields from our 82 cached columns as a versioned `perceptual-v1` transform w/
+  honest tiers — 5 measured + 5 derived + 2 experimental + time_signature in v2;
+  gold marts `feature_catalog`/`feature_stats`/`track_perceptual`; `/explore`
+  dashboard: feature picker, population distribution w/ user overlay +
+  percentile chips, feature×feature scatter colored by Epic-C clusters).
+  **Recommendation: Epic F = B with A1+A2 as its first slice (F0), A3 queued.**
+  Then the earlier closeout list still stands (below).
+- **Prior next action — closeout + polish.** ① **Merge PR #7** (the whole app is
   running off `epic-a/feature-cache`); ② formal phone-off-wifi spot-check
   (reachability already proven via edge curl); ③ email finishers: DKIM TXT from
   admin.google.com → Cloudflare (+optional DMARC), test email to
@@ -581,3 +595,15 @@ narrative goes to `notes/engineering_journal.md`, plans to
   snapshots). **Left off: vision spec approved-pending; next concrete build =
   Epic A (feature-cache DB + async extraction). Owner still owns GCP/domain +
   Spotify prod config. `/ask` live-test + PR #6 merge still pending owner.**
+- **2026-07-08 (session 13 — dual vision specs):** Pipeline-partner design
+  session (audit ALL-GREEN, usual soft warning). Reviewed the newly-synced
+  `llm_knowledge_base/` (7 technique cards) card-by-card against the live app;
+  verified via live fetch that Spotify's `get-audio-features` is officially
+  **Deprecated** (design target, never a data source — rule 3). Wrote
+  **[`docs/VISION_SPECS.md`](docs/VISION_SPECS.md)**: Vision A = 3 surgical
+  LLM upgrades (eval set, JSON contracts, optional Ollama) + 2 deliberate
+  rejections grounded in the KB's own lessons; Vision B = the Audio-Feature
+  Explorer (perceptual-v1 derived features w/ honest tiers, 3 gold marts,
+  `/explore` dashboard). Aggro/value matrix + recommendation: **Epic F = B
+  with A1+A2 as slice F0.** **Left off: awaiting Jordan's pick on
+  VISION_SPECS.md; no code written this session.**
