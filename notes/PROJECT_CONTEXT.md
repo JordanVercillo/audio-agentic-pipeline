@@ -42,11 +42,28 @@
   the acoustic map, artist buckets: Muse 31-track "Noisy · Bright" vs "Smooth ·
   Dark"). External reachability separately proven via curl through the
   Cloudflare edge. **ALL EPICS A–E OF APP_SPEC v2 ARE BUILT AND LIVE, at $0.**
-- **➡️ NEXT ACTION — Epic F slice F1: the derived perceptual feature layer
-  (`perceptual-v1`) + `feature_catalog`** (VISION_SPECS B1: pure transform over
-  the 82 cached columns — 5 measured + 5 derived + 2 experimental w/ honest
-  tiers; percentile-calibrated 0–1; then F2 stats marts + audit extension → F3
-  `/explore` dashboard → F-v2 time_signature/loudness-curves). **DECIDED
+- **➡️ NEXT ACTION — Epic F slice F2: the `feature_stats` distribution mart +
+  warehouse-audit extension** (per-feature histogram bins + percentiles p5–p95
+  over the perceptual mart, powering /explore's population charts without
+  shipping raw rows; audit gains catalog↔mart column-parity checks — the D-4
+  discipline applied to the new layer). Then F3 `/explore` dashboard → F-v2
+  (time_signature, loudness-curve time series, instrumentalness — all need
+  frame-level audio). ✅ **Epic F slice F1 DONE (2026-07-08): `perceptual-v1`.**
+  `src/store/perceptual.py` — pure transform over the 82 cached cols: 5
+  measured (tempo/key/mode/duration/loudness-dBFS incl. str-"minor"→0 mapping),
+  7 derived percentile-calibrated 0–1 (energy, danceability [~120bpm band ×
+  pulse clarity × beat density], acousticness, speechiness, brightness, punch,
+  dynamics), 1 experimental (valence_proxy, caveat in catalog).
+  **Instrumentalness MOVED experimental→F-v2 during build** (summary stats
+  can't see vocals; a fake proxy would cost the tier system its credibility —
+  VISION_SPECS updated). `track_perceptual` cache table +
+  `data/marts/{track_perceptual,feature_catalog}.parquet` via
+  `scripts/build_feature_marts.py` (idempotent, versioned). **Real-data proof:
+  117 tracks transformed, 13 catalog features; most-danceable = "The Groove"
+  (136bpm, dance 1.00) — the track named The Groove topping danceability is
+  the sanity check writing itself. 6 new tests (exact loudness math, blob
+  ordering, ghost exclusion, catalog↔transform parity, roundtrip) → 235
+  green; audit unchanged ALL-GREEN.** **DECIDED
   2026-07-08: Epic F = Vision B with F0 first; A3 (Ollama) PARKED with a
   validated plan** (VISION_SPECS A3: RTX 4070 Ti 12GB, `ollama list` verified;
   choice = gemma4:12b w/ `num_ctx: 8192` — default 262K ctx spilled 29% to CPU;

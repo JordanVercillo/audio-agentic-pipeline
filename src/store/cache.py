@@ -24,7 +24,14 @@ from typing import Any, Optional
 from sqlalchemy import create_engine, event, select
 from sqlalchemy.orm import sessionmaker
 
-from .models import Base, ExtractionJob, TrackFeatures, TrackMeta, utcnow
+from .models import (
+    Base,
+    ExtractionJob,
+    TrackFeatures,
+    TrackMeta,
+    TrackPerceptual,
+    utcnow,
+)
 
 # Feature columns used for "songs like this" (whatever's present rides along).
 _SIMILARITY_COLS = [
@@ -137,6 +144,30 @@ class FeatureCache:
                 job.status = JOB_DONE
                 job.last_error = None
             s.commit()
+
+    # ── perceptual-v1 layer (VISION_SPECS F1) ────────────────────────────────
+    def upsert_perceptual(self, track_id: str, features: dict, *,
+                          version: str, computed_at=None) -> None:
+        with self._Session() as s:
+            s.merge(TrackPerceptual(spotify_track_id=track_id, features=features,
+                                    version=version,
+                                    computed_at=computed_at or utcnow()))
+            s.commit()
+
+    def get_perceptual(self, track_ids: list[str]) -> dict[str, dict]:
+        if not track_ids:
+            return {}
+        with self._Session() as s:
+            rows = s.execute(
+                select(TrackPerceptual).where(
+                    TrackPerceptual.spotify_track_id.in_(track_ids))
+            ).scalars().all()
+        return {r.spotify_track_id: r.features for r in rows}
+
+    def all_perceptual(self) -> dict[str, dict]:
+        with self._Session() as s:
+            rows = s.execute(select(TrackPerceptual)).scalars().all()
+        return {r.spotify_track_id: r.features for r in rows}
 
     # ── track metadata (for the worker's YouTube query) ─────────────────────
     def remember_meta(self, items: list[dict]) -> None:

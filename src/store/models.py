@@ -64,6 +64,17 @@ class ExtractionJob(Base):
     updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
 
 
+class TrackPerceptual(Base):
+    """A track's perceptual-v1 features (VISION_SPECS F1) — the derived layer."""
+
+    __tablename__ = "track_perceptual"
+
+    spotify_track_id = Column(String, primary_key=True)
+    features = Column(JSON, nullable=False)   # {tempo, key, mode, …, valence_proxy}
+    version = Column(String, nullable=False)  # e.g. "perceptual-v1"
+    computed_at = Column(DateTime, default=utcnow)
+
+
 class ClusterModel(Base):
     """A versioned clustering model (APP_SPEC Epic C) — enough state to assign
     new tracks online: the scaler stats + centroids in scaled space."""

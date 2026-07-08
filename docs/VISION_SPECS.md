@@ -115,7 +115,7 @@ instantly to every cached track, versioned like a model:
 | speechiness | 🔨 derived | high `zcr` + high flatness + low harmonicity |
 | brightness, punch, dynamics… | 🔨 derived | our own perceptuals beyond Spotify's 13 (already banded in `taste.py`) |
 | valence (“mood”) | ⚗️ experimental | mode + tempo + brightness heuristic — labeled a *proxy*, shown with a confidence caveat |
-| instrumentalness | ⚗️ experimental | vocal-band MFCC energy proxy — same caveat |
+| instrumentalness | ⏭ v2 *(moved from experimental during F1)* | summary statistics can't see vocals — an honest proxy needs frame-level analysis/source separation; shipping a fake one would cost the tier system its credibility |
 | time_signature | ⏭ v2 | needs a new DSP pass over audio (librosa beat/meter) → extractor addition + corpus re-run; defer |
 | liveness | ❌ out | crowd-noise detection isn't honestly derivable from our features |
 
