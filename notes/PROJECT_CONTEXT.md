@@ -22,8 +22,19 @@
   FAISS vector unchanged at 77). Phase-4 webapp still NOT in this repo copy.
 - **➡️ NEXT ACTION — SPEC [`docs/APP_SPEC.md`](docs/APP_SPEC.md) Epic E (self-host &
   share: free HTTPS tunnel + stable URL, two-process run procedure, backup
-  script + restore drill, `/privacy`, allowlist) — then Epic D (RAG
-  classification).** ✅ **Epic C COMPLETE (2026-07-07): population clustering +
+  script + restore drill, `/privacy`, allowlist) — the LAST epic; then the
+  polish pass.** ✅ **Epic D COMPLETE (2026-07-07): RAG taste classification.**
+  `src/webapp/archetype.py`: deterministic archetype from real signals — home
+  sound (dominant cluster), breadth (Loyalist ≥70% / Dualist two ≥85% /
+  Eclectic), motion (D-9 σ-bands: Anchored/Drifting/Roaming/Shape-shifting) →
+  "The {motion} {breadth}" + numbered evidence lines. `rag.py`: grounding now
+  carries archetype+clusters+signature (richer `/ask` too); `TasteRAG.classify`
+  — LLM narrative for the deterministic name (never rebrands) w/ deterministic
+  fallback (D-5, $0). App: `_analytics_context` helper enriches session taste;
+  archetype hero card on `/analytics` + POST `/classify` → `profile.html`.
+  **Real-data proof: "The Drifting Dualist", home "Bright · Noisy" (54%),
+  grounded fallback narrative "…Muse anchors it all." 8 new tests → 215
+  green.** ✅ **Epic C COMPLETE (2026-07-07): population clustering +
   analytics dashboard.** `src/store/clusters.py`: versioned KMeans models
   (silhouette-chosen k) over ALL cached tracks + per-artist acoustic centroids;
   cluster naming via top-|z| `_CHARACTER_DIMS` (shared vocabulary w/ journal #9);

@@ -31,6 +31,7 @@ from ..store import clusters as cl
 from ..store.cache import FeatureCache
 from . import auth_web, config
 from .analytics import acoustic_signature, cluster_color, cluster_composition, scatter_svg
+from .archetype import derive_archetype
 from .featurestore import FeatureStore
 from .rag import TasteRAG
 from .sessions import CookieSigner, SessionStore
@@ -254,21 +255,20 @@ def create_app() -> FastAPI:
             "answer": result["answer"], "source": result["source"],
         })
 
-    @app.get("/analytics", response_class=HTMLResponse)
-    def analytics(request: Request):
-        session = request.state.session
-        if not auth_web.is_authenticated(session):
-            return RedirectResponse("/", status_code=303)
+    def _analytics_context(session: dict[str, Any]) -> Optional[dict[str, Any]]:
+        """Build the analytics view context AND enrich the in-session taste with
+        signature/clusters/archetype so /ask and /classify ground on them (Epic D).
+        Returns None when the dashboard hasn't been visited yet."""
         taste = session.get("taste") or {}
         range_ids: dict[str, list[str]] = taste.get("range_ids") or {}
         if not range_ids:
-            return RedirectResponse("/dashboard", status_code=303)
+            return None
 
         cache = _feature_cache()
         all_ids = [t for ids in range_ids.values() for t in ids]
         cached = cache.get(all_ids)
 
-        ctx: dict[str, Any] = {"authed": True, "trained": False,
+        ctx: dict[str, Any] = {"authed": True, "trained": False, "archetype": None,
                                "coverage": taste.get("coverage"),
                                "drift": taste.get("drift")}
         # Signature works even before any model is trained (population stats only).
@@ -293,6 +293,12 @@ def create_app() -> FastAPI:
                               "color": cluster_color(int(c))}
                              for c, lbl in sorted(labels.items(), key=lambda kv: int(kv[0]))]
 
+            arch = derive_archetype(per_window, labels, taste.get("drift"),
+                                    ctx["signature"])
+            if arch:
+                arch["color"] = cluster_color(arch["home_color_id"])
+                ctx["archetype"] = arch
+
             meta = cache.all_meta()
             population_pts = [{"id": t, "x": a["map_x"], "y": a["map_y"],
                                "cluster_id": a["cluster_id"]}
@@ -313,7 +319,44 @@ def create_app() -> FastAPI:
                              for a in members[:10]]}
                 for cid, members in sorted(buckets.items())
             ]
+
+        # Enrich the session taste — /ask and /classify ground on these (Epic D).
+        taste["signature"] = ctx["signature"]
+        taste["archetype"] = ctx["archetype"]
+        comp = ctx.get("composition") or {}
+        taste["clusters"] = {
+            "windows": {w: [{"label": s["label"], "share": s["share"]} for s in segs]
+                        for w, segs in (comp.get("windows") or {}).items()},
+            "movement": comp.get("movement"),
+        }
+        session["taste"] = taste
+        return ctx
+
+    @app.get("/analytics", response_class=HTMLResponse)
+    def analytics(request: Request):
+        session = request.state.session
+        if not auth_web.is_authenticated(session):
+            return RedirectResponse("/", status_code=303)
+        ctx = _analytics_context(session)
+        if ctx is None:
+            return RedirectResponse("/dashboard", status_code=303)
         return templates.TemplateResponse(request, "analytics.html", ctx)
+
+    @app.post("/classify", response_class=HTMLResponse)
+    def classify(request: Request):
+        session = request.state.session
+        if not auth_web.is_authenticated(session):
+            return RedirectResponse("/", status_code=303)
+        ctx = _analytics_context(session)  # refresh + enrich the grounding
+        if ctx is None:
+            return RedirectResponse("/dashboard", status_code=303)
+        if not ctx.get("archetype"):
+            return RedirectResponse("/analytics", status_code=303)
+        result = TasteRAG(_feature_store()).classify(session["taste"])
+        return templates.TemplateResponse(request, "profile.html", {
+            "authed": True, "archetype": ctx["archetype"],
+            "narrative": result["narrative"], "source": result["source"],
+        })
 
     @app.get("/song/{track_id}", response_class=HTMLResponse)
     def song(request: Request, track_id: str):

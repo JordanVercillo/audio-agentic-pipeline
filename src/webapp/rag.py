@@ -54,6 +54,21 @@ def _grounding_text(taste: dict[str, Any], glossary: dict[str, str]) -> str:
         lines.append(prof["message"])
     for h in prof.get("highlights", []):
         lines.append(f"  - {h}")
+    arch = taste.get("archetype")
+    if arch:
+        lines.append(f"Taste archetype (derived): {arch['name']} — "
+                     + "; ".join(arch.get("evidence", [])))
+    clusters = taste.get("clusters") or {}
+    for window, segs in (clusters.get("windows") or {}).items():
+        seg_s = ", ".join(f"{s['share']}% “{s['label']}”" for s in segs[:3])
+        lines.append(f"Sound buckets ({window}): {seg_s}.")
+    if clusters.get("movement"):
+        lines.append(f"Cluster movement: {clusters['movement']}")
+    sig = taste.get("signature") or []
+    if sig:
+        lines.append("Acoustic signature vs the corpus: "
+                     + "; ".join(f"{s['feature']} {s['word']} ({s['z']:+.1f}σ)"
+                                 for s in sig))
     drift = taste.get("drift")
     if drift:
         lines.append(
@@ -99,6 +114,59 @@ class TasteRAG:
             except Exception as exc:  # noqa: BLE001 — an LLM error must never fail the request
                 logger.warning("RAG LLM answer failed (%s) — deterministic fallback", exc)
         return {"answer": self._fallback(taste), "source": "fallback", "model": None}
+
+    # ── Epic D: the taste-profile classification ───────────────────────────
+    def classify(self, taste: dict[str, Any]) -> dict[str, Any]:
+        """A grounded taste profile for the derived archetype.
+
+        Returns {name, narrative, source}. The archetype NAME is always the
+        deterministic one (the model may not rebrand the listener); the LLM
+        only writes the narrative — and without a key, the narrative is
+        assembled from the same evidence (D-5).
+        """
+        arch = taste.get("archetype")
+        if not arch:
+            return {"name": None, "narrative": "", "source": "none"}
+        glossary = self.fs.feature_glossary(_GLOSSARY_FEATURES) if self.fs else {}
+        grounding = _grounding_text(taste, glossary)
+        key = config.anthropic_key()
+        if key:
+            try:
+                system = (
+                    "You write a short second-person music-taste profile for the "
+                    f"archetype \"{arch['name']}\". Use ONLY the DATA: cite the real "
+                    "cluster names, artists, and numbers it contains; invent nothing. "
+                    "3–5 sentences, warm but specific, plain prose, no markdown, no "
+                    "preamble, do not restate the archetype name in the first sentence.")
+                import anthropic
+                client = anthropic.Anthropic(api_key=key)
+                resp = client.messages.create(
+                    model=self.model, max_tokens=_MAX_TOKENS, system=system,
+                    messages=[{"role": "user", "content": f"DATA:\n{grounding}"}])
+                if resp.stop_reason != "refusal":
+                    text = next((b.text for b in resp.content if b.type == "text"), "").strip()
+                    if text:
+                        return {"name": arch["name"], "narrative": text,
+                                "source": "llm", "model": self.model}
+            except Exception as exc:  # noqa: BLE001 — never fail the page
+                logger.warning("classify LLM failed (%s) — deterministic narrative", exc)
+        return {"name": arch["name"], "narrative": self._archetype_narrative(taste),
+                "source": "fallback", "model": None}
+
+    def _archetype_narrative(self, taste: dict[str, Any]) -> str:
+        """Deterministic profile text from the archetype evidence (D-5)."""
+        arch = taste["archetype"]
+        artists = taste.get("artists") or []
+        parts = [f"Your home sound is “{arch['home']}” — "
+                 + arch["evidence"][0].split("— ")[-1] + "."]
+        if len(arch["evidence"]) > 1:
+            parts.append(arch["evidence"][1][0].upper() + arch["evidence"][1][1:] + ".")
+        if arch.get("motion"):
+            parts.append(f"Between your recent and all-time listening you read as "
+                         f"{arch['motion'].lower()}.")
+        if artists:
+            parts.append(f"{artists[0]['name']} anchors it all.")
+        return " ".join(parts)
 
     def _llm_answer(self, question: str, grounding: str, key: str) -> str:
         import anthropic
