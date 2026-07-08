@@ -42,7 +42,28 @@
   the acoustic map, artist buckets: Muse 31-track "Noisy · Bright" vs "Smooth ·
   Dark"). External reachability separately proven via curl through the
   Cloudflare edge. **ALL EPICS A–E OF APP_SPEC v2 ARE BUILT AND LIVE, at $0.**
-- **➡️ NEXT ACTION — OWNER DECISION on [`docs/VISION_SPECS.md`](docs/VISION_SPECS.md)
+- **➡️ NEXT ACTION — Epic F slice F1: the derived perceptual feature layer
+  (`perceptual-v1`) + `feature_catalog`** (VISION_SPECS B1: pure transform over
+  the 82 cached columns — 5 measured + 5 derived + 2 experimental w/ honest
+  tiers; percentile-calibrated 0–1; then F2 stats marts + audit extension → F3
+  `/explore` dashboard → F-v2 time_signature/loudness-curves). **DECIDED
+  2026-07-08: Epic F = Vision B with F0 first; A3 (Ollama) PARKED with a
+  validated plan** (VISION_SPECS A3: RTX 4070 Ti 12GB, `ollama list` verified;
+  choice = gemma4:12b w/ `num_ctx: 8192` — default 262K ctx spilled 29% to CPU;
+  it's a thinking model → pair `format="json"` w/ the A2 thoughts-first schema;
+  qwen3:8b fast fallback; gemma2:2b retired). ✅ **Epic F slice F0 DONE
+  (2026-07-08): A1 gold eval harness + A2 structured-output contracts.**
+  `src/webapp/evalset.py` (deterministic grader: nonempty/must_cite/
+  no_invention/plain_prose/archetype; disaggregated report + constant
+  baseline) + `evals/golden_taste_v1.jsonl` (15 cases, versioned) +
+  `evals/run_golden.py` CLI (exit-1 gate). `rag.py`: both LLM calls now emit
+  JSON `{thoughts→answer/narrative, cited}` (thoughts FIRST per the KB card),
+  fence-stripping parser `_parse_llm_json`, parse failures LOGGED + degrade to
+  fallback (never fake success). **Proof: fallback 15/15; constant baseline
+  0/15 with must_cite/archetype at zero while no_invention/plain_prose pass —
+  the disaggregation shows which checks carry skill. The golden guard runs in
+  CI via pytest ($0). 229 tests green.**
+- **Prior decision context — [`docs/VISION_SPECS.md`](docs/VISION_SPECS.md)
   (2026-07-08): two visions specced + aggro/value-audited.** **Vision A** (LLM-KB
   review → 3 surgical upgrades: A1 gold eval set for `/ask`+`/classify` w/
   deterministic grader in CI, A2 structured-output JSON contracts, A3 optional

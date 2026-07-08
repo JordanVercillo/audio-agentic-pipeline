@@ -333,10 +333,12 @@ def test_classify_llm_grounded(monkeypatch):
         def __init__(self, api_key=None):
             def create(**kw):
                 captured.update(kw)
+                payload = ('{"thoughts": "grounded", '
+                           '"narrative": "You live in bright, noisy songs.", '
+                           '"cited": ["Bright · Noisy"]}')
                 return types.SimpleNamespace(
                     stop_reason="end_turn",
-                    content=[types.SimpleNamespace(type="text",
-                                                   text="You live in bright, noisy songs.")])
+                    content=[types.SimpleNamespace(type="text", text=payload)])
             self.messages = types.SimpleNamespace(create=create)
 
     import anthropic
@@ -344,7 +346,9 @@ def test_classify_llm_grounded(monkeypatch):
     res = TasteRAG(model="claude-opus-4-8").classify(_taste_d())
     assert res["source"] == "llm" and "bright" in res["narrative"]
     assert res["name"] == "The Anchored Loyalist"          # name stays deterministic
+    assert res["cited"] == ["Bright · Noisy"]              # A2 citations
     assert "The Anchored Loyalist" in captured["system"]   # model told the archetype
+    assert '"narrative"' in captured["system"]             # contract in the prompt
     assert "Bright · Noisy" in captured["messages"][0]["content"]  # grounded
 
 
@@ -554,9 +558,12 @@ def test_rag_llm_path_grounds_and_uses_model(monkeypatch):
     class FakeMessages:
         def create(self, **kw):
             captured.update(kw)
+            payload = ('{"thoughts": "the data shows indie", '
+                       '"answer": "Your recent vibe is upbeat indie.", '
+                       '"cited": ["Muse"]}')
             return types.SimpleNamespace(
                 stop_reason="end_turn",
-                content=[types.SimpleNamespace(type="text", text="Your recent vibe is upbeat indie.")])
+                content=[types.SimpleNamespace(type="text", text=payload)])
 
     class FakeClient:
         def __init__(self, api_key=None):
@@ -567,9 +574,30 @@ def test_rag_llm_path_grounds_and_uses_model(monkeypatch):
 
     res = TasteRAG(model="claude-opus-4-8").answer("what's my vibe?", _TASTE)
     assert res["source"] == "llm" and "indie" in res["answer"].lower()
+    assert res["cited"] == ["Muse"]                        # A2: machine-checkable citations
+    assert '"thoughts"' in captured["system"]              # contract in the prompt
     assert captured["model"] == "claude-opus-4-8" and captured["max_tokens"] == 1024
     prompt = captured["messages"][0]["content"]
     assert "Muse" in prompt and "Moderate drift" in prompt  # grounded on their data
+
+
+def test_rag_llm_unparseable_reply_falls_back(monkeypatch):
+    import types
+
+    from .rag import TasteRAG
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+
+    class FakeClient:
+        def __init__(self, api_key=None):
+            self.messages = types.SimpleNamespace(
+                create=lambda **kw: types.SimpleNamespace(
+                    stop_reason="end_turn",
+                    content=[types.SimpleNamespace(type="text", text="just prose, no json")]))
+
+    import anthropic
+    monkeypatch.setattr(anthropic, "Anthropic", FakeClient)
+    res = TasteRAG().answer("...", _TASTE)
+    assert res["source"] == "fallback" and "Muse" in res["answer"]  # logged + degraded, never fake
 
 
 def test_rag_llm_refusal_falls_back(monkeypatch):

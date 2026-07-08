@@ -41,13 +41,33 @@ prose. Move both to a JSON schema (`thoughts` field ordered FIRST, then
 citations and killing a whole class of parse flakiness. Include the card's
 gotchas: fence-stripping, never-swallow-parse-errors-silently.
 
-### A3 — Ollama local-LLM path (optional follow-up)
+### A3 — Ollama local-LLM path (DEFERRED — plan validated 2026-07-08, owner decision)
 
-Per `TOOLING.md`'s three-role pattern: `WEBAPP_LLM_MODEL=ollama:gemma2:2b`
-route in `rag.py` → **grounded LLM answers at true $0** (today $0 = template
-fallback only). Teacher (`gemma4:12b`) proposes golden answers for A1's set.
-Aligns perfectly with D-16. Aggro is real: Ollama service management on the
-PC, latency on CPU/GPU budget, model-quality tuning.
+**Status: parked as a future addition; hardware + model inventory validated
+live so a future session starts warm.**
+
+- **Hardware:** RTX 4070 Ti, 12,282 MiB VRAM (≈3.9 GB resident desktop use).
+  Ollama 0.31.1 installed and serving.
+- **Installed models (validated via `ollama list`):** gemma4:12b (7.6 GB),
+  gemma4:e4b/latest (9.6 GB), gemma3:12b, qwen3:8b (5.2 GB), qwen2.5vl:7b
+  (vision), gemma2:2b, nomic-embed-text, recipe-classifier v3/v4 (course
+  artifacts).
+- **Model choice (owner: "use gemma4"):** **`gemma4:12b`** — best quality that
+  fits VRAM. `gemma4:e4b` (9.6 GB) would spill to CPU on this card; retire
+  `gemma2:2b` from this role. **`qwen3:8b`** is the fast fallback.
+- **Live smoke finding:** default load ran **29% CPU / 71% GPU** — Ollama's
+  262,144-token default context inflates the KV cache past free VRAM. Fix:
+  request `options={"num_ctx": 8192}` (grounding is ~2K tokens) → weights + KV
+  fit fully on-GPU. Also: gemma4:12b is a **thinking model** — pair
+  `format="json"` (Ollama enforces valid JSON) with the A2 schema's
+  `thoughts`-field-first pattern so reasoning lands inside the contract.
+- **Implementation sketch (one slice, later):** `rag.py` routes on
+  `WEBAPP_LLM_MODEL=ollama:gemma4:12b` → `ollama.chat(model=…,
+  format="json", options={"num_ctx": 8192, "temperature": 0}, keep_alive=…)`;
+  same A2 schema + parser; deterministic fallback unchanged. Teacher role
+  (golden-answer proposals for A1) = same gemma4:12b + **human verify** — the
+  distillation card's same-family-bias caveat applies, the verify pass is the
+  guard.
 
 ### Deliberate rejections (the KB's own lessons argue against)
 

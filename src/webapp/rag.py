@@ -18,12 +18,38 @@ retrieval, which is the lower-surface, higher-precision path for a public pilot.
 
 from __future__ import annotations
 
+import json
 import logging
+import re
 from typing import Any, Optional
 
 from . import config
 
 logger = logging.getLogger(__name__)
+
+_JSON_BLOB = re.compile(r"\{.*\}", re.DOTALL)
+
+
+def _parse_llm_json(text: str) -> Optional[dict]:
+    """Parse a model's JSON reply: strip code fences, grab the outermost object.
+
+    Returns None on failure — and LOGS it (a silently-swallowed parse error
+    once shipped a whole empty column; KB structured-output card). The caller
+    falls back deterministically, never fakes success.
+    """
+    if not text:
+        return None
+    cleaned = re.sub(r"```(?:json)?", "", text).strip("` \n")
+    m = _JSON_BLOB.search(cleaned)
+    if not m:
+        logger.warning("LLM reply had no JSON object (len=%d)", len(text))
+        return None
+    try:
+        obj = json.loads(m.group(0))
+    except json.JSONDecodeError as exc:
+        logger.warning("LLM JSON failed to parse: %s", exc)
+        return None
+    return obj if isinstance(obj, dict) else None
 
 # Interpretable features we surface + gloss (must exist in column_descriptions).
 _GLOSSARY_FEATURES = ["tempo_bpm", "rms_mean", "spectral_centroid_mean"]
@@ -34,8 +60,14 @@ _SYSTEM = (
     "listening and its local acoustic analysis. Cite their real tracks, artists, "
     "genres, and numbers. NEVER invent tracks, artists, or statistics that are not "
     "in the DATA. If the DATA cannot answer the question, say what you can see "
-    "instead. 2–4 sentences, second person (\"you\"), no preamble, plain prose "
-    "with no markdown formatting."
+    "instead.\n"
+    "Reply as a single JSON object with EXACTLY these fields, in this order:\n"
+    '  "thoughts": your brief reasoning about what the DATA supports (1-2 sentences),\n'
+    '  "answer": the reply shown to the visitor — 2-4 sentences, second person '
+    '("you"), no preamble, plain prose, no markdown,\n'
+    '  "cited": a JSON array of the exact track/artist/cluster names from the DATA '
+    "that your answer mentions.\n"
+    "Output only the JSON object."
 )
 
 _MAX_TOKENS = 1024  # a taste answer is deliberately short — well under stream/timeout limits
@@ -108,9 +140,11 @@ class TasteRAG:
         key = config.anthropic_key()
         if key:
             try:
-                text = self._llm_answer(question, grounding, key)
-                if text:
-                    return {"answer": text, "source": "llm", "model": self.model}
+                parsed = self._llm_answer(question, grounding, key)
+                if parsed and parsed.get("answer"):
+                    return {"answer": str(parsed["answer"]).strip(), "source": "llm",
+                            "model": self.model,
+                            "cited": [str(c) for c in parsed.get("cited") or []]}
             except Exception as exc:  # noqa: BLE001 — an LLM error must never fail the request
                 logger.warning("RAG LLM answer failed (%s) — deterministic fallback", exc)
         return {"answer": self._fallback(taste), "source": "fallback", "model": None}
@@ -135,18 +169,27 @@ class TasteRAG:
                 system = (
                     "You write a short second-person music-taste profile for the "
                     f"archetype \"{arch['name']}\". Use ONLY the DATA: cite the real "
-                    "cluster names, artists, and numbers it contains; invent nothing. "
-                    "3–5 sentences, warm but specific, plain prose, no markdown, no "
-                    "preamble, do not restate the archetype name in the first sentence.")
+                    "cluster names, artists, and numbers it contains; invent nothing.\n"
+                    "Reply as a single JSON object with EXACTLY these fields, in this order:\n"
+                    '  "thoughts": brief reasoning about what the DATA supports,\n'
+                    '  "narrative": the profile shown to the visitor — 3-5 sentences, warm '
+                    "but specific, plain prose, no markdown, no preamble, do not restate "
+                    "the archetype name in the first sentence,\n"
+                    '  "cited": a JSON array of the exact cluster/artist names your '
+                    "narrative mentions.\n"
+                    "Output only the JSON object.")
                 import anthropic
                 client = anthropic.Anthropic(api_key=key)
                 resp = client.messages.create(
                     model=self.model, max_tokens=_MAX_TOKENS, system=system,
                     messages=[{"role": "user", "content": f"DATA:\n{grounding}"}])
                 if resp.stop_reason != "refusal":
-                    text = next((b.text for b in resp.content if b.type == "text"), "").strip()
-                    if text:
-                        return {"name": arch["name"], "narrative": text,
+                    text = next((b.text for b in resp.content if b.type == "text"), "")
+                    parsed = _parse_llm_json(text)
+                    if parsed and parsed.get("narrative"):
+                        return {"name": arch["name"],
+                                "narrative": str(parsed["narrative"]).strip(),
+                                "cited": [str(c) for c in parsed.get("cited") or []],
                                 "source": "llm", "model": self.model}
             except Exception as exc:  # noqa: BLE001 — never fail the page
                 logger.warning("classify LLM failed (%s) — deterministic narrative", exc)
@@ -168,7 +211,8 @@ class TasteRAG:
             parts.append(f"{artists[0]['name']} anchors it all.")
         return " ".join(parts)
 
-    def _llm_answer(self, question: str, grounding: str, key: str) -> str:
+    def _llm_answer(self, question: str, grounding: str, key: str) -> Optional[dict]:
+        """LLM call under the A2 JSON contract → {thoughts, answer, cited} or None."""
         import anthropic
 
         client = anthropic.Anthropic(api_key=key)
@@ -182,8 +226,9 @@ class TasteRAG:
             messages=[{"role": "user", "content": prompt}],
         )
         if resp.stop_reason == "refusal":
-            return ""
-        return next((b.text for b in resp.content if b.type == "text"), "").strip()
+            return None
+        text = next((b.text for b in resp.content if b.type == "text"), "")
+        return _parse_llm_json(text)
 
     def _fallback(self, taste: dict[str, Any]) -> str:
         """Deterministic, visitor-facing answer from the retrieved facts (D-5)."""
