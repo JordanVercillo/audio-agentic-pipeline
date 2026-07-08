@@ -33,15 +33,25 @@
   records page was an inactive copy). Cutover to Cloudflare (`jason`/`surina`)
   RESTORED the domain + Workspace email (MX+SPF staged pre-swap, verified
   publicly).**
-- **➡️ NEXT ACTION — owner finishers, then live acceptance:** ① **Spotify
-  dashboard: add `https://vercilloanalytics.com/callback`** (login FAILS with
-  redirect-mismatch until this); ② DKIM TXT `google._domainkey` — copy value
-  from admin.google.com → Gmail → Authenticate email → add in Cloudflare DNS
-  (+optional DMARC); ③ test email to jordan@vercilloanalytics.com; ④ phone
-  test off-wifi → login → dashboard/analytics/profile = **Epic E acceptance**.
-  Then optional hardening: Task Scheduler autostart for webapp+worker, nightly
-  `backup_cache.py`, delete the orphaned Google Cloud DNS zone (~$0.20/mo),
-  Tailscale re-auth (private admin plane only). Then the polish pass. ✅ **Epic E slice 1 DONE (2026-07-08):
+- **✅ EPIC E ACCEPTED (2026-07-08): owner logged in ON THE LIVE DOMAIN and the
+  full experience rendered** — landing → PKCE login (after adding the prod
+  redirect in the Spotify dashboard; the "redirect_uri: Not matching
+  configuration" error confirmed-then-fixed it) → dashboard (41/41 analyzed,
+  absolute profile, ask box) → /analytics (archetype "The Drifting Dualist"
+  0.208σ, signature, cluster movement toward "Dark · Smooth", composition bars,
+  the acoustic map, artist buckets: Muse 31-track "Noisy · Bright" vs "Smooth ·
+  Dark"). External reachability separately proven via curl through the
+  Cloudflare edge. **ALL EPICS A–E OF APP_SPEC v2 ARE BUILT AND LIVE, at $0.**
+- **➡️ NEXT ACTION — closeout + polish.** ① **Merge PR #7** (the whole app is
+  running off `epic-a/feature-cache`); ② formal phone-off-wifi spot-check
+  (reachability already proven via edge curl); ③ email finishers: DKIM TXT from
+  admin.google.com → Cloudflare (+optional DMARC), test email to
+  jordan@vercilloanalytics.com; ④ hardening: Task Scheduler autostart
+  (webapp+worker), nightly `backup_cache.py` task, delete the orphaned Google
+  Cloud DNS zone (~$0.20/mo), Tailscale re-auth, Cloudflare www→apex redirect
+  rule; ⑤ Spotify extended-quota request + tester allowlist; ⑥ the owner's
+  deferred polish/UX pass (e.g. local-file tracks show placeholder album art).
+  Runbook: [`docs/SELF_HOSTING.md`](docs/SELF_HOSTING.md). ✅ **Epic E slice 1 DONE (2026-07-08):
   `/privacy` page (+footer link, route test), `src/store/backup.py` +
   `scripts/backup_cache.py` (WAL-safe sqlite backup API; verify/restore;
   `.pre-restore` safety; prune; RESTORE DRILL tested — incl. Windows
