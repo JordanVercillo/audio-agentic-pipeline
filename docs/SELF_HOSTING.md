@@ -82,8 +82,21 @@ ingress:
 cloudflared tunnel route dns vercillo vercilloanalytics.com
 cloudflared tunnel route dns vercillo www.vercilloanalytics.com
 cloudflared tunnel run vercillo            # foreground test first
-cloudflared service install                # then install as a Windows service
+cloudflared service install                # then install as a Windows service (elevated)
 ```
+
+> ⚠️ **Windows service gotcha (learned live 2026-07-08):** `service install`
+> registers the service with **no arguments**, so it looks for config in the
+> LocalSystem profile and **crash-loops**. Fix once, elevated — point the
+> service's `ImagePath` at the user config via the registry (exact string, no
+> shell quote-mangling; `sc.exe config` from PowerShell mangles the inner
+> quotes and fails *silently*):
+>
+> ```powershell
+> Set-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Services\cloudflared" -Name ImagePath `
+>   -Value '"C:\Program Files (x86)\cloudflared\cloudflared.exe" --config "C:\Users\jverc\.cloudflared\config.yml" tunnel run'
+> Start-Service cloudflared
+> ```
 
 ## 3. One-time: app configuration
 
@@ -151,6 +164,8 @@ through it (Funnel can't carry the custom domain anyway).
 
 | Symptom | Cause → fix |
 |---|---|
+| **Registrar's DNS page shows records but nothing resolves (SERVFAIL/REFUSED)** | the page is an inactive copy — the delegated nameservers' zone no longer exists (this domain's Google Cloud DNS zone had been deleted while Squarespace still delegated to it). Verify with `Resolve-DnsName <domain> -Server <the delegated NS>`; the fix IS the Cloudflare cutover |
+| cloudflared service crash-loops ("terminated unexpectedly") | registered with no arguments → set the registry `ImagePath` per §2's gotcha box |
 | Cloudflare 502/530 on the domain | webapp not running / tunnel down → start `run_webapp.py`; `cloudflared tunnel info vercillo` |
 | Zone stuck "Pending" | nameservers not switched or still propagating → recheck Squarespace, wait |
 | Email stopped | MX/SPF/DKIM missing in Cloudflare → re-add from §1.3 |

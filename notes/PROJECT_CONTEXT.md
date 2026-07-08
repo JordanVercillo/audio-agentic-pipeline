@@ -20,19 +20,28 @@
   orchestrator rebuilt to match docs, ffmpeg/libmp3lame installed, DSP
   feature-serialization gap closed (warehouse: 82 numeric feature cols;
   FAISS vector unchanged at 77). Phase-4 webapp still NOT in this repo copy.
-- **➡️ NEXT ACTION — Epic E slice 2: the tunnel go-live (BLOCKED on owner ~20-min
-  checklist, then I drive `cloudflared` from the terminal).** Owner steps (in
-  [`docs/SELF_HOSTING.md`](docs/SELF_HOSTING.md) §1): Cloudflare free account →
-  Add site `vercilloanalytics.com` → **verify the Google Workspace email records
-  survived import (MX smtp.google.com / SPF TXT / DKIM google._domainkey)** →
-  swap nameservers at Squarespace (Domain Nameservers; registration/lock stay) →
-  zone Active → test email. Then me: cloudflared install/login/create/route +
-  service; owner adds `https://vercilloanalytics.com/callback` in Spotify +
-  prod `.env` (fresh SESSION_SECRET_KEY, https redirect). Context: domain was
-  Google Domains → Squarespace; current custom NS ≈ Google Cloud DNS (the "lost
-  GCP thing" — delete the zone after cutover, saves ~$0.20/mo). **Tailscale =
-  private admin plane only (Funnel can't serve custom domains); owner to re-auth
-  after wifi move, non-blocking.** ✅ **Epic E slice 1 DONE (2026-07-08):
+- **🚀 LIVE (2026-07-08): `https://vercilloanalytics.com` serves the app from the
+  owner's PC — Epic E slice 2 (tunnel go-live) DONE.** Chain verified end-to-end:
+  public URL → Cloudflare edge (yyz) → `cloudflared` **Windows service**
+  (tunnel `vercillo`, `c02e4398…`; ImagePath fixed via registry — `service
+  install` registers NO args and crash-loops, and `sc.exe config` from PS
+  silently mangles quotes; see SELF_HOSTING §2 gotcha) → localhost:8000
+  (`/healthz` {ok:true}, landing 200 in 0.26s). Webapp + worker `--loop` running
+  (background tasks); prod `.env` set (fresh SESSION_SECRET_KEY, https redirect
+  → Secure cookies). **DNS drama (journal #14): the domain was DARK — the four
+  delegated ns-cloud-d* pointed at a DELETED Google Cloud DNS zone (Squarespace's
+  records page was an inactive copy). Cutover to Cloudflare (`jason`/`surina`)
+  RESTORED the domain + Workspace email (MX+SPF staged pre-swap, verified
+  publicly).**
+- **➡️ NEXT ACTION — owner finishers, then live acceptance:** ① **Spotify
+  dashboard: add `https://vercilloanalytics.com/callback`** (login FAILS with
+  redirect-mismatch until this); ② DKIM TXT `google._domainkey` — copy value
+  from admin.google.com → Gmail → Authenticate email → add in Cloudflare DNS
+  (+optional DMARC); ③ test email to jordan@vercilloanalytics.com; ④ phone
+  test off-wifi → login → dashboard/analytics/profile = **Epic E acceptance**.
+  Then optional hardening: Task Scheduler autostart for webapp+worker, nightly
+  `backup_cache.py`, delete the orphaned Google Cloud DNS zone (~$0.20/mo),
+  Tailscale re-auth (private admin plane only). Then the polish pass. ✅ **Epic E slice 1 DONE (2026-07-08):
   `/privacy` page (+footer link, route test), `src/store/backup.py` +
   `scripts/backup_cache.py` (WAL-safe sqlite backup API; verify/restore;
   `.pre-restore` safety; prune; RESTORE DRILL tested — incl. Windows

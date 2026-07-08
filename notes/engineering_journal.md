@@ -303,3 +303,28 @@ arrive, instead of vetoing the population.
 > *Never let one degenerate row define the schema. Select columns by coverage,
 > filter rows by completeness — and keep one deliberately-sparse row in the
 > test fixtures, because synthetic data is too polite to break you.*
+
+## Epic E — go-live
+
+### 14. The DNS pages looked healthy for a zone that didn't exist (2026-07-08)
+
+Pre-cutover check of the domain's records: Squarespace's DNS page listed a
+complete, correct-looking zone (MX, SPF, DKIM, A records). But Cloudflare's
+import found 0 records — and querying the four delegated
+`ns-cloud-d*.googledomains.com` servers directly returned REFUSED on every
+record type. The Google Cloud DNS zone behind the delegation had been deleted
+(likely in the Google Domains → Squarespace shuffle); the domain — and its
+email — had been silently dark for an unknown while. Squarespace's page was
+an inactive *copy*, faithfully displaying records nobody was serving.
+
+**The realization:** a DNS control panel shows configuration, not reality —
+the same docs-fiction pattern as journal #4, one layer down the stack. The
+registrar's page, the old host's page, and the live answers are three
+different things; only `Resolve-DnsName <domain> -Server <the actual
+delegated NS>` is ground truth. The "risky" migration was actually the
+repair, and five minutes of authoritative queries flipped the plan from
+"carefully preserve email" to "restore email, fast."
+
+> *Before migrating DNS, query the delegated nameservers directly. A record
+> shown on a web page is a claim; a record served by the authoritative NS is
+> a fact.*
