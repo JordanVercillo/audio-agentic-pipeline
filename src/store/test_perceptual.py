@@ -119,3 +119,93 @@ def test_empty_cache_returns_empty_frame(tmp_path):
     cache = FeatureCache(url=f"sqlite:///{tmp_path / 'empty.db'}")
     df = compute_perceptual(cache)
     assert df.empty
+
+
+# ── the feature_stats distribution mart (F2) ────────────────────────────────
+def _stats_frame(corpus):
+    from .perceptual import compute_feature_stats
+    return compute_feature_stats(compute_perceptual(corpus))
+
+
+def test_feature_stats_one_row_per_catalog_feature(corpus):
+    stats = _stats_frame(corpus)
+    assert set(stats["column"]) == {c["column"] for c in CATALOG}
+    assert (stats["n"] == 10).all()  # ghost sat out upstream
+
+
+def test_feature_stats_percentiles_ordered_and_bins_sum(corpus):
+    stats = _stats_frame(corpus).set_index("column")
+    for col, row in stats.iterrows():
+        assert row["min"] <= row["p5"] <= row["p25"] <= row["p50"] \
+            <= row["p75"] <= row["p95"] <= row["max"], col
+        assert sum(row["bin_counts"]) == row["n"], col
+        assert len(row["bin_counts"]) == len(row["bin_edges"]) - 1, col
+
+
+def test_feature_stats_binning_rules(corpus):
+    stats = _stats_frame(corpus).set_index("column")
+    assert stats.loc["mode", "bin_edges"] == [-0.5, 0.5, 1.5]           # 2 bins
+    assert len(stats.loc["key", "bin_counts"]) == 12                    # pitch classes
+    dance = stats.loc["danceability", "bin_edges"]
+    assert dance[0] == 0.0 and dance[-1] == 1.0 and len(dance) == 21    # fixed 0–1
+    tempo = stats.loc["tempo", "bin_edges"]
+    assert tempo[0] == 62.0 and tempo[-1] == 122.0                      # population min–max
+
+
+# ── the audit extension (F2): catalog↔mart parity checks ───────────────────
+def _load_audit_module():
+    import importlib.util
+    from pathlib import Path
+    path = Path(__file__).resolve().parents[2] / ".claude" / "skills" \
+        / "warehouse-audit" / "audit_warehouse.py"
+    spec = importlib.util.spec_from_file_location("audit_warehouse", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def _write_marts(tmp_path, corpus, *, drop_stat_row=False, extra_mart_col=False):
+    from .perceptual import catalog_frame, compute_feature_stats
+    df = compute_perceptual(corpus)
+    if extra_mart_col:
+        df["rogue_feature"] = 0.5  # in the mart, not in the catalog
+    marts = tmp_path / "marts"
+    marts.mkdir()
+    df.to_parquet(marts / "track_perceptual.parquet", index=False)
+    catalog_frame().to_parquet(marts / "feature_catalog.parquet", index=False)
+    stats = compute_feature_stats(df)
+    if drop_stat_row:
+        stats = stats[stats["column"] != "danceability"]
+    stats.to_parquet(marts / "feature_stats.parquet", index=False)
+    return marts
+
+
+def test_audit_marts_green_on_good_marts(corpus, tmp_path):
+    audit = _load_audit_module()
+    report, warnings, errors, flags = audit.check_marts(_write_marts(tmp_path, corpus))
+    assert flags == {"CATALOG_MART_DRIFT": False, "STATS_MART_DRIFT": False}
+    assert not errors
+    assert report["track_perceptual"]["rows"] == 10
+
+
+def test_audit_marts_catches_catalog_drift(corpus, tmp_path):
+    audit = _load_audit_module()
+    marts = _write_marts(tmp_path, corpus, extra_mart_col=True)
+    _, warnings, _, flags = audit.check_marts(marts)
+    assert flags["CATALOG_MART_DRIFT"] is True
+    assert any("uncataloged" in w for w in warnings)
+
+
+def test_audit_marts_catches_stats_drift(corpus, tmp_path):
+    audit = _load_audit_module()
+    marts = _write_marts(tmp_path, corpus, drop_stat_row=True)
+    _, warnings, _, flags = audit.check_marts(marts)
+    assert flags["STATS_MART_DRIFT"] is True
+    assert any("no stats for" in w for w in warnings)
+
+
+def test_audit_marts_absent_is_a_note_not_a_finding(tmp_path):
+    audit = _load_audit_module()
+    report, warnings, errors, flags = audit.check_marts(tmp_path / "nope")
+    assert flags == {"CATALOG_MART_DRIFT": False, "STATS_MART_DRIFT": False}
+    assert not errors and any("not built" in w for w in warnings)

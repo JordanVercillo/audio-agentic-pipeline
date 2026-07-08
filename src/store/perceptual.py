@@ -162,6 +162,56 @@ def compute_perceptual(cache: FeatureCache) -> pd.DataFrame:
     return out
 
 
+def compute_feature_stats(df: pd.DataFrame) -> pd.DataFrame:
+    """The distribution mart (F2): one row per catalog feature — moments,
+    percentiles, and a fixed histogram — so /explore can draw population
+    charts without ever shipping raw rows.
+
+    Binning is deterministic per feature class (comparable across rebuilds):
+        mode              2 bins  [-0.5, 0.5, 1.5]
+        key              12 bins  [-0.5 … 11.5]
+        0–1 calibrated   20 bins  [0 … 1]
+        other measured   20 bins  [min … max] of the current population
+    """
+    rows: list[dict[str, Any]] = []
+    for spec in CATALOG:
+        col = spec["column"]
+        if col not in df.columns:
+            continue
+        vals = pd.to_numeric(df[col], errors="coerce").dropna()
+        if vals.empty:
+            continue
+        if col == "mode":
+            edges = np.array([-0.5, 0.5, 1.5])
+        elif col == "key":
+            edges = np.arange(-0.5, 12.0, 1.0)
+        elif spec["tier"] in ("derived", "experimental"):
+            edges = np.linspace(0.0, 1.0, 21)
+        else:
+            lo, hi = float(vals.min()), float(vals.max())
+            if lo == hi:  # degenerate population — one bin around the value
+                lo, hi = lo - 0.5, hi + 0.5
+            edges = np.linspace(lo, hi, 21)
+        counts, _ = np.histogram(vals, bins=edges)
+        q = vals.quantile([0.05, 0.25, 0.50, 0.75, 0.95])
+        rows.append({
+            "column": col, "tier": spec["tier"], "unit": spec["unit"],
+            "friendly": spec["friendly"], "description": spec["description"],
+            "n": int(len(vals)),
+            "mean": round(float(vals.mean()), 4),
+            "std": round(float(vals.std(ddof=0)), 4),
+            "min": round(float(vals.min()), 4),
+            "p5": round(float(q.loc[0.05]), 4), "p25": round(float(q.loc[0.25]), 4),
+            "p50": round(float(q.loc[0.50]), 4), "p75": round(float(q.loc[0.75]), 4),
+            "p95": round(float(q.loc[0.95]), 4),
+            "max": round(float(vals.max()), 4),
+            "bin_edges": [round(float(e), 4) for e in edges],
+            "bin_counts": [int(c) for c in counts],
+            "version": PERCEPTUAL_VERSION,
+        })
+    return pd.DataFrame(rows)
+
+
 def persist_perceptual(cache: FeatureCache, df: pd.DataFrame) -> int:
     """Upsert the transform into the cache's track_perceptual table."""
     n = 0

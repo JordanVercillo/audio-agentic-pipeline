@@ -30,6 +30,7 @@ from src.store.cache import FeatureCache  # noqa: E402
 from src.store.perceptual import (  # noqa: E402
     PERCEPTUAL_VERSION,
     catalog_frame,
+    compute_feature_stats,
     compute_perceptual,
     persist_perceptual,
 )
@@ -48,12 +49,15 @@ if __name__ == "__main__":
     df.to_parquet(_MARTS / "track_perceptual.parquet", index=False)
     catalog = catalog_frame()
     catalog.to_parquet(_MARTS / "feature_catalog.parquet", index=False)
+    stats = compute_feature_stats(df)
+    stats.to_parquet(_MARTS / "feature_stats.parquet", index=False)
 
     print(f"{PERCEPTUAL_VERSION}: {n} tracks transformed "
           f"({len(catalog)} catalog features: "
           f"{(catalog['tier'] == 'measured').sum()} measured, "
           f"{(catalog['tier'] == 'derived').sum()} derived, "
-          f"{(catalog['tier'] == 'experimental').sum()} experimental)")
+          f"{(catalog['tier'] == 'experimental').sum()} experimental); "
+          f"feature_stats: {len(stats)} rows")
     meta = cache.all_meta()
     sample = df.nlargest(3, "danceability")[
         ["spotify_track_id", "tempo", "loudness_db", "energy", "danceability"]]

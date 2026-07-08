@@ -27,8 +27,14 @@ import pandas as pd
 REPO = Path(__file__).resolve().parents[3]
 WAREHOUSE = REPO / "data" / "warehouse"
 RAW_AUDIO = REPO / "data" / "raw_audio"
+MARTS = REPO / "data" / "marts"
 LAYERS = ("staging", "cleansed", "modeled")
 BRIDGE = "spotify_track_id"
+
+# The feature_stats mart's required schema (VISION_SPECS F2).
+STATS_REQUIRED = {"column", "tier", "n", "mean", "std", "min",
+                  "p5", "p25", "p50", "p75", "p95", "max",
+                  "bin_edges", "bin_counts"}
 # Non-feature columns that may appear in feature/fact tables: identifiers,
 # tonal class labels, and numeric track METADATA (duration_ms/rank/explicit
 # come from Spotify, not DSP — they must not count as DSP features).
@@ -63,6 +69,102 @@ def _load_expected_features():
 def table_summary(path: Path):
     df = pd.read_parquet(path)
     return df, {"rows": int(len(df)), "cols": int(df.shape[1])}
+
+
+def check_marts(marts_dir: Path):
+    """Audit the derived feature marts (VISION_SPECS F2) — the D-4 exact-list
+    discipline applied to the perceptual layer:
+
+      CATALOG_MART_DRIFT  feature_catalog's columns != track_perceptual's
+                          feature columns (exact, both directions)
+      STATS_MART_DRIFT    feature_stats' feature set != the catalog's, a
+                          required stat column is missing, or a histogram's
+                          bin_counts don't sum to its n
+
+    Marts are an optional derived layer: an absent dir is a note, not a
+    finding. Returns (report, warnings, errors, flags).
+    """
+    report: dict = {}
+    warnings: list[str] = []
+    errors: list[str] = []
+    flags = {"CATALOG_MART_DRIFT": False, "STATS_MART_DRIFT": False}
+
+    if not marts_dir.is_dir() or not any(marts_dir.glob("*.parquet")):
+        warnings.append("data/marts/ not built (optional — run scripts/build_feature_marts.py)")
+        return report, warnings, errors, flags
+
+    frames: dict[str, pd.DataFrame] = {}
+    for name in ("feature_catalog", "track_perceptual", "feature_stats"):
+        path = marts_dir / f"{name}.parquet"
+        if not path.exists():
+            warnings.append(f"marts/{name}.parquet missing — MART_INCOMPLETE")
+            continue
+        try:
+            df = pd.read_parquet(path)
+        except Exception as e:
+            errors.append(f"marts/{name}.parquet: unreadable parquet: {e}")
+            continue
+        frames[name] = df
+        report[name] = {"rows": int(len(df)), "cols": int(df.shape[1])}
+
+    catalog = frames.get("feature_catalog")
+    perceptual = frames.get("track_perceptual")
+    stats = frames.get("feature_stats")
+
+    if catalog is not None and perceptual is not None:
+        cat_cols = set(catalog["column"])
+        mart_cols = set(perceptual.columns) - {BRIDGE, "version"}
+        missing = sorted(cat_cols - mart_cols)
+        extra = sorted(mart_cols - cat_cols)
+        if missing or extra:
+            parts = []
+            if missing:
+                parts.append(f"cataloged but absent from the mart: {missing[:4]}")
+            if extra:
+                parts.append(f"in the mart but uncataloged: {extra[:4]}")
+            warnings.append(
+                f"marts: catalog<->track_perceptual mismatch — {'; '.join(parts)}"
+                " — CATALOG_MART_DRIFT")
+            flags["CATALOG_MART_DRIFT"] = True
+        if BRIDGE in perceptual.columns:
+            n_dup = int(perceptual.duplicated(subset=[BRIDGE]).sum())
+            if n_dup:
+                errors.append(f"marts/track_perceptual: {n_dup} duplicate {BRIDGE}")
+                flags["CATALOG_MART_DRIFT"] = True
+
+    if stats is not None:
+        missing_cols = sorted(STATS_REQUIRED - set(stats.columns))
+        if missing_cols:
+            warnings.append(
+                f"marts/feature_stats missing required columns {missing_cols[:6]}"
+                " — STATS_MART_DRIFT")
+            flags["STATS_MART_DRIFT"] = True
+        elif catalog is not None:
+            cat_cols = set(catalog["column"])
+            stat_cols = set(stats["column"])
+            missing = sorted(cat_cols - stat_cols)
+            extra = sorted(stat_cols - cat_cols)
+            if missing or extra:
+                parts = []
+                if missing:
+                    parts.append(f"no stats for: {missing[:4]}")
+                if extra:
+                    parts.append(f"stats for uncataloged: {extra[:4]}")
+                warnings.append(
+                    f"marts: catalog<->feature_stats mismatch — {'; '.join(parts)}"
+                    " — STATS_MART_DRIFT")
+                flags["STATS_MART_DRIFT"] = True
+            bad_bins = [
+                str(r["column"]) for _, r in stats.iterrows()
+                if int(sum(r["bin_counts"])) != int(r["n"])
+            ]
+            if bad_bins:
+                errors.append(
+                    f"marts/feature_stats: bin_counts don't sum to n for {bad_bins[:4]}"
+                    " — STATS_MART_DRIFT")
+                flags["STATS_MART_DRIFT"] = True
+
+    return report, warnings, errors, flags
 
 
 def main() -> int:
@@ -192,6 +294,11 @@ def main() -> int:
         if undownloaded:
             warnings.append(f"{len(undownloaded)} tracks not yet downloaded (soft)")
 
+    # --- derived feature marts (VISION_SPECS F2) ----------------------------
+    marts_report, m_warnings, m_errors, m_flags = check_marts(MARTS)
+    warnings.extend(m_warnings)
+    errors.extend(m_errors)
+
     flags = {
         "NO_WAREHOUSE": False,
         "MISSING_LAYER": missing_layer,
@@ -202,9 +309,11 @@ def main() -> int:
         "JOIN_ORPHANS": join_orphans,
         "AUDIO_ORPHANS": audio_orphans,
         "FEATURE_DRIFT": feature_drift,
+        **m_flags,
     }
-    print(json.dumps({"layers": layers, "audio": audio, "errors": errors,
-                      "warnings": warnings, "flags": flags}, indent=2))
+    print(json.dumps({"layers": layers, "audio": audio, "marts": marts_report,
+                      "errors": errors, "warnings": warnings, "flags": flags},
+                     indent=2))
     return 0
 
 

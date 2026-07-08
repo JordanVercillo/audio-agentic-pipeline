@@ -42,13 +42,25 @@
   the acoustic map, artist buckets: Muse 31-track "Noisy · Bright" vs "Smooth ·
   Dark"). External reachability separately proven via curl through the
   Cloudflare edge. **ALL EPICS A–E OF APP_SPEC v2 ARE BUILT AND LIVE, at $0.**
-- **➡️ NEXT ACTION — Epic F slice F2: the `feature_stats` distribution mart +
-  warehouse-audit extension** (per-feature histogram bins + percentiles p5–p95
-  over the perceptual mart, powering /explore's population charts without
-  shipping raw rows; audit gains catalog↔mart column-parity checks — the D-4
-  discipline applied to the new layer). Then F3 `/explore` dashboard → F-v2
-  (time_signature, loudness-curve time series, instrumentalness — all need
-  frame-level audio). ✅ **Epic F slice F1 DONE (2026-07-08): `perceptual-v1`.**
+- **➡️ NEXT ACTION — Epic F slice F3: the `/explore` dashboard** (VISION_SPECS
+  B3: feature picker from `feature_catalog` grouped by tier; population
+  histogram from `feature_stats` + the user's tracks overlaid + percentile
+  chips; feature×feature scatter over `track_perceptual` colored by the Epic-C
+  clusters; per-window strips; charts per the dataviz-skill procedure w/ the
+  validated palette). Then F-v2 (time_signature, loudness-curve time series,
+  instrumentalness — frame-level audio). ✅ **Epic F slice F2 DONE (2026-07-08):
+  `feature_stats` mart + audit extension.** `compute_feature_stats` in
+  `perceptual.py` — one row per catalog feature: n/mean/std/min/p5–p95/max +
+  deterministic histograms (mode 2 bins, key 12, 0–1-calibrated fixed [0,1]×20,
+  other measured min–max×20); `data/marts/feature_stats.parquet` via the mart
+  builder. `warehouse-audit` gains `check_marts()` (importable, pytest-covered):
+  **CATALOG_MART_DRIFT** (catalog↔track_perceptual exact-list, both directions
+  + bridge-key dup check) and **STATS_MART_DRIFT** (catalog↔stats parity,
+  required schema, bin_counts-sum-to-n); absent marts = note, not finding.
+  **Proof: real build 117 tracks / 13 stats rows; extended audit → marts
+  section {catalog 13×5, perceptual 117×15, stats 13×18}, 0 errors, both new
+  flags false. 7 new tests (percentile ordering, bin sums, binning rules,
+  drift-detection positive AND negative cases) → 242 green.** ✅ **Epic F slice F1 DONE (2026-07-08): `perceptual-v1`.**
   `src/store/perceptual.py` — pure transform over the 82 cached cols: 5
   measured (tempo/key/mode/duration/loudness-dBFS incl. str-"minor"→0 mapping),
   7 derived percentile-calibrated 0–1 (energy, danceability [~120bpm band ×
