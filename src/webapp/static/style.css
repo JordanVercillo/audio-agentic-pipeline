@@ -16,6 +16,14 @@ header.site, footer.site {
 }
 footer.site { border-bottom: 0; border-top: 1px solid var(--line);
   color: var(--muted); font-size: .8rem; flex-wrap: wrap; }
+footer.site a { color: var(--muted); text-decoration: underline; }
+footer.site a:hover { color: var(--ink); }
+
+.prose { max-width: 46rem; }
+.prose h2.section { margin-top: 1.6rem; }
+.prose p { color: var(--muted); line-height: 1.65; }
+.prose p strong, .prose p a { color: var(--ink); }
+.prose code { background: var(--panel-2); border-radius: 4px; padding: 0 .3rem; }
 .brand { font-weight: 700; letter-spacing: -.01em; }
 .brand span { color: var(--muted); font-weight: 500; }
 header nav { display: flex; gap: 1.25rem; align-items: center; }
