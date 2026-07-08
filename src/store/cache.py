@@ -68,6 +68,11 @@ class FeatureCache:
         Base.metadata.create_all(self.engine)
         self._Session = sessionmaker(self.engine, expire_on_commit=False)
 
+    def close(self) -> None:
+        """Release pooled connections — required before file-level operations on
+        the SQLite db (e.g. restore), which Windows blocks while a handle is open."""
+        self.engine.dispose()
+
     # ── reads ──────────────────────────────────────────────────────────────
     def get(self, track_ids: list[str]) -> dict[str, dict]:
         """Cached feature dicts for the given ids (only those present)."""

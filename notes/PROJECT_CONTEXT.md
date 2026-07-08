@@ -20,10 +20,26 @@
   orchestrator rebuilt to match docs, ffmpeg/libmp3lame installed, DSP
   feature-serialization gap closed (warehouse: 82 numeric feature cols;
   FAISS vector unchanged at 77). Phase-4 webapp still NOT in this repo copy.
-- **➡️ NEXT ACTION — SPEC [`docs/APP_SPEC.md`](docs/APP_SPEC.md) Epic E (self-host &
-  share: free HTTPS tunnel + stable URL, two-process run procedure, backup
-  script + restore drill, `/privacy`, allowlist) — the LAST epic; then the
-  polish pass.** ✅ **Epic D COMPLETE (2026-07-07): RAG taste classification.**
+- **➡️ NEXT ACTION — Epic E slice 2: the tunnel go-live (BLOCKED on owner ~20-min
+  checklist, then I drive `cloudflared` from the terminal).** Owner steps (in
+  [`docs/SELF_HOSTING.md`](docs/SELF_HOSTING.md) §1): Cloudflare free account →
+  Add site `vercilloanalytics.com` → **verify the Google Workspace email records
+  survived import (MX smtp.google.com / SPF TXT / DKIM google._domainkey)** →
+  swap nameservers at Squarespace (Domain Nameservers; registration/lock stay) →
+  zone Active → test email. Then me: cloudflared install/login/create/route +
+  service; owner adds `https://vercilloanalytics.com/callback` in Spotify +
+  prod `.env` (fresh SESSION_SECRET_KEY, https redirect). Context: domain was
+  Google Domains → Squarespace; current custom NS ≈ Google Cloud DNS (the "lost
+  GCP thing" — delete the zone after cutover, saves ~$0.20/mo). **Tailscale =
+  private admin plane only (Funnel can't serve custom domains); owner to re-auth
+  after wifi move, non-blocking.** ✅ **Epic E slice 1 DONE (2026-07-08):
+  `/privacy` page (+footer link, route test), `src/store/backup.py` +
+  `scripts/backup_cache.py` (WAL-safe sqlite backup API; verify/restore;
+  `.pre-restore` safety; prune; RESTORE DRILL tested — incl. Windows
+  file-lock lesson → `FeatureCache.close()`), and
+  [`docs/SELF_HOSTING.md`](docs/SELF_HOSTING.md) — THE reusable $0 PC-hosting
+  template (owner's explicit ask). 221 tests green.** ✅ **Epic D COMPLETE
+  (2026-07-07): RAG taste classification.**
   `src/webapp/archetype.py`: deterministic archetype from real signals — home
   sound (dominant cluster), breadth (Loyalist ≥70% / Dualist two ≥85% /
   Eclectic), motion (D-9 σ-bands: Anchored/Drifting/Roaming/Shape-shifting) →

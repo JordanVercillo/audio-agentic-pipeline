@@ -396,6 +396,13 @@ def create_app() -> FastAPI:
         request.state.sid = _store.new()
         return RedirectResponse("/", status_code=303)
 
+    @app.get("/privacy", response_class=HTMLResponse)
+    def privacy(request: Request):
+        return templates.TemplateResponse(request, "privacy.html", {
+            "authed": auth_web.is_authenticated(request.state.session),
+            "ttl_minutes": config.SESSION_TTL_SECONDS // 60,
+        })
+
     @app.get("/healthz")
     def healthz():
         return {"ok": True}

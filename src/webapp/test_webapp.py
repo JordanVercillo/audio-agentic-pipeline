@@ -384,6 +384,14 @@ def test_classify_unauthenticated_redirects(client):
     assert r.status_code == 303 and r.headers["location"] == "/"
 
 
+def test_privacy_page_public_and_honest(client):
+    r = client.get("/privacy")
+    assert r.status_code == 200
+    assert "songs, not people" in r.text          # the design principle
+    assert "user-top-read" in r.text              # the only scope
+    assert "never stored" in r.text.lower()       # audio posture (D-15)
+
+
 def test_analytics_unauthenticated_redirects(client):
     r = client.get("/analytics", follow_redirects=False)
     assert r.status_code == 303 and r.headers["location"] == "/"

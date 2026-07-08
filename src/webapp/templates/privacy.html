@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="hero prose">
+  <h1>Privacy</h1>
+  <p class="lede">This is a personal analytics pilot. The design principle is
+    simple: <strong>we analyze songs, not people.</strong></p>
+
+  <h2 class="section">What we access</h2>
+  <p>When you log in with Spotify, this app requests one scope —
+    <code>user-top-read</code> — your top tracks and artists. Authorization uses
+    Spotify's PKCE flow against a public client id; no app secret exists anywhere
+    in this system.</p>
+
+  <h2 class="section">What we keep — and what we don't</h2>
+  <p><strong>Your listening data is ephemeral.</strong> Your top tracks and
+    artists live only in a server-side session that expires automatically
+    ({{ ttl_minutes }} minutes of inactivity) or when you log out. They are never
+    written to a database, never shared, never sold.</p>
+  <p><strong>What we cache is song-keyed, not person-keyed:</strong> the acoustic
+    features of tracks (tempo, energy, timbre — derived by our own signal
+    processing) and a spectrogram image per track. Those describe the <em>song</em>
+    and contain nothing about who listened to it.</p>
+  <p><strong>Audio is never stored or served.</strong> When a song is analyzed,
+    the audio is fetched transiently, processed, and deleted; only derived
+    features and the spectrogram image are kept.</p>
+
+  <h2 class="section">Optional AI answers</h2>
+  <p>If the “ask your taste” answers are LLM-written, the model receives only the
+    facts already shown on your dashboard (your session's tracks, clusters,
+    drift) to write the reply — nothing is retained by this app beyond your
+    session. Without an LLM configured, answers are template-generated locally.</p>
+
+  <h2 class="section">Contact</h2>
+  <p>Questions or want anything removed? Email
+    <a href="mailto:vercillojordan@gmail.com">vercillojordan@gmail.com</a>.
+    Removal is trivial by design: log out (or let the session expire) and
+    nothing about you remains.</p>
+</section>
+{% endblock %}
