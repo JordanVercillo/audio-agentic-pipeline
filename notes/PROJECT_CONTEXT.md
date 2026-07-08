@@ -139,6 +139,7 @@ narrative goes to `notes/engineering_journal.md`, plans to
 | `PR_REFERENCE.md` | Historical: the Copilot PR write-up for Phases 1–4. Describes a webapp + git history this repo copy does NOT contain (see journal #4). |
 | `notes/project_roadmap.md` | Severity-ranked weaknesses + the phase gameplan with exit criteria. |
 | `notes/engineering_journal.md` | Numbered insight journal — surprises, not progress. |
+| `notes/kb/` | **READ-ONLY synced copy** of the course knowledge base (technique cards, skill patterns, tooling matrix). Canonical: `language-models/kb/` — see `notes/kb/KB_PROVENANCE.md`; never edit here, propose upstream. |
 | `src/ingestion/` | Spotify PKCE auth, top-items fetchers, YouTube→MP3 downloader (rate-limited, idempotent), Parquet serializer. Tests: `test_ingestion.py`, `test_audio_downloader.py`. |
 | `src/dsp/` | librosa loader, 77-dim feature extractor, batch collection extractor, optional PANNs embeddings. Tests: `test_dsp.py`, `test_collection_extractor.py`. |
 | `src/warehouse/` | Medallion: `staging.py` (Bronze) → `cleansed.py` (Silver) → `modeled.py` (Gold star schema; fact denormalized, agent-optimized per ADR-002). |
