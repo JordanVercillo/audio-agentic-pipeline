@@ -1,16 +1,20 @@
 """
 run_extraction_worker.py — drain the feature-cache extraction queue (APP_SPEC Epic A).
 
-    uv run python scripts/run_extraction_worker.py [--max N]
+    uv run python scripts/run_extraction_worker.py [--max N]      # drain once
+    uv run python scripts/run_extraction_worker.py --loop         # self-host mode:
+                                                                  # poll forever (D-16)
 
-Reads DATABASE_URL (Postgres in prod, SQLite locally). Audio is fetched to a
-temp dir and deleted after extraction (D-15); spectrograms land in
-data/spectrograms/ (GCS in prod). Run as a Cloud Run Job / background worker.
+Reads DATABASE_URL (SQLite+WAL locally — the default; Postgres if configured).
+Audio is fetched to a temp dir and deleted after extraction (D-15); spectrograms
+land in data/spectrograms/. In the local-first deployment this runs as the
+second process alongside the webapp (APP_SPEC §5).
 """
 
 import argparse
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 # Force UTF-8 stdout — the reused downloader prints emoji status lines that crash
@@ -33,11 +37,20 @@ _SPECTROGRAM_DIR = _ROOT / "data" / "spectrograms"
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Drain the feature-cache extraction queue.")
     parser.add_argument("--max", type=int, default=None,
-                        help="max jobs to process (default: drain the whole queue)")
+                        help="max jobs to process per drain (default: the whole queue)")
+    parser.add_argument("--loop", action="store_true",
+                        help="poll the queue forever (self-host worker mode)")
+    parser.add_argument("--interval", type=int, default=30,
+                        help="seconds between polls in --loop mode (default 30)")
     args = parser.parse_args()
 
     cache = FeatureCache()
     with tempfile.TemporaryDirectory(prefix="va_audio_") as audio_dir:
-        result = drain(cache, audio_dir=Path(audio_dir),
-                       spectrogram_dir=_SPECTROGRAM_DIR, max_jobs=args.max)
-    print(f"extraction: {result['done']} done, {result['failed']} failed")
+        while True:
+            result = drain(cache, audio_dir=Path(audio_dir),
+                           spectrogram_dir=_SPECTROGRAM_DIR, max_jobs=args.max)
+            if result["done"] or result["failed"]:
+                print(f"extraction: {result['done']} done, {result['failed']} failed")
+            if not args.loop:
+                break
+            time.sleep(args.interval)

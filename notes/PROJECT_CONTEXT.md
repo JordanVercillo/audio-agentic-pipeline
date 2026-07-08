@@ -20,15 +20,84 @@
   orchestrator rebuilt to match docs, ffmpeg/libmp3lame installed, DSP
   feature-serialization gap closed (warehouse: 82 numeric feature cols;
   FAISS vector unchanged at 77). Phase-4 webapp still NOT in this repo copy.
-- **➡️ NEXT ACTION — SPEC [`docs/APP_SPEC.md`](docs/APP_SPEC.md) Epic C (analytics &
-  drift dashboard: ML cluster the visitor's songs AND artists by acoustic
-  features, cluster-movement drift viz; Spark at scale).** ✅ **Epic B COMPLETE
+- **🚀 LIVE (2026-07-08): `https://vercilloanalytics.com` serves the app from the
+  owner's PC — Epic E slice 2 (tunnel go-live) DONE.** Chain verified end-to-end:
+  public URL → Cloudflare edge (yyz) → `cloudflared` **Windows service**
+  (tunnel `vercillo`, `c02e4398…`; ImagePath fixed via registry — `service
+  install` registers NO args and crash-loops, and `sc.exe config` from PS
+  silently mangles quotes; see SELF_HOSTING §2 gotcha) → localhost:8000
+  (`/healthz` {ok:true}, landing 200 in 0.26s). Webapp + worker `--loop` running
+  (background tasks); prod `.env` set (fresh SESSION_SECRET_KEY, https redirect
+  → Secure cookies). **DNS drama (journal #14): the domain was DARK — the four
+  delegated ns-cloud-d* pointed at a DELETED Google Cloud DNS zone (Squarespace's
+  records page was an inactive copy). Cutover to Cloudflare (`jason`/`surina`)
+  RESTORED the domain + Workspace email (MX+SPF staged pre-swap, verified
+  publicly).**
+- **✅ EPIC E ACCEPTED (2026-07-08): owner logged in ON THE LIVE DOMAIN and the
+  full experience rendered** — landing → PKCE login (after adding the prod
+  redirect in the Spotify dashboard; the "redirect_uri: Not matching
+  configuration" error confirmed-then-fixed it) → dashboard (41/41 analyzed,
+  absolute profile, ask box) → /analytics (archetype "The Drifting Dualist"
+  0.208σ, signature, cluster movement toward "Dark · Smooth", composition bars,
+  the acoustic map, artist buckets: Muse 31-track "Noisy · Bright" vs "Smooth ·
+  Dark"). External reachability separately proven via curl through the
+  Cloudflare edge. **ALL EPICS A–E OF APP_SPEC v2 ARE BUILT AND LIVE, at $0.**
+- **➡️ NEXT ACTION — closeout + polish.** ① **Merge PR #7** (the whole app is
+  running off `epic-a/feature-cache`); ② formal phone-off-wifi spot-check
+  (reachability already proven via edge curl); ③ email finishers: DKIM TXT from
+  admin.google.com → Cloudflare (+optional DMARC), test email to
+  jordan@vercilloanalytics.com; ④ hardening: Task Scheduler autostart
+  (webapp+worker), nightly `backup_cache.py` task, delete the orphaned Google
+  Cloud DNS zone (~$0.20/mo), Tailscale re-auth, Cloudflare www→apex redirect
+  rule; ⑤ Spotify extended-quota request + tester allowlist; ⑥ the owner's
+  deferred polish/UX pass (e.g. local-file tracks show placeholder album art).
+  Runbook: [`docs/SELF_HOSTING.md`](docs/SELF_HOSTING.md). ✅ **Epic E slice 1 DONE (2026-07-08):
+  `/privacy` page (+footer link, route test), `src/store/backup.py` +
+  `scripts/backup_cache.py` (WAL-safe sqlite backup API; verify/restore;
+  `.pre-restore` safety; prune; RESTORE DRILL tested — incl. Windows
+  file-lock lesson → `FeatureCache.close()`), and
+  [`docs/SELF_HOSTING.md`](docs/SELF_HOSTING.md) — THE reusable $0 PC-hosting
+  template (owner's explicit ask). 221 tests green.** ✅ **Epic D COMPLETE
+  (2026-07-07): RAG taste classification.**
+  `src/webapp/archetype.py`: deterministic archetype from real signals — home
+  sound (dominant cluster), breadth (Loyalist ≥70% / Dualist two ≥85% /
+  Eclectic), motion (D-9 σ-bands: Anchored/Drifting/Roaming/Shape-shifting) →
+  "The {motion} {breadth}" + numbered evidence lines. `rag.py`: grounding now
+  carries archetype+clusters+signature (richer `/ask` too); `TasteRAG.classify`
+  — LLM narrative for the deterministic name (never rebrands) w/ deterministic
+  fallback (D-5, $0). App: `_analytics_context` helper enriches session taste;
+  archetype hero card on `/analytics` + POST `/classify` → `profile.html`.
+  **Real-data proof: "The Drifting Dualist", home "Bright · Noisy" (54%),
+  grounded fallback narrative "…Muse anchors it all." 8 new tests → 215
+  green.** ✅ **Epic C COMPLETE (2026-07-07): population clustering +
+  analytics dashboard.** `src/store/clusters.py`: versioned KMeans models
+  (silhouette-chosen k) over ALL cached tracks + per-artist acoustic centroids;
+  cluster naming via top-|z| `_CHARACTER_DIMS` (shared vocabulary w/ journal #9);
+  online nearest-centroid assignment for new tracks; PCA (default) / UMAP map
+  coords; tables `cluster_models`/`track_clusters`/`artist_profiles`. Webapp
+  `/analytics` (`src/webapp/analytics.py` + template): **acoustic signature**
+  (top-|z| vs population), cluster composition per window + **movement story**,
+  the **cluster-map SVG** (population dim, user's songs ringed+colored),
+  **artists-who-sound-alike buckets** (user's artists bolded). Categorical
+  palette VALIDATED via the dataviz skill script (6 colors, dark surface, fixed
+  order). Train: `uv run python scripts/train_clusters.py`. **Real-data proof:
+  117 tracks → k=2 "Dark · Smooth"/"Bright · Noisy" (silhouette 0.115 — honest,
+  homogeneous corpus), 59 artists → 2 buckets. Journal #13 (one all-None ghost
+  track poisoned column intersection → coverage-based selection). 208 tests
+  green.** ✅ **Epic B COMPLETE
   (2026-07-07): hover a track → its features (`taste.track_summary`); deep-dive
   `/song/{id}` — full features + **mel-spectrogram** (`/spectrogram/{id}`, served
   from data/spectrograms) + inline-SVG **radar** (`taste.radar_svg`) + **"songs
   like this"** (`FeatureCache.similar` — z-scored distance, pgvector in prod);
   `seed_cache.py --spectrograms` renders them from owner MP3s. Proven: real 128KB
-  spectrogram + deep-dive render. 195 tests green.** ✅ **Epic A COMPLETE
+  spectrogram + deep-dive render. 195 tests green.** **APP_SPEC is now v2
+  (2026-07-07, owner constraint): LOCAL-FIRST at $0 — no GCP/BQ/Cloud Run;
+  hosting = owner PC + free HTTPS tunnel (Cloudflare/Tailscale) (D-16); serving
+  DB = SQLite+WAL default with `DATABASE_URL`→local-Docker-Postgres upgrade
+  (D-12 amended); the DB IS the queue (worker `--loop`); cache = backed-up asset
+  (D-17); residential IP is BETTER for yt-dlp than cloud. Owner actions now
+  $0: Cloudflare account + domain DNS, Spotify redirect for the tunnel URL +
+  extended-quota request, optional ANTHROPIC_API_KEY.** ✅ **Epic A COMPLETE
   (2026-07-07): the shared feature cache + extraction + webapp wiring.** `src/store/`
   (SQLAlchemy, SQLite-dev/Postgres-prod): `FeatureCache` (get/missing/upsert/enqueue/
   claim_next/fail/job_status; TrackMeta) + `extractor.py` worker (yt-dlp → librosa
@@ -105,6 +174,7 @@ narrative goes to `notes/engineering_journal.md`, plans to
 | `PR_REFERENCE.md` | Historical: the Copilot PR write-up for Phases 1–4. Describes a webapp + git history this repo copy does NOT contain (see journal #4). |
 | `notes/project_roadmap.md` | Severity-ranked weaknesses + the phase gameplan with exit criteria. |
 | `notes/engineering_journal.md` | Numbered insight journal — surprises, not progress. |
+| `llm_knowledge_base/` | **READ-ONLY synced copy** of the course knowledge base (technique cards, skill patterns, tooling matrix). Canonical: `language-models/kb/` — see `llm_knowledge_base/KB_PROVENANCE.md`; never edit here, propose upstream. |
 | `src/ingestion/` | Spotify PKCE auth, top-items fetchers, YouTube→MP3 downloader (rate-limited, idempotent), Parquet serializer. Tests: `test_ingestion.py`, `test_audio_downloader.py`. |
 | `src/dsp/` | librosa loader, 77-dim feature extractor, batch collection extractor, optional PANNs embeddings. Tests: `test_dsp.py`, `test_collection_extractor.py`. |
 | `src/warehouse/` | Medallion: `staging.py` (Bronze) → `cleansed.py` (Silver) → `modeled.py` (Gold star schema; fact denormalized, agent-optimized per ADR-002). |
@@ -128,7 +198,7 @@ narrative goes to `notes/engineering_journal.md`, plans to
 | `docs/AGENT_ACCESS.md` | P5 artifact: MCP registration config (Claude Desktop/Code) + security model + live demo transcript. |
 | `docs/SCALING.md` | P7 artifact: honest 10K/1M-track scaling design (bottleneck = acquisition+DSP; GCS/BigQuery; Spark-vs-Dataflow; the `spark-parity` CI proof). |
 | `docs/P8_PLAN.md` | P8 build plan (FastAPI + Jinja2; session PKCE; feature-store overlap-join; RAG; 4-slice sequence). Slices 1, 1.5, 2 BUILT. |
-| `docs/APP_SPEC.md` | **THE long-term product spec (2026-07-07): per-user extraction + shared track-keyed feature-cache DB (Postgres+pgvector, D-11/D-12), audio-features dashboard w/ hover+deep-dive+spectrogram, ML clustering of songs AND artists, drift dashboard, RAG classification (Phase 2). Epics A–E + build order + decisions D-11…D-15. Extends `SPEC.md`.** |
+| `docs/APP_SPEC.md` | **THE long-term product spec, v2 LOCAL-FIRST (2026-07-07): $0 external spend — owner-PC hosting via free HTTPS tunnel, SQLite+WAL serving cache (`DATABASE_URL`→Postgres upgrade), DB-as-queue worker `--loop`, clustering + acoustic signature + spectrograms + drift, RAG classification (Phase 2). Epics A✅ B✅ C→E→D + decisions D-11…D-17. Extends `SPEC.md`; supersedes its own v1 cloud assumptions.** |
 | `artifacts/` | COMMITTED portfolio outputs (PNGs, reports) — unlike `data/`, these are deliverables. |
 | `legacy/` | Archived pre-pipeline v0 (moved 2026-07-04, P6): `legacy/spotify/` (secret-based v0 scripts) + `legacy/00_tools/` (media_converter). Excluded from ruff/tests/CI; nothing in `src/` imports it. See `legacy/README.md`. |
 | `data/` (gitignored) | `raw_audio/{track_id}.mp3` + `warehouse/{staging,cleansed,modeled}/` Parquet. Rebuild: `run_pipeline.py`. |

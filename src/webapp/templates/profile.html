@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="dash profile">
+  <a class="back" href="/analytics">← Back to your analytics</a>
+
+  <div class="arch-card hero" style="border-left-color: {{ archetype.color }}">
+    <div class="insight-badge">Your taste profile</div>
+    <h1 class="arch-name">{{ archetype.name }}</h1>
+    <p class="muted">at home in “{{ archetype.home }}”</p>
+  </div>
+
+  <div class="qa">
+    <div class="a">{{ narrative }}</div>
+    <p class="src">{{ 'Grounded in your data · LLM' if source == 'llm' else 'Grounded in your data' }}</p>
+  </div>
+
+  <h2 class="section">The evidence</h2>
+  <ul class="arch-evidence standalone">
+    {% for e in archetype.evidence %}<li>{{ e }}</li>{% endfor %}
+  </ul>
+</section>
+{% endblock %}

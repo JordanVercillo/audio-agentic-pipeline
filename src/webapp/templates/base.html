@@ -10,13 +10,13 @@
   <header class="site">
     <a class="brand" href="/">Vercillo Analytics <span>· Taste Pilot</span></a>
     <nav>
-      {% if authed %}<a href="/dashboard">Dashboard</a><a href="/logout">Log out</a>
+      {% if authed %}<a href="/dashboard">Dashboard</a><a href="/analytics">Analytics</a><a href="/logout">Log out</a>
       {% else %}<a href="/login" class="cta">Log in with Spotify</a>{% endif %}
     </nav>
   </header>
   <main>{% block content %}{% endblock %}</main>
   <footer class="site">
-    <span>PKCE auth · no client secret · session-ephemeral</span>
+    <span>PKCE auth · no client secret · session-ephemeral · <a href="/privacy">privacy</a></span>
     <span>Acoustic features from local DSP · the bridge key is the feature store</span>
   </footer>
 </body>

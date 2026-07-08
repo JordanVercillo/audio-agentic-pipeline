@@ -21,7 +21,7 @@ from collections import Counter
 from pathlib import Path
 from typing import Any, Optional
 
-from sqlalchemy import create_engine, select
+from sqlalchemy import create_engine, event, select
 from sqlalchemy.orm import sessionmaker
 
 from .models import Base, ExtractionJob, TrackFeatures, TrackMeta, utcnow
@@ -55,8 +55,23 @@ class FeatureCache:
         if url.startswith("sqlite:///") and ":memory:" not in url:
             Path(url[len("sqlite:///"):]).parent.mkdir(parents=True, exist_ok=True)
         self.engine = create_engine(url, future=True)
+        if url.startswith("sqlite"):
+            # WAL: the webapp and the extraction worker are two PROCESSES sharing
+            # this file — WAL allows a reader and the writer to coexist, and
+            # busy_timeout waits out short write locks instead of erroring (D-12).
+            @event.listens_for(self.engine, "connect")
+            def _sqlite_pragmas(dbapi_conn, _record):  # pragma: no cover - trivial
+                cur = dbapi_conn.cursor()
+                cur.execute("PRAGMA journal_mode=WAL")
+                cur.execute("PRAGMA busy_timeout=5000")
+                cur.close()
         Base.metadata.create_all(self.engine)
         self._Session = sessionmaker(self.engine, expire_on_commit=False)
+
+    def close(self) -> None:
+        """Release pooled connections — required before file-level operations on
+        the SQLite db (e.g. restore), which Windows blocks while a handle is open."""
+        self.engine.dispose()
 
     # ── reads ──────────────────────────────────────────────────────────────
     def get(self, track_ids: list[str]) -> dict[str, dict]:
@@ -69,6 +84,20 @@ class FeatureCache:
                     TrackFeatures.spotify_track_id.in_(track_ids))
             ).scalars().all()
         return {r.spotify_track_id: r.features for r in rows}
+
+    def all_features(self) -> dict[str, dict]:
+        """Every cached track's features — the clustering population (Epic C)."""
+        with self._Session() as s:
+            rows = s.execute(select(TrackFeatures)).scalars().all()
+        return {r.spotify_track_id: r.features for r in rows}
+
+    def all_meta(self) -> dict[str, dict]:
+        """Every track's metadata, keyed by bridge key."""
+        with self._Session() as s:
+            rows = s.execute(select(TrackMeta)).scalars().all()
+        return {m.spotify_track_id: {
+            "track_name": m.track_name, "artist_names": m.artist_names,
+        } for m in rows}
 
     def cached_ids(self, track_ids: list[str]) -> set[str]:
         if not track_ids:
