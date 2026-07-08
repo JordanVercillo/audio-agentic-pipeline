@@ -328,3 +328,25 @@ repair, and five minutes of authoritative queries flipped the plan from
 > *Before migrating DNS, query the delegated nameservers directly. A record
 > shown on a web page is a claim; a record served by the authoritative NS is
 > a fact.*
+
+### 15. The PR merged early, and `git branch -d` covered for it (2026-07-08)
+
+"Merge PR #7 and stop the app" — but PR #7 turned out to have been merged the
+day before, minutes after it was opened at the Epic-B point. Every commit
+pushed to the branch afterwards (APP_SPEC v2, Epics C, D, E, the go-live) kept
+updating a PR that was already closed. Then the tidy-up deleted the branch —
+and `git branch -d`, which is supposed to refuse unmerged work, allowed it:
+its rule is "merged into the UPSTREAM if one is set," and the local branch
+exactly matched origin/epic-a/feature-cache, so git called it merged. One
+`git push --delete` later, eight commits had no ref on the remote. Recovery
+was calm because the objects still existed locally (the tip hash was in the
+session transcript): restore branch at the hash → PR #8 → merge → verify.
+
+**The realization:** two safety rails failed in the same direction — the PR's
+"merged" state said nothing about WHICH commits it merged, and -d's merged
+check compared against the wrong base. The habit that actually saved it:
+verifying main's CONTENT (grep for v2 markers, --loop, file existence) instead
+of trusting the merge commit's existence.
+
+> *"Merged" is a property of a commit range, not a PR. After any merge, verify
+> the content landed — and never trust `-d` on a branch with an upstream.*
