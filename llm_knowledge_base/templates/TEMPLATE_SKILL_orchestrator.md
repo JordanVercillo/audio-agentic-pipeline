@@ -12,8 +12,8 @@ phases in order.
 ## Phase 0 — Recall (FIRST, before anything)
 
 Read `<path/to/PROJECT_CONTEXT.md>` in full. Then the current section of
-`<roadmap>`. Skim `<journal>` entries relevant to today. If `notes/kb/`
-exists, check `notes/kb/techniques/` for cards whose `use_when` matches
+`<roadmap>`. Skim `<journal>` entries relevant to today. If `llm_knowledge_base/`
+exists, check `llm_knowledge_base/techniques/` for cards whose `use_when` matches
 today's problem. Do NOT re-derive what these record.
 
 ## Phase 1 — Audit

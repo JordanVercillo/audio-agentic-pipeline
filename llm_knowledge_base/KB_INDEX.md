@@ -5,7 +5,7 @@
 
 Portable, versioned knowledge distilled from the *Foundations of Language
 Models* course and the projects built with it. Authored HERE; synced
-read-only into consumer repos at `notes/kb/` via:
+read-only into consumer repos at `llm_knowledge_base/` via:
 
 ```bash
 uv run kb/_tools/sync_kb.py --to <consumer-repo-path>   # push a copy
@@ -42,5 +42,6 @@ beside this file for the source; propose changes there.
 
 | Repo | Synced to | Since |
 |---|---|---|
-| `audio-agentic-pipeline` | `notes/kb/` | 2026.07.07 |
+| `audio-agentic-pipeline` | `llm_knowledge_base/` | 2026.07.07 |
+| `vercilloanalytics` | `llm_knowledge_base/` | 2026.07.07 |
 | `wasteland101_4x` | *(not yet — sync when a design session needs it)* | — |

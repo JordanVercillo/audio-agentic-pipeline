@@ -56,5 +56,5 @@ budget, one CUDA owner at a time).
 
 `CLAUDE.md` bootloader → `notes/PROJECT_CONTEXT.md` state file → journal →
 roadmap → `.claude/skills/` (orchestrator + audit worker + env triage) →
-this KB synced at `notes/kb/`. Templates: `../templates/`; full rationale:
+this KB synced at `llm_knowledge_base/`. Templates: `../templates/`; full rationale:
 `claude-repo-playbook` (playbook 01–08).

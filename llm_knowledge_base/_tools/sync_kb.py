@@ -6,7 +6,7 @@
 
 Usage (from the language-models repo root):
     uv run kb/_tools/sync_kb.py --check                 # validate cards + index
-    uv run kb/_tools/sync_kb.py --to <consumer-repo>    # validate, then copy kb/ -> <repo>/notes/kb/
+    uv run kb/_tools/sync_kb.py --to <consumer-repo>    # validate, then copy kb/ -> <repo>/llm_knowledge_base/
     uv run kb/_tools/sync_kb.py --to <repo> --dest docs/kb   # custom destination subpath
 
 Sync is one-way: canonical -> consumer. The copy gets KB_PROVENANCE.md
@@ -121,7 +121,7 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--check", action="store_true", help="validate only")
     ap.add_argument("--to", type=Path, help="consumer repo root to sync into")
-    ap.add_argument("--dest", default="notes/kb", help="destination subpath (default notes/kb)")
+    ap.add_argument("--dest", default="llm_knowledge_base", help="destination subpath (default llm_knowledge_base)")
     args = ap.parse_args()
 
     errors = check()

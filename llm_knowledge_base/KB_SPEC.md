@@ -18,8 +18,9 @@ restructuring anything here.*
                         │
         ┌───────────────┼────────────────────┐
         ▼               ▼                    ▼
- audio-agentic-     wasteland101_4x      <any future repo>
- pipeline/notes/kb/   notes/kb/           notes/kb/
+ audio-agentic-    vercilloanalytics     <any future repo>
+    pipeline
+          each at <repo>/llm_knowledge_base/
      (READ-ONLY COPIES, stamped with KB_PROVENANCE.md)
 ```
 
@@ -134,7 +135,7 @@ The KB is passive files; skills are what make it interactive
 
 - **Orchestrator skills** (`assignment-partner`, `design-partner`,
   `pipeline-partner`) read the project's PROJECT_CONTEXT in Phase 0 — and in
-  repos with a synced `notes/kb/`, ALSO check `techniques/` for cards whose
+  repos with a synced `llm_knowledge_base/`, ALSO check `techniques/` for cards whose
   `use_when` matches today's problem before proposing a design.
 - **`kb-sync`** (in this repo) runs the sync/validate script and reports
   what changed per consumer.
@@ -154,7 +155,7 @@ The KB is passive files; skills are what make it interactive
 
 The reusable skeleton for ANY new project =
 
-1. **This KB, synced** (`notes/kb/`) — the knowledge.
+1. **This KB, synced** (`llm_knowledge_base/`) — the knowledge.
 2. **The harness pattern** — CLAUDE.md bootloader + `notes/PROJECT_CONTEXT.md`
    + journal + roadmap (templates in `claude-repo-playbook/02`, checklist in
    `08-new-project-checklist.md`).
