@@ -159,6 +159,20 @@ a.artist:hover { border-color: var(--spotify); }
 .map-card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 1rem; }
 .cluster-map { width: 100%; height: auto; display: block; }
 
+/* ── taste archetype (Epic D) ── */
+.arch-card { background: var(--panel); border: 1px solid var(--line); border-left-width: 4px;
+  border-radius: 12px; padding: 1.1rem 1.3rem; margin: 0 0 1.25rem; }
+.arch-head { display: flex; justify-content: space-between; align-items: start; gap: 1rem; flex-wrap: wrap; }
+.arch-name { font-size: 1.6rem; letter-spacing: -.02em; margin: .15rem 0 .1rem; }
+.arch-card.hero .arch-name { font-size: 2rem; }
+.arch-btn { border: 0; cursor: pointer; font-size: .95rem; }
+.arch-evidence { list-style: none; margin: .8rem 0 0; padding: 0; display: grid; gap: .3rem; }
+.arch-evidence li { color: var(--muted); font-size: .88rem; }
+.arch-evidence li::before { content: "— "; color: var(--spotify); }
+.arch-evidence.standalone { background: var(--panel); border: 1px solid var(--line);
+  border-radius: 12px; padding: 1rem 1.2rem; margin: 0; }
+.profile .qa { margin-top: 1.25rem; margin-bottom: 1rem; }
+
 .abuckets { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 1rem; }
 .abucket { background: var(--panel); border: 1px solid var(--line); border-left-width: 3px;
   border-radius: 12px; padding: .9rem 1.1rem; }

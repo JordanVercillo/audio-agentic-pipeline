@@ -265,6 +265,125 @@ def test_scatter_svg_layers_user_over_population():
     assert scatter_svg(population[:2], []) is None  # too few points
 
 
+# ── taste archetype (Epic D) ───────────────────────────────────────────────
+def test_derive_archetype_matrix():
+    from .archetype import derive_archetype
+    labels = {"0": "Bright · Noisy", "1": "Dark · Smooth", "2": "Loud · Fast"}
+    sig = [{"feature": "Tempo", "word": "faster", "z": 1.3}]
+
+    loyal = derive_archetype({"short_term": [0, 0, 0], "long_term": [0, 0, 0, 1]},
+                             labels, {"score": 0.12}, sig)
+    assert loyal["name"] == "The Anchored Loyalist"
+    assert loyal["home"] == "Bright · Noisy" and loyal["motion"] == "Anchored"
+    assert any("86%" in e for e in loyal["evidence"])  # 6/7 in one sound
+    assert any("+1.3σ" in e for e in loyal["evidence"])
+
+    eclectic = derive_archetype(
+        {"short_term": [0, 1, 2], "long_term": [0, 1, 2]}, labels, {"score": 0.5}, [])
+    assert eclectic["name"] == "The Roaming Eclectic"
+
+    dual = derive_archetype({"short_term": [0, 0, 1, 1, 0, 1, 2]}, labels,
+                            {"score": 0.7}, [])
+    assert dual["breadth"] == "Dualist" and dual["motion"] == "Shape-shifting"
+
+    no_drift = derive_archetype({"short_term": [0, 0, 0, 0]}, labels, None, [])
+    assert no_drift["name"] == "The Loyalist" and no_drift["motion"] is None
+
+    assert derive_archetype({"short_term": []}, labels, None, []) is None
+
+
+def _taste_d() -> dict:
+    # _TASTE is defined later in this module; resolve it at call time.
+    return dict(_TASTE, **{
+        "archetype": {"name": "The Anchored Loyalist", "home": "Bright · Noisy",
+                      "home_color_id": 0, "breadth": "Loyalist", "motion": "Anchored",
+                      "evidence": ["home sound “Bright · Noisy” — 86% of your top songs",
+                                   "86% of your top songs live in one sound"]},
+        "clusters": {"windows": {"short_term": [{"label": "Bright · Noisy", "share": 80}]},
+                     "movement": None},
+        "signature": [{"feature": "Tempo", "word": "faster", "z": 1.3}],
+    })
+
+
+def test_rag_grounding_includes_archetype_clusters_signature():
+    from .rag import _grounding_text
+    txt = _grounding_text(_taste_d(), {})
+    assert "The Anchored Loyalist" in txt
+    assert "Sound buckets (short_term): 80% “Bright · Noisy”." in txt
+    assert "Tempo faster (+1.3σ)" in txt
+
+
+def test_classify_deterministic_fallback(monkeypatch):
+    from .rag import TasteRAG
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    res = TasteRAG().classify(_taste_d())
+    assert res["source"] == "fallback" and res["name"] == "The Anchored Loyalist"
+    assert "Bright · Noisy" in res["narrative"] and "Muse" in res["narrative"]
+    assert res["narrative"].count(".") >= 2  # sentences, not a fragment
+
+
+def test_classify_llm_grounded(monkeypatch):
+    import types
+
+    from .rag import TasteRAG
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+    captured: dict = {}
+
+    class FakeClient:
+        def __init__(self, api_key=None):
+            def create(**kw):
+                captured.update(kw)
+                return types.SimpleNamespace(
+                    stop_reason="end_turn",
+                    content=[types.SimpleNamespace(type="text",
+                                                   text="You live in bright, noisy songs.")])
+            self.messages = types.SimpleNamespace(create=create)
+
+    import anthropic
+    monkeypatch.setattr(anthropic, "Anthropic", FakeClient)
+    res = TasteRAG(model="claude-opus-4-8").classify(_taste_d())
+    assert res["source"] == "llm" and "bright" in res["narrative"]
+    assert res["name"] == "The Anchored Loyalist"          # name stays deterministic
+    assert "The Anchored Loyalist" in captured["system"]   # model told the archetype
+    assert "Bright · Noisy" in captured["messages"][0]["content"]  # grounded
+
+
+def test_classify_without_archetype_is_none():
+    from .rag import TasteRAG
+    assert TasteRAG().classify({"profile": {}})["source"] == "none"
+
+
+def test_classify_route_renders_profile(client, monkeypatch, tmp_path):
+    from ..store.cache import FeatureCache
+    from ..store.clusters import train_song_clusters
+    from ..store.test_clusters import _blob_a, _blob_b
+
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    tc = FeatureCache(url=f"sqlite:///{tmp_path / 'cd.db'}")
+    for i in range(6):
+        tc.upsert(f"a{i}", _blob_a(i))
+        tc.upsert(f"b{i}", _blob_b(i))
+    tc.remember_meta([{"spotify_track_id": f"{p}{i}", "track_name": f"T{p}{i}",
+                       "artist_names": "Muse"} for p in "ab" for i in range(6)])
+    assert train_song_clusters(tc, coords="pca") is not None
+    monkeypatch.setattr("src.webapp.app._feature_cache", lambda: tc)
+
+    taste = {"range_ids": {"short_term": ["b0", "b1", "b2"],
+                           "long_term": ["b3", "b4", "a0"]},
+             "drift": {"score": 0.2, "label": "Moderate drift"},
+             "artists": [{"name": "Muse", "genres": "rock"}]}
+    client.cookies.set(config.SESSION_COOKIE, _seed_session(taste=taste))
+    r = client.post("/classify")
+    assert r.status_code == 200
+    assert "Your taste profile" in r.text and "The Drifting" in r.text
+    assert "The evidence" in r.text and "Grounded in your data" in r.text
+
+
+def test_classify_unauthenticated_redirects(client):
+    r = client.post("/classify", follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "/"
+
+
 def test_analytics_unauthenticated_redirects(client):
     r = client.get("/analytics", follow_redirects=False)
     assert r.status_code == 303 and r.headers["location"] == "/"
@@ -303,6 +422,7 @@ def test_analytics_renders_clusters_signature_and_map(client, monkeypatch, tmp_p
     r = client.get("/analytics")
     assert r.status_code == 200
     assert "acoustic signature" in r.text.lower()
+    assert "Your taste archetype" in r.text and 'action="/classify"' in r.text  # Epic D card
     assert "cluster-map" in r.text                     # the SVG map rendered
     assert "Artists who sound alike" in r.text and "LoudArtist0" in r.text
     assert 'class="comp-bar"' in r.text                # composition bars

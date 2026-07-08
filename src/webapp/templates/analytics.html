@@ -3,6 +3,24 @@
 <section class="dash">
   <h1>Your taste, mapped</h1>
 
+  {% if archetype %}
+  <div class="arch-card" style="border-left-color: {{ archetype.color }}">
+    <div class="arch-head">
+      <div>
+        <div class="insight-badge">Your taste archetype</div>
+        <h2 class="arch-name">{{ archetype.name }}</h2>
+        <p class="muted">at home in “{{ archetype.home }}”</p>
+      </div>
+      <form method="post" action="/classify">
+        <button type="submit" class="btn arch-btn">Write my profile →</button>
+      </form>
+    </div>
+    <ul class="arch-evidence">
+      {% for e in archetype.evidence %}<li>{{ e }}</li>{% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+
   {% if signature %}
   <h2 class="section">Your acoustic signature</h2>
   <div class="sig">
