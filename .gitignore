@@ -27,3 +27,6 @@ anaconda_projects/
 *.faiss
 temporal_analysis.html
 temporal_analysis.pdf
+
+# ── Runtime logs (scheduled-task output, SELF_HOSTING §4) ──
+logs/

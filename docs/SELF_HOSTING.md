@@ -127,9 +127,20 @@ First-time data prep: `uv run python scripts/seed_cache.py --spectrograms`
 then `uv run python scripts/train_clusters.py`. Retrain clusters occasionally
 as the cache grows.
 
-**Autostart (optional):** Task Scheduler → two "At log on" tasks running the
-commands above (Start in: the repo directory). The cloudflared service starts
-itself.
+**Autostart (one command):**
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\register_autostart.ps1
+```
+
+Registers three current-user Scheduled Tasks (no elevation): webapp + worker
+at logon, nightly cache backup at 03:00. Output appends to `logs\*.log`
+(gitignored). The cloudflared service starts itself, so a reboot + logon
+brings the whole stack back with no operator. Gotchas baked into the script:
+`ExecutionTimeLimit` is zeroed (the Scheduler default silently kills tasks
+after 72 h) and failures restart ×3. Don't run the same process in a manual
+terminal AND as the scheduled task. Remove them all:
+`Get-ScheduledTask "VercilloAnalytics*" | Unregister-ScheduledTask -Confirm:$false`.
 
 ## 5. Backups — the cache is an asset (D-17)
 
