@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 import pandas as pd
+from markupsafe import escape  # SVG builders bypass Jinja autoescape (rendered |safe)
 
 from .analytics import cluster_color
 
@@ -129,7 +130,7 @@ def scatter_xy_svg(points: list[dict], user_ids: set[str],
         return pad + (p["x"] - x0) * sx, height - pad - (p["y"] - y0) * sy
 
     parts = [f'<svg viewBox="0 0 {width} {height}" class="cluster-map" role="img" '
-             f'aria-label="{x_label} vs {y_label}">']
+             f'aria-label="{escape(x_label)} vs {escape(y_label)}">']
     mine = []
     for p in pts:
         x, y = px(p)
@@ -143,12 +144,12 @@ def scatter_xy_svg(points: list[dict], user_ids: set[str],
     for x, y, color, name in mine:  # the visitor's songs on top, ringed
         parts.append(f'<circle cx="{x:.1f}" cy="{y:.1f}" r="5.5" fill="{color}" '
                      f'stroke="{_SURFACE}" stroke-width="2">'
-                     f'<title>{name}</title></circle>')
+                     f'<title>{escape(name)}</title></circle>')  # track name is untrusted
     parts.append(f'<text x="{width / 2:.0f}" y="{height - 8}" text-anchor="middle" '
-                 f'class="axis">{x_label} →</text>')
+                 f'class="axis">{escape(x_label)} →</text>')
     parts.append(f'<text x="12" y="{height / 2:.0f}" class="axis" '
                  f'transform="rotate(-90 12 {height / 2:.0f})" '
-                 f'text-anchor="middle">{y_label} →</text>')
+                 f'text-anchor="middle">{escape(y_label)} →</text>')
     parts.append("</svg>")
     return "".join(parts)
 

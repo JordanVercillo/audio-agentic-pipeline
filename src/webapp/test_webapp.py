@@ -235,6 +235,25 @@ def test_loudness_svg_bar_grid():
     assert loudness_svg(curve, beat_times=[1.0, 99.0], duration_sec=4.0, meter=1).count("loud-beat") == 1
 
 
+def test_svg_builders_escape_untrusted_names():
+    """Track/artist names are attacker-influenceable (Spotify catalog / local files)
+    and the cluster-map + scatter SVGs are rendered |safe — so names MUST be
+    HTML-escaped or a crafted name is stored XSS."""
+    from .analytics import scatter_svg
+    from .explore import scatter_xy_svg
+    evil = '</title><img src=x onerror=alert(1)>'
+    pop = [{"id": f"p{i}", "x": float(i), "y": float(i % 2), "cluster_id": i % 2} for i in range(3)]
+    amap = scatter_svg(
+        pop, [{"id": "p0", "x": 0.0, "y": 0.0, "cluster_id": 0, "name": evil, "artist": evil}])
+    assert amap and "<img" not in amap and "&lt;img" in amap  # '<' escaped → no tag injection
+    xy = scatter_xy_svg(
+        [{"id": "p1", "x": 0.0, "y": 1.0, "cluster_id": 0, "name": evil},
+         {"id": "p2", "x": 1.0, "y": 0.0, "cluster_id": 1, "name": "ok"},
+         {"id": "p3", "x": 0.5, "y": 0.5, "cluster_id": None, "name": "ok2"}],
+        {"p1"}, x_label="Tempo", y_label="Energy")
+    assert "<img" not in xy and "&lt;img" in xy
+
+
 # ── deep-dive routes (Epic B) ──────────────────────────────────────────────
 def test_song_unauthenticated_redirects(client):
     r = client.get("/song/x", follow_redirects=False)

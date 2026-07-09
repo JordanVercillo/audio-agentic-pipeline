@@ -16,6 +16,8 @@ from __future__ import annotations
 import math
 from typing import Any, Optional
 
+from markupsafe import escape  # SVG builders bypass Jinja autoescape (rendered |safe)
+
 # Validated 6-color categorical palette (dark surface #171a21) — fixed order.
 CLUSTER_COLORS = ["#5b8bf5", "#d4682f", "#a865d6", "#1f9994", "#e85d8a", "#a3871f"]
 
@@ -140,6 +142,6 @@ def scatter_svg(population: list[dict], user_points: list[dict],
         parts.append(
             f'<circle cx="{x:.1f}" cy="{y:.1f}" r="5.5" '
             f'fill="{cluster_color(p["cluster_id"])}" stroke="#171a21" stroke-width="2">'
-            f'<title>{tip}</title></circle>')
+            f'<title>{escape(tip)}</title></circle>')  # track/artist names are untrusted
     parts.append("</svg>")
     return "".join(parts)
