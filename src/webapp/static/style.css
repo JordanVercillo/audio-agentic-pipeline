@@ -77,6 +77,8 @@ main { max-width: 980px; margin: 0 auto; padding: 2rem 1.5rem 3rem; }
 .cards .insight { margin-bottom: 0; }
 .insight.drift { border-left-color: #7aa2ff; }
 .insight.drift .insight-badge { color: #7aa2ff; }
+.invite { max-width: 60ch; }
+.invite a { color: var(--spotify); text-decoration: underline; }
 .section { font-size: .9rem; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; margin: 1.75rem 0 .75rem; }
 
 .artists { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: .6rem; }
