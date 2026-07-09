@@ -22,7 +22,8 @@ from datetime import timedelta
 from pathlib import Path
 from typing import Any, Optional
 
-from sqlalchemy import create_engine, event, select
+from sqlalchemy import create_engine, event, select, text
+from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.orm import sessionmaker
 
 from .models import (
@@ -75,7 +76,26 @@ class FeatureCache:
                 cur.execute("PRAGMA busy_timeout=5000")
                 cur.close()
         Base.metadata.create_all(self.engine)
+        self._migrate_added_columns()
         self._Session = sessionmaker(self.engine, expire_on_commit=False)
+
+    # Forward-only column adds (create_all never ALTERs an existing table).
+    # A DB created before a column was introduced gets it here, idempotently —
+    # existing rows read NULL. Both SQLite and Postgres take ADD COLUMN online.
+    _ADDED_COLUMNS = {"track_features": {"loudness_curve": "JSON"}}
+
+    def _migrate_added_columns(self) -> None:
+        inspector = sa_inspect(self.engine)
+        for table, columns in self._ADDED_COLUMNS.items():
+            if not inspector.has_table(table):
+                continue
+            present = {c["name"] for c in inspector.get_columns(table)}
+            missing = {name: typ for name, typ in columns.items() if name not in present}
+            if not missing:
+                continue
+            with self.engine.begin() as conn:
+                for name, typ in missing.items():
+                    conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {name} {typ}"))
 
     def close(self) -> None:
         """Release pooled connections — required before file-level operations on
@@ -131,7 +151,8 @@ class FeatureCache:
 
     # ── writes ─────────────────────────────────────────────────────────────
     def upsert(self, track_id: str, features: dict, *, spectrogram_uri: Optional[str] = None,
-               source: str = "youtube", dsp_version: Optional[str] = None) -> None:
+               source: str = "youtube", dsp_version: Optional[str] = None,
+               loudness_curve: Optional[list] = None) -> None:
         """Store a song's features (idempotent) and mark any pending job done."""
         with self._Session() as s:
             s.merge(TrackFeatures(
@@ -140,12 +161,34 @@ class FeatureCache:
                 rms_mean=_f(features.get("rms_mean")),
                 spectral_centroid_mean=_f(features.get("spectral_centroid_mean")),
                 spectrogram_uri=spectrogram_uri, extraction_source=source,
-                dsp_version=dsp_version, extracted_at=utcnow()))
+                dsp_version=dsp_version, loudness_curve=loudness_curve,
+                extracted_at=utcnow()))
             job = s.get(ExtractionJob, track_id)
             if job is not None:
                 job.status = JOB_DONE
                 job.last_error = None
             s.commit()
+
+    def set_loudness_curve(self, track_id: str, curve: list) -> bool:
+        """Update ONLY a cached track's loudness curve (F-v2 backfill).
+
+        A targeted column update — unlike upsert it won't disturb the row's
+        features/provenance, so backfilling the curve from a local MP3 can't
+        clobber the warehouse-seeded feature columns. No-op if the row is absent.
+        """
+        with self._Session() as s:
+            row = s.get(TrackFeatures, track_id)
+            if row is None:
+                return False
+            row.loudness_curve = curve
+            s.commit()
+            return True
+
+    def loudness_curve(self, track_id: str) -> Optional[list]:
+        """The stored within-track loudness curve (dBFS points), or None."""
+        with self._Session() as s:
+            row = s.get(TrackFeatures, track_id)
+            return row.loudness_curve if row is not None else None
 
     # ── perceptual-v1 layer (VISION_SPECS F1) ────────────────────────────────
     def upsert_perceptual(self, track_id: str, features: dict, *,

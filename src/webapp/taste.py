@@ -115,6 +115,46 @@ def radar_svg(features: dict, size: int = 240) -> str:
         f'<polygon points="{" ".join(pts)}" class="radar-poly"/>{"".join(labels)}</svg>')
 
 
+def loudness_svg(curve: Optional[list], width: int = 560, height: int = 140) -> str:
+    """Inline SVG of the within-track loudness curve (F-v2, deep-dive).
+
+    `curve` is the stored dBFS series. The y-axis auto-scales to the track's own
+    min/max so the *dynamics* (build-ups, drops, quiet verses) are legible —
+    axis labels carry the real dB values so it stays honest. Returns "" when
+    there's nothing to draw (song analyzed before F-v2, or too few points).
+    """
+    pts = [float(v) for v in (curve or [])
+           if v is not None and math.isfinite(float(v))]
+    if len(pts) < 2:
+        return ""
+    pad_l, pad_r, pad_t, pad_b = 8, 8, 10, 18
+    plot_w, plot_h = width - pad_l - pad_r, height - pad_t - pad_b
+    lo, hi = min(pts), max(pts)
+    span = (hi - lo) or 1.0
+    n = len(pts)
+    base = pad_t + plot_h
+
+    def x_of(i: int) -> float:
+        return pad_l + (i / (n - 1)) * plot_w
+
+    def y_of(v: float) -> float:
+        return pad_t + (hi - v) / span * plot_h  # louder = higher on the chart
+
+    line = " ".join(f"{x_of(i):.1f},{y_of(v):.1f}" for i, v in enumerate(pts))
+    area = f"{pad_l:.1f},{base:.1f} {line} {pad_l + plot_w:.1f},{base:.1f}"
+    return (
+        f'<svg viewBox="0 0 {width} {height}" class="loudness" role="img" '
+        f'aria-label="loudness over time in decibels">'
+        f'<polygon class="loud-area" points="{area}"/>'
+        f'<polyline class="loud-line" points="{line}" fill="none"/>'
+        f'<text class="loud-ax" x="{pad_l}" y="{pad_t + 8}">{hi:.0f} dB</text>'
+        f'<text class="loud-ax" x="{pad_l}" y="{base - 2}">{lo:.0f} dB</text>'
+        f'<text class="loud-ax" x="{pad_l}" y="{base + 13}">start</text>'
+        f'<text class="loud-ax" x="{pad_l + plot_w:.1f}" y="{base + 13}" '
+        f'text-anchor="end">end</text>'
+        f'</svg>')
+
+
 def drift_over_rows(per_range_rows: dict[str, list[dict]]) -> Optional[dict[str, Any]]:
     """Recent-vs-all-time σ-shift over the visitor's OWN cached features (D-9).
 

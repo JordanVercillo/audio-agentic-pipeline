@@ -16,6 +16,13 @@
       {% else %}
       <div class="spec-pending">Spectrogram is being generated…</div>
       {% endif %}
+      {% if loudness %}
+      <div class="loud-wrap">
+        {{ loudness|safe }}
+        <p class="cap">Loudness over time — the track's own dynamics in dBFS
+          (rebuilds Spotify's retired audio-analysis loudness curve).</p>
+      </div>
+      {% endif %}
       <div class="summary-row">
         <a href="/explore?f=tempo"><b>{{ summary.tempo }}</b><small>tempo</small></a>
         <a href="/explore?f=energy"><b>{{ summary.energy }}</b><small>energy</small></a>

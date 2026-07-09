@@ -87,11 +87,13 @@ def extract_one(cache: FeatureCache, track_id: str, *, audio_dir: Path,
             return False
 
         signal = load_audio(audio_path)
-        features = extract_features(signal).to_summary_dict()
+        tf = extract_features(signal)
+        features = tf.to_summary_dict()
         spec_uri = make_mel_spectrogram(signal, Path(spectrogram_dir) / f"{track_id}.png")
 
         cache.upsert(track_id, features, spectrogram_uri=str(spec_uri),
-                     source="youtube", dsp_version=DSP_VERSION)
+                     source="youtube", dsp_version=DSP_VERSION,
+                     loudness_curve=tf.loudness_curve_points())
         return True
     except Exception as exc:  # noqa: BLE001 — a bad track must never crash the worker
         logger.warning("extraction failed for %s: %s", track_id, exc)

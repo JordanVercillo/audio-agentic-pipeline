@@ -41,6 +41,39 @@ except ImportError:
 from .audio_loader import AudioSignal
 from .config import DSPConfig, FeatureGroup
 
+# The loudness curve is fixed-length so every song's chart is the same width and
+# comparable, regardless of duration (longer songs → coarser time bins).
+LOUDNESS_CURVE_POINTS = 120
+_LOUDNESS_FLOOR = 1e-5  # RMS floor → ~-100 dBFS for silence (avoids log10(0))
+
+
+def loudness_curve_from_signal(signal: AudioSignal, config: Optional[DSPConfig] = None) -> list[float]:
+    """Just the loudness curve (dBFS points) from a signal — the cheap path for
+    backfilling existing local audio without a full extraction (RMS only, no
+    HPSS/MFCC). Identical downsampling to the in-extractor curve, so a backfilled
+    track matches what a fresh extraction would produce."""
+    if config is None:
+        config = DSPConfig()
+    rms = librosa.feature.rms(
+        y=signal.waveform, frame_length=config.n_fft, hop_length=config.hop_length)[0]
+    return [round(float(v), 2) for v in _downsample_loudness_db(rms)]
+
+
+def _downsample_loudness_db(rms: np.ndarray, n_points: int = LOUDNESS_CURVE_POINTS) -> np.ndarray:
+    """Downsample a per-frame RMS envelope to `n_points` of dBFS.
+
+    Averages RMS *in the linear domain* per time-bin, then converts to dBFS
+    (energy averaging is the correct order). Fewer frames than n_points → full
+    resolution (one frame per bin). dBFS references full-scale 1.0, matching the
+    perceptual `loudness_db` scalar (whose value is this curve's overall mean).
+    """
+    if rms.size == 0:
+        return np.zeros(0, dtype=np.float32)
+    n = int(min(n_points, rms.size))
+    binned = np.array([chunk.mean() for chunk in np.array_split(rms, n)])
+    db = 20.0 * np.log10(np.maximum(binned, _LOUDNESS_FLOOR))
+    return db.astype(np.float32)
+
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 #  DATA STRUCTURES
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -70,6 +103,10 @@ class TrackFeatures:
     rms_std: float = 0.0
     zcr_mean: float = 0.0              # zero crossing rate
     zcr_std: float = 0.0
+    # Downsampled per-frame loudness (dBFS) — the within-track loudness curve
+    # (rebuilds Spotify's deprecated get-audio-analysis loudness series). Display
+    # data only: NOT part of the frozen 77-dim vector or the 82-col summary dict.
+    loudness_curve: Optional[np.ndarray] = None   # shape: (<=LOUDNESS_CURVE_POINTS,)
 
     # ── Timbre Features (MFCC summary) ──
     mfcc_means: Optional[np.ndarray] = None   # shape: (n_mfcc,)
@@ -185,6 +222,17 @@ class TrackFeatures:
                 for i, v in enumerate(self.spectral_contrast_stds):
                     d[f"spectral_contrast_std_{i}"] = float(v)
         return d
+
+    def loudness_curve_points(self) -> Optional[list[float]]:
+        """The loudness curve as a JSON-safe list of dBFS values (or None).
+
+        Travels alongside the summary dict, not inside it — the curve is a
+        variable-length time series for the deep-dive chart, not a scalar
+        feature, so it never enters the vector or the warehouse feature columns.
+        """
+        if self.loudness_curve is None:
+            return None
+        return [round(float(v), 2) for v in self.loudness_curve]
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -302,6 +350,9 @@ def _extract_energy(
     rms = librosa.feature.rms(y=y, frame_length=config.n_fft, hop_length=config.hop_length)[0]
     features.rms_mean = float(np.mean(rms))
     features.rms_std = float(np.std(rms))
+    # The loudness curve rides along from the RMS envelope we already computed —
+    # downsampled to a fixed point count so the chart width is song-agnostic.
+    features.loudness_curve = _downsample_loudness_db(rms)
 
     zcr = librosa.feature.zero_crossing_rate(y=y, frame_length=config.n_fft, hop_length=config.hop_length)[0]
     features.zcr_mean = float(np.mean(zcr))

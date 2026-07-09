@@ -199,6 +199,15 @@ def test_track_summary_and_radar_svg():
     assert svg.startswith("<svg") and "polygon" in svg and "Tempo" in svg
 
 
+def test_loudness_svg():
+    from .taste import loudness_svg
+    svg = loudness_svg([-40.0, -22.0, -8.0, -12.0, -6.0])
+    assert svg.startswith("<svg") and "loud-area" in svg and "loud-line" in svg
+    assert "-6 dB" in svg and "-40 dB" in svg          # honest axis labels (max/min)
+    assert "start" in svg and "end" in svg
+    assert loudness_svg(None) == "" and loudness_svg([-3.0]) == ""  # nothing to draw
+
+
 # ── deep-dive routes (Epic B) ──────────────────────────────────────────────
 def test_song_unauthenticated_redirects(client):
     r = client.get("/song/x", follow_redirects=False)
@@ -208,7 +217,7 @@ def test_song_unauthenticated_redirects(client):
 def test_song_deep_dive_renders_features_and_similar(client, monkeypatch, tmp_path):
     from ..store.cache import FeatureCache
     tc = FeatureCache(url=f"sqlite:///{tmp_path / 'c.db'}")
-    tc.upsert("sng1", _feat(128))
+    tc.upsert("sng1", _feat(128), loudness_curve=[-38.0, -20.0, -9.0, -6.0])
     tc.upsert("sng2", _feat(130))
     tc.remember_meta([{"spotify_track_id": "sng1", "track_name": "Hush", "artist_names": "Muse"},
                       {"spotify_track_id": "sng2", "track_name": "Other", "artist_names": "Band"}])
@@ -218,6 +227,7 @@ def test_song_deep_dive_renders_features_and_similar(client, monkeypatch, tmp_pa
     assert r.status_code == 200
     assert "Hush" in r.text and "<svg" in r.text          # name + radar
     assert "Songs like this" in r.text and "Other" in r.text  # nearest neighbor
+    assert "loud-line" in r.text and "Loudness over time" in r.text  # F-v2 curve rendered
 
 
 def test_spectrogram_404_when_missing(client):

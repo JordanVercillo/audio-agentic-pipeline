@@ -97,6 +97,19 @@ def test_remember_and_get_meta(cache):
     assert cache.get_meta("nope") is None
 
 
+def test_loudness_curve_upsert_and_targeted_update(cache):
+    # upsert carries the curve; get it back
+    cache.upsert("t1", _FEATURES, loudness_curve=[-30.0, -12.0, -6.0])
+    assert cache.loudness_curve("t1") == [-30.0, -12.0, -6.0]
+    assert cache.loudness_curve("missing") is None
+    # set_loudness_curve updates ONLY the column — features stay intact
+    assert cache.set_loudness_curve("t1", [-40.0, -20.0]) is True
+    assert cache.loudness_curve("t1") == [-40.0, -20.0]
+    assert cache.get(["t1"])["t1"]["tempo_bpm"] == 128.0  # features untouched
+    # no row → no-op, reported
+    assert cache.set_loudness_curve("ghost", [-1.0]) is False
+
+
 def test_similar_ranks_by_acoustic_distance(cache):
     cache.upsert("a", {"tempo_bpm": 120, "rms_mean": 0.20, "spectral_centroid_mean": 2000})
     cache.upsert("near", {"tempo_bpm": 122, "rms_mean": 0.21, "spectral_centroid_mean": 2010})
@@ -130,6 +143,9 @@ def test_extract_one_runs_real_dsp_on_synthetic_audio(cache, tmp_path):
     assert ok is True
     feats = cache.get(["s1"])["s1"]
     assert "tempo_bpm" in feats and "rms_mean" in feats  # real 82-col dict from DSP
+    assert "loudness_curve" not in feats                 # curve rides separately, not in features
+    curve = cache.loudness_curve("s1")                   # F-v2: real curve persisted
+    assert isinstance(curve, list) and len(curve) >= 2 and all(v <= 0 for v in curve)
     assert (tmp_path / "spec" / "s1.png").exists()       # mel-spectrogram rendered
     assert cache.missing(["s1"]) == []                   # cached → job done
     assert not (tmp_path / "audio" / "s1.wav").exists()  # audio deleted (D-15)

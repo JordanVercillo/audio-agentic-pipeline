@@ -35,6 +35,10 @@ class TrackFeatures(Base):
     tempo_bpm = Column(Float)
     rms_mean = Column(Float)
     spectral_centroid_mean = Column(Float)
+    # Within-track loudness curve (F-v2): a downsampled dBFS time series for the
+    # deep-dive chart. Display data — deliberately OUT of `features` so it never
+    # touches the 77-dim vector, the 82-col contract, or the perceptual transform.
+    loudness_curve = Column(JSON)           # list[float] (dBFS) or null
     # Provenance.
     dsp_version = Column(String)
     extraction_source = Column(String)      # e.g. "youtube"

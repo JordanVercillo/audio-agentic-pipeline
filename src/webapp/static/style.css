@@ -135,6 +135,12 @@ ol.tracks li:hover .feat-pop { display: flex; }
   background: var(--panel-2); border-radius: 8px;
 }
 .cap { color: var(--muted); font-size: .75rem; margin: .5rem 0 0; }
+.loud-wrap { margin-top: 1rem; }
+.loudness { width: 100%; height: auto; display: block;
+  background: var(--panel-2); border-radius: 8px; }
+.loud-area { fill: var(--spotify); fill-opacity: .22; }
+.loud-line { stroke: var(--spotify); stroke-width: 1.5; }
+.loud-ax { fill: var(--muted); font-size: 10px; }
 .summary-row { display: flex; gap: 1.5rem; margin-top: .9rem; }
 .summary-row span, .summary-row a { display: flex; flex-direction: column; color: var(--ink); text-decoration: none; }
 .summary-row a:hover b { color: var(--spotify); }
