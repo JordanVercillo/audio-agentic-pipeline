@@ -48,6 +48,11 @@ _DEFAULT_SQLITE = f"sqlite:///{_PROJECT_ROOT / 'data' / 'feature_cache.db'}"
 
 _PROMOTED = ("tempo_bpm", "rms_mean", "spectral_centroid_mean")
 JOB_QUEUED, JOB_RUNNING, JOB_DONE, JOB_FAILED = "queued", "running", "done", "failed"
+# A track that fails this many times is dead-lettered — a permanently-unfetchable
+# track (deleted/region-locked YouTube video, always-erroring DSP) must NOT
+# hot-loop re-download+re-DSP on every dashboard visit. attempts is preserved
+# across retries (never reset) so the cap actually bites.
+MAX_ATTEMPTS = 3
 
 
 def database_url() -> str:
@@ -286,19 +291,32 @@ class FeatureCache:
 
     # ── queue ──────────────────────────────────────────────────────────────
     def enqueue(self, track_ids: list[str]) -> list[str]:
-        """Queue extraction for uncached ids without a live job. Returns the newly queued."""
+        """Queue extraction for uncached ids. Returns the newly-queued ids.
+
+        A brand-new id is queued at attempts=0. A previously-failed id is retried
+        (status→queued) ONLY if it's under MAX_ATTEMPTS, and its attempt count is
+        preserved so the cap bites; at/over the cap it is dead-lettered (left
+        failed, never re-queued). Live (queued/running) jobs are left alone.
+        """
         ids = self.missing(track_ids)
         if not ids:
             return []
         with self._Session() as s:
-            live = set(s.execute(
-                select(ExtractionJob.spotify_track_id).where(
-                    ExtractionJob.spotify_track_id.in_(ids),
-                    ExtractionJob.status.in_([JOB_QUEUED, JOB_RUNNING]))
-            ).scalars().all())
-            new = [t for t in ids if t not in live]
-            for t in new:
-                s.merge(ExtractionJob(spotify_track_id=t, status=JOB_QUEUED, attempts=0))
+            existing = {j.spotify_track_id: j for j in s.execute(
+                select(ExtractionJob).where(ExtractionJob.spotify_track_id.in_(ids))
+            ).scalars().all()}
+            new: list[str] = []
+            for t in ids:
+                job = existing.get(t)
+                if job is None:
+                    s.add(ExtractionJob(spotify_track_id=t, status=JOB_QUEUED, attempts=0))
+                    new.append(t)
+                elif job.status in (JOB_QUEUED, JOB_RUNNING):
+                    continue  # live — don't disturb it
+                elif job.status == JOB_FAILED and job.attempts < MAX_ATTEMPTS:
+                    job.status = JOB_QUEUED  # retry, PRESERVING attempts (no reset)
+                    new.append(t)
+                # else: failed & exhausted (dead-letter) → skip, never re-queue
             s.commit()
         return new
 

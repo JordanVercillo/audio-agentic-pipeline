@@ -54,26 +54,33 @@ if __name__ == "__main__":
 
     with tempfile.TemporaryDirectory(prefix="va_audio_") as audio_dir:
         while True:
-            # A previous worker may have died mid-job — reclaim its orphans
-            # (status 'running' blocks re-enqueue until reset).
-            requeued = cache.requeue_stale_running()
-            if requeued:
-                print(f"re-queued {len(requeued)} stale running job(s)")
-            beat()
-            result = drain(cache, audio_dir=Path(audio_dir),
-                           spectrogram_dir=_SPECTROGRAM_DIR, max_jobs=args.max,
-                           on_progress=beat)
-            if result["done"] or result["failed"]:
-                print(f"extraction: {result['done']} done, {result['failed']} failed")
-            if result["done"]:
-                # New tracks → refresh the derived layer + marts so they reach
-                # /explore immediately (percentiles recalibrate by design).
-                try:
-                    marts = rebuild_marts(cache, _MARTS_DIR)
-                    print(f"marts refreshed: {marts['n_tracks']} tracks in "
-                          f"{PERCEPTUAL_VERSION}")
-                except Exception as exc:  # noqa: BLE001 — derived layer, never fatal
-                    print(f"mart refresh failed (next successful drain retries): {exc}")
+            # The whole poll body is guarded: a transient DB error (e.g. a
+            # SQLite snapshot-stale write promotion under WAL, which busy_timeout
+            # does NOT retry) must cost ONE poll, not kill the only consumer and
+            # strand the queue forever. extract_one is already per-track-guarded.
+            try:
+                # A previous worker may have died mid-job — reclaim its orphans
+                # (status 'running' blocks re-enqueue until reset).
+                requeued = cache.requeue_stale_running()
+                if requeued:
+                    print(f"re-queued {len(requeued)} stale running job(s)")
+                beat()
+                result = drain(cache, audio_dir=Path(audio_dir),
+                               spectrogram_dir=_SPECTROGRAM_DIR, max_jobs=args.max,
+                               on_progress=beat)
+                if result["done"] or result["failed"]:
+                    print(f"extraction: {result['done']} done, {result['failed']} failed")
+                if result["done"]:
+                    # New tracks → refresh the derived layer + marts so they reach
+                    # /explore immediately (percentiles recalibrate by design).
+                    try:
+                        marts = rebuild_marts(cache, _MARTS_DIR)
+                        print(f"marts refreshed: {marts['n_tracks']} tracks in "
+                              f"{PERCEPTUAL_VERSION}")
+                    except Exception as exc:  # noqa: BLE001 — derived layer, never fatal
+                        print(f"mart refresh failed (next successful drain retries): {exc}")
+            except Exception as exc:  # noqa: BLE001 — one bad poll must not kill the worker
+                print(f"worker poll error (continuing next interval): {exc}")
             if not args.loop:
                 break
             time.sleep(args.interval)

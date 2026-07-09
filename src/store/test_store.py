@@ -68,6 +68,31 @@ def test_fail_marks_failed(cache):
     assert st["failed"] == 1 and st["cached"] == 0
 
 
+def test_failed_job_dead_letters_after_max_attempts(cache):
+    # A permanently-unfetchable track must NOT hot-loop forever: attempts are
+    # preserved across retries and the job dead-letters at the cap.
+    from .cache import MAX_ATTEMPTS
+    cache.enqueue(["x"])
+    for i in range(1, MAX_ATTEMPTS + 1):
+        assert cache.claim_next() == "x"          # attempts climbs 1..MAX (preserved)
+        cache.fail("x", "yt-dlp 403")
+        requeued = cache.enqueue(["x"])
+        assert requeued == (["x"] if i < MAX_ATTEMPTS else [])  # retriable until the cap
+    assert cache.claim_next() is None             # dead-lettered → never re-queued
+    assert cache.job_status(["x"])["failed"] == 1
+
+
+def test_enqueue_preserves_attempts_across_retry(cache):
+    cache.enqueue(["y"])
+    cache.claim_next()                            # attempts → 1
+    cache.fail("y")
+    cache.enqueue(["y"])                          # retry must NOT reset to 0
+    cache.claim_next()                            # attempts → 2 (not 1)
+    cache.fail("y")
+    cache.enqueue(["y"])                          # attempts=2 < 3 → still retriable
+    assert cache.claim_next() == "y"              # attempts → 3
+
+
 def test_job_status_progress(cache):
     cache.upsert("done1", _FEATURES)
     cache.enqueue(["q1", "q2", "done1"])  # done1 cached → not queued
