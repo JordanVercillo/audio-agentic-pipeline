@@ -63,8 +63,14 @@
   honest cost is re-extraction (audio is transient, D-15) → build it
   versioned/online-first + a one-shot backfill script (decouples the code from
   the ~1h corpus re-run). **Closeout** (DKIM/DMARC, GCP orphan-zone deletion)
-  is a ~10-min owner errand, mostly manual dashboard actions, not
-  portfolio-visible — batch it whenever, not a session focus. (autostart +
+  is IN PROGRESS (2026-07-09): code side DONE — invite email switched to the
+  official **jordan@vercilloanalytics.com** (MX/SPF verified live) and
+  **backup-on-`stop_app`** wired (on-demand running now protects the cache
+  without the nightly task). OWNER dashboard steps remain, walkthrough in
+  **SELF_HOSTING §1a**: ① generate DKIM in Google Workspace admin + add the
+  TXT at Cloudflare (a live check proved DKIM+DMARC were NEVER present — the
+  doc had claimed DKIM existed; journal #14 again), ② add the `_dmarc` TXT
+  (`p=none` to start), ③ delete the orphaned GCP Cloud DNS zone. (autostart +
   nightly backup are scripted; extended quota is
   DEAD as an option, see the front-gate note below).
 - **✅ NEW-USER PIPELINE HARDENED (2026-07-09, 4 commits df65650→ce325ed,
@@ -92,7 +98,7 @@
   manual-only (no API exists), and extended-quota mode now requires a
   registered business with ≥250K MAU — off the table for a personal pilot,
   so the 5-seat manual list is the PERMANENT gate. The app now says so:
-  invite-request notice (jvercillo@live.com) on the landing + error pages. ✅ **POLISH PASS DONE
+  invite-request notice (jordan@vercilloanalytics.com) on the landing + error pages. ✅ **POLISH PASS DONE
   (2026-07-09):** spectrogram backfill — **117/117 rendered** (deep-dives all
   populated); album-art ♪ tile + initial-letter artist avatars for missing
   images (local files); 🎧 favicon + per-page titles; **www→apex 301
@@ -752,7 +758,7 @@ narrative goes to `notes/engineering_journal.md`, plans to
   adds (no API) and gates extended quota on registered-business + 250K MAU —
   the 5-seat list is permanent**; corrected every stale ~25/extended-quota
   claim across SPEC/APP_SPEC/SELF_HOSTING/chronicle/this file. Shipped the
-  landing + error page **invite-request notice** (jvercillo@live.com mailto;
+  landing + error page **invite-request notice** (jordan@vercilloanalytics.com mailto;
   logged-out visitors only; 3 new assertions; verified on the live origin
   AND through the public edge — Cloudflare email-obfuscation wraps the
   address in served HTML by design, browsers decode it). Suite **265 green**

@@ -525,14 +525,14 @@ def test_index_renders_login(client):
     assert r.status_code == 200
     assert "Log in with Spotify" in r.text
     # invite-only demo: logged-out visitors see how to request a seat
-    assert "jvercillo@live.com" in r.text and "5 users" in r.text
+    assert "jordan@vercilloanalytics.com" in r.text and "5 users" in r.text
 
 
 def test_error_page_offers_invite_contact(client):
     # e.g. a not-allowlisted Spotify account bounced back from the authorize page
     r = client.get("/callback?error=access_denied")
     assert r.status_code == 400
-    assert "jvercillo@live.com" in r.text
+    assert "jordan@vercilloanalytics.com" in r.text
 
 
 def test_healthz(client):
@@ -551,7 +551,7 @@ def test_header_reflects_auth_state():
     env = templates.env
     authed_html = env.get_template("index.html").render(authed=True)
     assert "Log out" in authed_html and "/dashboard" in authed_html
-    assert "jvercillo@live.com" not in authed_html  # invite card is for visitors
+    assert "jordan@vercilloanalytics.com" not in authed_html  # invite card is for visitors
     anon_html = env.get_template("index.html").render(authed=False)
     assert "Log out" not in anon_html and "Log in with Spotify" in anon_html
 

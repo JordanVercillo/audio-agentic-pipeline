@@ -129,6 +129,23 @@ function Stop-App {
         Write-Host ("  {0,-7} stopped (PID {1})" -f $s.Name, ($procs.ProcessId -join ', ')) -ForegroundColor Green
     }
     if (-not $any) { Write-Host "  (nothing was running)" -ForegroundColor DarkGray }
+
+    # Back up the cache on every stop - it is the one asset that isn't instantly
+    # rebuildable (hours of extraction). WAL-safe backup API; prunes to newest 10.
+    # Runs now that writers are stopped; non-fatal so a backup hiccup never
+    # blocks shutdown. This is why on-demand running (no nightly task) is safe.
+    $backupScript = Join-Path $repo 'scripts\backup_cache.py'
+    $db = Join-Path $repo 'data\feature_cache.db'
+    if ((Test-Path $py) -and (Test-Path $backupScript) -and (Test-Path $db)) {
+        Write-Host "`nBacking up the cache..." -ForegroundColor Cyan
+        try {
+            & $py $backupScript
+            if ($LASTEXITCODE -ne 0) { throw "backup_cache.py exited $LASTEXITCODE" }
+        } catch {
+            Write-Host "  backup failed (non-fatal): $_" -ForegroundColor Yellow
+        }
+    }
+
     Write-Host "`nThe cloudflared tunnel SERVICE is left running (it auto-recovers" -ForegroundColor DarkGray
     Write-Host "on boot). While the app is stopped, $publicUrl returns a 502." -ForegroundColor DarkGray
     Show-Status

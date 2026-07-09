@@ -30,3 +30,6 @@ temporal_analysis.pdf
 
 # ── Runtime logs (scheduled-task output, SELF_HOSTING §4) ──
 logs/
+
+# ── Cache backups (contain the db + spectrograms — SELF_HOSTING §5) ──
+backups/

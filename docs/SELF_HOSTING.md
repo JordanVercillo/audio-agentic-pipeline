@@ -33,28 +33,50 @@ reused for every future one (§9 is the generic checklist).
 
 ## 1. One-time: move DNS to Cloudflare (~20 min, owner)
 
-> ⚠️ **The domain carries Google Workspace email.** The MX/SPF/DKIM records must
-> survive the move — verify them at step 3 before switching nameservers.
+> ⚠️ **The domain carries Google Workspace email.** The MX + SPF records must
+> survive the move — verify them at step 3 before switching nameservers. (DKIM +
+> DMARC are added afterward in §1a — they were never present pre-cutover.)
 
 1. Create a free account at cloudflare.com → **Add a site** →
    `vercilloanalytics.com` → **Free** plan.
 2. Cloudflare scans and imports the domain's live DNS records.
 3. **Verify the email records exist** in the imported list (add manually if
-   missing — exact values are in the Squarespace DNS page):
+   missing):
    - `MX @ smtp.google.com` (priority 1)
    - `TXT @ "v=spf1 include:_spf.google.com ~all"`
-   - `TXT google._domainkey "v=DKIM1; k=rsa; p=MIIBIj…"` (the long DKIM key)
 4. Cloudflare shows **two nameservers** (e.g. `ada.ns.cloudflare.com`).
 5. Squarespace → Domains → the domain → **Domain Nameservers** → *Use custom
    nameservers* → paste the two Cloudflare nameservers → Save.
 6. Wait for the zone to show **Active** in Cloudflare (minutes; up to 48 h).
 7. **Send yourself a test email** to confirm Workspace mail still flows.
 
-*Old DNS host cleanup (optional): if the previous nameservers were
-`ns-cloud-*.googledomains.com`, a Google **Cloud DNS zone** still exists in some
-GCP project (~$0.20/month). Find it at console.cloud.google.com → Network
-services → Cloud DNS (check each project) and delete the zone once Cloudflare
-is Active.*
+### 1a. Email authentication + DNS closeout (2026-07-09)
+
+A live-DNS check (`Resolve-DnsName -Type TXT google._domainkey.<domain>
+-Server 1.1.1.1`) showed **DKIM and DMARC were never actually present** — MX +
+SPF only. Both were added as a closeout pass. DKIM cannot be copied; it is
+**generated** per-domain in Google Workspace:
+
+1. **DKIM** — admin.google.com → **Apps → Google Workspace → Gmail →
+   Authenticate email** → select the domain → **Generate new record** (2048-bit,
+   selector `google`). Copy the host (`google._domainkey`) + the
+   `v=DKIM1; k=rsa; p=…` value → add as a **TXT** record in Cloudflare (paste the
+   whole value; Cloudflare auto-splits long TXT). Return to Admin → **Start
+   authentication**.
+2. **DMARC** — Cloudflare → add **TXT** `_dmarc` →
+   `v=DMARC1; p=none; rua=mailto:jordan@vercilloanalytics.com; fo=1`. Start at
+   `p=none` (monitor, no delivery risk); tighten to `quarantine` then `reject`
+   once the `rua` reports show SPF/DKIM aligned for a week or two.
+3. **Verify:** `Resolve-DnsName -Type TXT google._domainkey.<domain> -Server
+   1.1.1.1` and `… _dmarc.<domain> …` return the new values (allow a few min).
+
+**Orphaned Google Cloud DNS zone** (the deleted zone behind the old
+`ns-cloud-*.googledomains.com` delegation, ~$0.20/mo): console.cloud.google.com
+→ **Network services → Cloud DNS** (check each project) → open the zone →
+delete its records (all but the auto `NS`/`SOA`) → **Delete zone**. CLI:
+`gcloud dns managed-zones list` then `gcloud dns managed-zones delete <zone>`
+(delete record-sets first if it refuses). Safe now that Cloudflare is
+authoritative.
 
 ## 2. One-time: the tunnel on this PC
 
@@ -123,7 +145,7 @@ cloudflared service install                # then install as a Windows service (
 | File | What it does |
 |---|---|
 | `start_app.bat` | Starts the webapp + worker (skips any already running), nudges the tunnel, waits for `:8000`, prints status. |
-| `stop_app.bat` | Stops the webapp + worker (leaves the tunnel service up). |
+| `stop_app.bat` | Stops the webapp + worker, then **backs up the cache** (WAL-safe, prunes to 10); leaves the tunnel service up. |
 | `status_app.bat` | Shows whether each process + the tunnel + `:8000` are up. |
 
 All three wrap `scripts/app_control.ps1` (`-Action start|stop|status|restart`).
@@ -204,7 +226,7 @@ through it (Funnel can't carry the custom domain anyway).
 | cloudflared service crash-loops ("terminated unexpectedly") | registered with no arguments → set the registry `ImagePath` per §2's gotcha box |
 | Cloudflare 502/530 on the domain | webapp not running / tunnel down → start `run_webapp.py`; `cloudflared tunnel info vercillo` |
 | Zone stuck "Pending" | nameservers not switched or still propagating → recheck Squarespace, wait |
-| Email stopped | MX/SPF/DKIM missing in Cloudflare → re-add from §1.3 |
+| Email stopped | MX/SPF/DKIM/DMARC missing in Cloudflare → re-add from §1 / §1a |
 | Spotify `INVALID_CLIENT: Invalid redirect URI` | prod URI not added in the dashboard, or `.env` doesn't match it exactly |
 | Login loops / cookie never sticks | `WEBAPP_REDIRECT_URI` not https → Secure cookie sent over http |
 | "analyzing…" never completes | worker not running → start it with `--loop`; check `extraction_jobs.last_error` |

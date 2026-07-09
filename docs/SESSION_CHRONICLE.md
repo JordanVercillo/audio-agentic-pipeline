@@ -39,7 +39,7 @@ promise depends on · #17 at a system boundary, copy meanings, not rows.
   worker yt-dlp → 77-dim DSP + spectrogram → cache → marts refresh; observed
   52 s queued→done. Front gate: Spotify dev-mode allowlist — **5 seats**
   (Feb-2026 policy), manual dashboard adds ONLY (no API); the landing page
-  carries an invite-request notice (jvercillo@live.com).
+  carries an invite-request notice (jordan@vercilloanalytics.com).
 - **Quality:** 264 pytest (synthetic; golden evals = the CI guard for LLM
   surfaces), warehouse-audit (+ marts drift flags), app-verify (now incl.
   worker liveness), ruff, 2-job CI on main.
