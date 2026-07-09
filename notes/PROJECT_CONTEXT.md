@@ -65,12 +65,19 @@
   column + forward-only `_migrate_added_columns` (journal #18); `loudness_svg`
   area chart; **`scripts/backfill_loudness.py` filled 117/117 from LOCAL owner
   MP3s — no re-download** (data/raw_audio survives even though worker audio is
-  transient). Deployed live via `app_control restart`. **Next: F-v2b =
-  time_signature** (a real librosa meter estimate → a new *measured* catalog
-  feature), then **F-v2c = instrumentalness** (deliberately last — F1 deferred
-  it as a credibility risk; do an honest source-separation version or keep
-  parked). The decoupling worked: online-first extractor + local backfill meant
-  ZERO re-download for the corpus. **Closeout** is ~DONE (2026-07-09): ① **email moved
+  transient). Deployed live via `app_control restart`. ✅ **F-v2b DONE
+  (2026-07-09, commit 199f8e3, 277 tests):** **time_signature** as a *measured*
+  `/explore` feature (catalog 13→14) — same promoted-column discipline (cache
+  column, NOT in the vector/82-col dict), joined into the perceptual transform
+  by bridge key; `_estimate_time_signature` = autocorrelation of beat accents;
+  `scripts/backfill_time_signature.py` filled 117/117 from LOCAL MP3s.
+  **Honesty fix on real data (journal #19):** candidates start at 3 not 2 — a
+  4/4 backbeat has period-2 accents that mislabeled 42/117 as 2/4; duple
+  collapses to the 4 default (distribution → credible 4/4×83, 3/4×17, odd×17).
+  Marts catalog↔stats parity held. **Next: F-v2c = instrumentalness**
+  (deliberately last — F1 deferred it as a credibility risk; do an honest
+  source-separation version or keep parked). The decoupling keeps paying off:
+  online-first extractor + local backfill = ZERO re-download. **Closeout** is ~DONE (2026-07-09): ① **email moved
   to free Cloudflare Email Routing** (dropped paid Google Workspace, ~$17 CAD/mo
   → $0) — `jordan@vercilloanalytics.com` catch-all forwards to
   `jvercillo@live.com`; MX `route*.mx.cloudflare.net` + SPF + DKIM

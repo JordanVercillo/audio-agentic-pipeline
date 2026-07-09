@@ -423,3 +423,30 @@ and Postgres) — so the persistent DB self-heals the moment new code opens it.
 > *A green suite proves your CREATE path, not your ALTER path. If a long-lived
 > DB outlives the schema, add columns with an idempotent migration on startup —
 > `create_all` will silently skip them on a table that already exists.*
+
+### 19. The backbeat masquerades as 2/4 (2026-07-09)
+
+F-v2b's meter estimator autocorrelates beat accents: the lag whose accents best
+repeat is the bar length. On the first real-corpus backfill it labeled **42 of
+117 tracks as 2/4** — impossible for a rock/alt corpus that's overwhelmingly
+4/4. The cause is musical, not a bug: a 4/4 song with a backbeat accents beats 1
+AND 3, which is a period-2 pattern, so lag-2 autocorrelation ties or beats
+lag-4. Worse, 2/4 and 4/4 are genuinely the same accent periodicity counted at
+different levels — no accent-only method can separate them, and real 2/4 is
+vanishingly rare. The synthetic tests couldn't catch it: a hand-built period-4
+accent pattern has no backbeat, so it cleanly returned 4.
+
+**The realization:** the fix wasn't a better algorithm, it was a narrower,
+honest claim. Dropping 2 from the candidate set (duple → the 4 default) makes
+the estimator answer the question it can actually answer — "is this an
+odd/compound meter (3, 5, 6, 7), or duple?" — instead of pretending to
+resolve an ambiguity that doesn't exist in the signal. The distribution went
+from absurd (2/4×42) to credible (4/4×83, 3/4×17, a few odd). Same tier-honesty
+discipline as F1's instrumentalness deferral: when the data can't support the
+fine distinction, report the coarse one and say so in the feature's own words.
+
+> *When an estimate is surprising on real data, ask whether the signal can even
+> support the distinction before "fixing" the model. Sometimes honesty means
+> collapsing two indistinguishable answers into one and narrowing the claim —
+> and only real data, not synthetic fixtures, reveals which distinctions are
+> real.*
