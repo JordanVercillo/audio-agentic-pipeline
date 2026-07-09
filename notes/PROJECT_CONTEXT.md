@@ -119,6 +119,21 @@
   feature-validity bugs synthetic tests can't), stamp population-`n` on
   perceptual rows (percentile-drift honesty), yt-dlp base62 track-id assertion,
   `www_redirect` host allowlist, `/logout`→POST. Journal #22 (the review method).
+- ✅ **INGESTION FLOW VALIDATED + LIVE PROGRESS (2026-07-09, commits 443b→d2ede0d,
+  290 green):** pipeline-partner review of the ingestion path. **3 of the owner's
+  asks were already satisfied by the existing design** (confirmed with evidence):
+  new-user download (dashboard `enqueue`s misses → worker extracts), re-run per
+  login (every dashboard load re-fetches all 3 top-track ranges + re-enqueues new
+  ones), and cache efficiency (track-keyed **user-agnostic** cache = analyze once
+  ever; `cache.get` instant hits, `enqueue` only true misses, failing tracks
+  dead-lettered). **The one real gap — progress visibility — is now BUILT:** a
+  cache-only **`GET /status`** (JSON: analyzed/total, queued/running/failed, the
+  in-flight track by name, ETA=remaining×~50 s) that the dashboard polls every 5 s
+  via a minimal inline poller → live progress bar + "Analyzing <song> · N of M ·
+  ~X min left" + auto-refresh on done. **Cache-only by design = also the efficient
+  path** (polling never re-hits Spotify). Song name via `textContent` (no XSS).
+  `ingestion_status()` pure+tested; `cache.running_ids()` added. Deployed;
+  `/status` live-verified. First inline JS in the app (no CSP).
 - **Closeout** is ~DONE (2026-07-09): ① **email moved
   to free Cloudflare Email Routing** (dropped paid Google Workspace, ~$17 CAD/mo
   → $0) — `jordan@vercilloanalytics.com` catch-all forwards to
