@@ -73,6 +73,13 @@ main { max-width: 980px; margin: 0 auto; padding: 2rem 1.5rem 3rem; }
 .highlights { margin: .75rem 0 0; padding-left: 1.1rem; color: var(--muted); }
 .highlights li { margin: .15rem 0; }
 
+/* Live ingestion progress (dashboard) */
+.prog { height: 8px; background: var(--panel-2); border-radius: 999px;
+  overflow: hidden; margin: .8rem 0 .45rem; }
+.prog-fill { height: 100%; min-width: 2%; background: var(--spotify);
+  border-radius: 999px; transition: width .6s ease; }
+.prog-line { color: var(--muted); font-size: .85rem; margin: 0; }
+
 .cards { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
 .cards .insight { margin-bottom: 0; }
 .insight.drift { border-left-color: #7aa2ff; }

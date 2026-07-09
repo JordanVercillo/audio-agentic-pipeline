@@ -18,12 +18,52 @@
         {{ coverage.analyzed }} / {{ coverage.total }} songs analyzed{% if coverage.analyzing %}
         · {{ coverage.analyzing }} analyzing…{% endif %}
       </div>
+      {% if coverage.analyzing %}
+      {# Live ingestion progress — polls the cache-only /status endpoint (no
+         Spotify call) and auto-refreshes when done. Progressive enhancement:
+         without JS the static badge above is the fallback. #}
+      <div class="prog" role="progressbar" aria-label="analysis progress">
+        <div class="prog-fill" id="va-prog-fill"
+             style="width: {{ (100 * coverage.analyzed // coverage.total) if coverage.total else 0 }}%"></div>
+      </div>
+      <p class="prog-line" id="va-prog-line">Analyzing your library — downloading audio and extracting acoustic features…</p>
+      <script>
+      (function () {
+        var fill = document.getElementById('va-prog-fill');
+        var line = document.getElementById('va-prog-line');
+        function eta(s) {
+          if (!s) return '';
+          var m = Math.round(s / 60);
+          return ' · ' + (m <= 1 ? 'about a minute left' : '~' + m + ' min left');
+        }
+        function poll() {
+          fetch('/status', { headers: { 'Accept': 'application/json' } })
+            .then(function (r) { return r.json(); })
+            .then(function (d) {
+              if (!d.authed) return;
+              if (d.total) fill.style.width = Math.round(100 * d.analyzed / d.total) + '%';
+              if (d.done) {
+                line.textContent = 'All songs analyzed — refreshing…';
+                setTimeout(function () { location.reload(); }, 900);
+                return;
+              }
+              // song name via textContent (never innerHTML) — no XSS from track titles
+              var cur = d.current && d.current.name ? ('Analyzing “' + d.current.name + '” · ') : '';
+              line.textContent = cur + d.analyzed + ' of ' + d.total + ' done' + eta(d.eta_seconds);
+              setTimeout(poll, 5000);
+            })
+            .catch(function () { setTimeout(poll, 8000); });
+        }
+        setTimeout(poll, 4000);
+      })();
+      </script>
+      {% endif %}
       {% if profile %}
       <p>{{ profile.message }}</p>
       <ul class="highlights">
         {% for h in profile.highlights %}<li>{{ h }}</li>{% endfor %}
       </ul>
-      {% else %}
+      {% elif not coverage.analyzing %}
       <p class="muted">Your songs are being analyzed — their acoustic features
         (tempo, energy, brightness) will appear here as each one finishes.</p>
       {% endif %}

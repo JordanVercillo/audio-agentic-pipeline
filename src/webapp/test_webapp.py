@@ -778,6 +778,18 @@ def test_status_unauthenticated(client):
     assert client.get("/status").json() == {"authed": False, "done": True}
 
 
+def test_dashboard_progress_region_toggles_on_analyzing():
+    from .app import templates
+    env = templates.env
+    analyzing = env.get_template("dashboard.html").render(
+        authed=True, coverage={"analyzed": 5, "total": 20, "analyzing": 15}, ranges=[])
+    assert "va-prog-fill" in analyzing and "/status" in analyzing  # live poller present
+    assert 'style="width: 25%"' in analyzing                       # 5/20 = 25%
+    done = env.get_template("dashboard.html").render(
+        authed=True, coverage={"analyzed": 20, "total": 20, "analyzing": 0}, ranges=[])
+    assert "va-prog-fill" not in done and "/status" not in done    # no poller when complete
+
+
 def test_ask_without_dashboard_redirects_to_dashboard(client):
     client.cookies.set(config.SESSION_COOKIE, _seed_session(taste=None))
     r = client.post("/ask", data={"q": "hi"}, follow_redirects=False)
