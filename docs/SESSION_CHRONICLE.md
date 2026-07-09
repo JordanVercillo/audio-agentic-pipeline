@@ -69,11 +69,11 @@ surprises on real data, ask if the signal supports the distinction before
    summary stats can't see vocals (F1 deferral), and journal #19 reinforced it.
    An honest version needs source separation (HPSS-based vocal-presence proxy,
    labeled *experimental*), or keep it parked.
-2. **Owner cost-cleanup (manual, non-blocking):** cancel the Google Workspace
-   subscription (email already on Cloudflare); delete the orphaned GCP Cloud DNS
-   zone (~$0.20/mo). *(Extended Spotify quota is DEAD — business-only ≥250K MAU;
-   the 5-seat allowlist is permanent. Autostart/backup are scripted but
-   deferred by choice — on-demand + backup-on-stop covers it.)*
+2. ✅ **Owner cost-cleanup DONE (2026-07-09):** Google Workspace cancelled + GCP
+   orphan zone deleted — the whole stack is truly $0. *(Extended Spotify quota
+   is DEAD — business-only ≥250K MAU; the 5-seat allowlist is permanent.
+   Autostart/backup scripted but deferred by choice — on-demand + backup-on-stop
+   covers it.)*
 3. **A3 — Ollama local-LLM** (plan validated in VISION_SPECS §A3): $0 real LLM
    answers for `/ask` + `/classify`, guarded by the F0 golden evals. Own epic.
 4. **Later polish:** DMARC `p=none` → `quarantine` → `reject` once reports are
