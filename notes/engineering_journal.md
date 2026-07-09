@@ -350,3 +350,52 @@ of trusting the merge commit's existence.
 
 > *"Merged" is a property of a commit range, not a PR. After any merge, verify
 > the content landed — and never trust `-d` on a branch with an upstream.*
+
+## Post-launch — the new-user pipeline hardening
+
+### 16. The audit checked everything except the queue's consumer (2026-07-09)
+
+"How do we ensure new users get their songs extracted?" The mechanism already
+worked — a tester's uncached track went queued→done in 52 seconds the night
+before. But the app-verify skill, built to end doc-fiction, had flags for the
+webapp, the tunnel, the cache, the marts, the evals… and none for the worker.
+The one process whose death breaks the product's core promise — invisibly,
+since queued jobs just sit — was the one process nothing watched. The fix
+(heartbeat row + WORKER_DOWN/QUEUE_STUCK) flagged its own blind spot on first
+run: the live worker read DOWN because it was running pre-heartbeat code.
+Bonus orphan found while reading the state machine: a worker crash mid-job
+leaves the claim 'running' forever, and enqueue() politely refuses to requeue
+a "live" job — so one crash could permanently strand a track.
+
+**The realization:** liveness checks accrete around what has VISIBLY failed
+before (the tunnel, DNS). Async workers fail invisibly by design — the queue
+absorbs the silence. Enumerate the processes the product's promise depends
+on and give each one a heartbeat the auditor can see; then check the state
+machine for states only a living process can exit.
+
+> *A queue without a monitored consumer is a promise nobody is keeping. Audit
+> every process the product depends on — and every job state that needs a
+> living process to leave it.*
+
+### 17. The seeded ghost got a second life across a semantic boundary (2026-07-09)
+
+The cache held 119 "tracks" but only 118 were real: the warehouse's one
+metadata-only row (the known soft warning; the same ghost as #13) had been
+seeded into the feature cache with all-None features. In the warehouse that
+row means "not yet downloaded" — a fact with a workflow. In the cache,
+presence means "analyzed": the dashboard showed it done (all "—"), and
+because cached ids are never re-enqueued, the queue could never repair it.
+The seed had faithfully copied a row whose MEANING didn't survive the copy.
+Fix: seed keeps the meta (the worker can search for it later) but skips the
+feature upsert; the live ghost row was deleted, so the next visitor who has
+the song triggers a real extraction.
+
+**The realization:** #13 fixed the ghost's effect on clustering and F1 excluded
+it from perceptual — every CONSUMER learned to step around it, while the
+PRODUCER kept minting it. When data crosses a system boundary, the invariant
+to preserve is the receiving system's semantics ("row exists ⇒ analyzed"),
+not the sending system's shape.
+
+> *At a system boundary, copy meanings, not rows. If presence implies a
+> promise in the target system, the loader must enforce the promise — and
+> fix the producer, not just every consumer.*

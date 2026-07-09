@@ -19,28 +19,40 @@ current); this file is the story + index. New session? Run **`/resume`**.
 | **PR #7/#8 rescue** | PR #7 merged early; `git branch -d` upstream-rule footgun deleted 8 unmerged commits → restored by hash, PR #8, verified main **by content** | journal #15 |
 | **VISION_SPECS + Epic F** | Two visions audited (KB review = 3 keeps + 2 rejections; A3 Ollama parked w/ validated 4070 Ti plan: gemma4:12b + num_ctx 8192). **F0** gold evals (15/15 vs baseline 0/15) + JSON contracts; **F1** `perceptual-v1` (5 measured/7 derived/1 experimental; "The Groove" tops danceability); **F2** `feature_stats` mart + audit drift flags; **F3** `/explore` dashboard (percentile chips, X×Y scatter) | 255 tests; chips "loudness above 72% of corpus" |
 | **Polish** | 117/117 spectrograms, ♪ art tiles + letter avatars, 🎧 favicon + titles, www→apex 301, ask→explore link | live edge checks green |
+| **New-user pipeline hardening** (2026-07-09) | Proved the visitor flow live (uncached track queued→done in 52 s), then closed its silent-failure gaps: worker heartbeat + WORKER_DOWN/QUEUE_STUCK flags, crash-orphan re-queue, post-drain mart refresh (new tracks reach /explore unattended), seed ghost guard (+ deleted the seeded ghost row — journal #17), `register_autostart.ps1` | 264 tests; the new flag caught its own blind spot on first run (journal #16) |
 
 ## Hard-won lessons (full text: `notes/engineering_journal.md`)
 #12 test the frozen env, not your PATH · #13 select columns by coverage, one ghost
 row poisons intersections · #14 a DNS page is a claim; the authoritative NS answer
-is the fact · #15 "merged" is a commit range, not a PR — verify content landed.
+is the fact · #15 "merged" is a commit range, not a PR — verify content landed ·
+#16 a queue without a monitored consumer fails silently — audit every process the
+promise depends on · #17 at a system boundary, copy meanings, not rows.
 
 ## The system today
 - **Serving:** `vercilloanalytics.com` → Cloudflare tunnel (Windows service
-  `cloudflared`) → uvicorn :8000 + worker `--loop`; SQLite+WAL
-  `data/feature_cache.db` (117 tracks full features + perceptual + clusters +
-  spectrograms); marts in `data/marts/`.
-- **Quality:** 255 pytest (synthetic; golden evals = the CI guard for LLM
-  surfaces), warehouse-audit (+ marts drift flags), ruff, 2-job CI on main.
+  `cloudflared`) → uvicorn :8000 + worker `--loop` (heartbeats to the DB;
+  app-verify flags WORKER_DOWN/QUEUE_STUCK); SQLite+WAL
+  `data/feature_cache.db` (118 tracks full features + perceptual + clusters +
+  spectrograms; 119 metas); marts in `data/marts/`, auto-refreshed by the
+  worker after each successful drain.
+- **New-visitor flow (proven live):** login → dashboard queues cache misses →
+  worker yt-dlp → 77-dim DSP + spectrogram → cache → marts refresh; observed
+  52 s queued→done. Front gate: Spotify dev-mode 25-tester allowlist.
+- **Quality:** 264 pytest (synthetic; golden evals = the CI guard for LLM
+  surfaces), warehouse-audit (+ marts drift flags), app-verify (now incl.
+  worker liveness), ruff, 2-job CI on main.
 - **Run:** `scripts/run_webapp.py` · `run_extraction_worker.py --loop` ·
+  `register_autostart.ps1` (logon tasks + 03:00 backup) ·
   `seed_cache.py [--spectrograms]` · `train_clusters.py` ·
   `build_feature_marts.py` · `backup_cache.py` · `evals/run_golden.py`.
 - **Docs:** APP_SPEC (vision) · VISION_SPECS (Epic F + A3 plan) · SELF_HOSTING
   (the $0 hosting template) · SCALING · AGENT_ACCESS · SPEC/P8_PLAN (historical).
 
 ## What remains (owner's fork)
+0. **NOW (2-min):** restart the two processes onto the hardened code — stop the
+   consoles, run `register_autostart.ps1`, `Start-ScheduledTask` both, app-verify.
 1. **F-v2** — frame-level audio pass: time_signature, loudness-curve time series,
    instrumentalness (extractor addition + corpus re-run).
-2. **Closeout** — DKIM/DMARC records, Task Scheduler autostart + nightly backup,
-   delete orphaned GCP Cloud DNS zone, Spotify extended-quota + tester allowlist.
+2. **Closeout** — DKIM/DMARC records, delete orphaned GCP Cloud DNS zone,
+   Spotify extended-quota + tester allowlist (autostart + nightly backup: done).
 3. **A3** — Ollama local-LLM (plan validated in VISION_SPECS §A3).

@@ -42,21 +42,44 @@
   the acoustic map, artist buckets: Muse 31-track "Noisy · Bright" vs "Smooth ·
   Dark"). External reachability separately proven via curl through the
   Cloudflare edge. **ALL EPICS A–E OF APP_SPEC v2 ARE BUILT AND LIVE, at $0.**
-- **➡️ NEXT ACTION — NEW SESSION? Run `/resume`** (the session-pickup
-  orchestrator, `.claude/skills/resume/`): reads this file +
-  [`docs/SESSION_CHRONICLE.md`](docs/SESSION_CHRONICLE.md) (the full build-arc
-  record of the 2026-07-04→09 marathon), then VERIFIES live state via the new
-  **`app-verify`** skill (webapp/public/tunnel/cache/marts/evals flags —
-  proven: caught a false PUBLIC_DOWN from Cloudflare challenging urllib's UA,
-  fixed) + warehouse-audit, reports, and continues. Cache is now **119 tracks**
-  (the worker extracted new ones from live logins — the shared cache growing
-  from real use, as designed). Then the owner's standing fork — **F-v2** (frame-level audio pass:
-  time_signature, loudness-curve time series on the song page,
-  instrumentalness — extractor addition + corpus re-run) **or closeout**
-  (remaining owner items: DKIM/DMARC records, Task Scheduler autostart +
-  nightly backup task, GCP orphan-zone deletion, Spotify extended-quota
-  request + tester allowlist). **App is RUNNING live right now** (webapp +
-  worker `--loop` background tasks; tunnel service). ✅ **POLISH PASS DONE
+- **➡️ NEXT ACTION — OWNER 2-MINUTE STEP (2026-07-09): put the hardened
+  pipeline live.** The session's code is merged + CI-green but the two RUNNING
+  processes still run pre-heartbeat code (the permission classifier rightly
+  refused to let the agent bounce live processes / register persistence):
+  ① stop the two console processes (webapp + worker), ② `powershell
+  -ExecutionPolicy Bypass -File scripts\register_autostart.ps1`, ③
+  `Start-ScheduledTask "VercilloAnalytics Webapp"` + `…Worker"`, ④
+  `uv run .claude/skills/app-verify/verify_app.py` → expect ALL flags false
+  (incl. the new WORKER_DOWN/QUEUE_STUCK). Until then app-verify reads
+  WORKER_DOWN=true (old worker never beats) — correct, not a false alarm.
+  NEW SESSION? Run **`/resume`** as usual. Then the owner's standing fork —
+  **F-v2** (frame-level audio pass: time_signature, loudness-curve time
+  series on the song page, instrumentalness — extractor addition + corpus
+  re-run) **or closeout** (remaining owner items, now smaller: DKIM/DMARC
+  records, GCP orphan-zone deletion, Spotify extended-quota request +
+  tester allowlist — autostart + nightly backup are DONE via the script).
+- **✅ NEW-USER PIPELINE HARDENED (2026-07-09, 4 commits df65650→ce325ed,
+  264 tests green, audit ALL-GREEN):** Jordan's ask — "ensure new visitors'
+  songs get downloaded + extracted." Verified the flow ALREADY WORKS live
+  (a tester's uncached track went queued→done-with-spectrogram in **52 s**;
+  dashboard queues misses → worker `--loop` extracts), then closed the
+  ensure-gaps: **①** `worker_heartbeats` + `cache.beat()` (beats every poll
+  AND between jobs via drain `on_progress`) + `requeue_stale_running()`
+  (crash-orphaned 'running' jobs re-queue; before this a mid-job crash
+  stranded the track forever) + app-verify **WORKER_DOWN / QUEUE_STUCK**
+  flags (the audit had NO worker check — journal #16); **②**
+  `perceptual.rebuild_marts()` — the one rebuild entry point (script + worker
+  post-drain, atomic parquet replace) + mtime-keyed explore loaders, so new
+  tracks reach `/explore` with no operator and no app restart (real proof:
+  118 transformed, Thrice track joined, "The Groove" still #1 danceable);
+  **③** seed ghost guard — metadata-only warehouse rows seed META only, and
+  the live Hummer ghost row was deleted (cache is **118 real tracks / 119
+  metas**; the earlier "119 tracks" claim here counted the ghost — journal
+  #17); **④** `scripts/register_autostart.ps1` (webapp+worker at logon,
+  backup 03:00, ExecutionTimeLimit-zeroed) + SELF_HOSTING §4 rewrite.
+  Cache truth: 117 owner-corpus + 1 live-login extraction; Spotify dev-mode
+  25-tester allowlist remains the real front gate for new users (extended
+  quota = closeout item). ✅ **POLISH PASS DONE
   (2026-07-09):** spectrogram backfill — **117/117 rendered** (deep-dives all
   populated); album-art ♪ tile + initial-letter artist avatars for missing
   images (local files); 🎧 favicon + per-page titles; **www→apex 301
@@ -688,3 +711,21 @@ narrative goes to `notes/engineering_journal.md`, plans to
   `/explore` dashboard). Aggro/value matrix + recommendation: **Epic F = B
   with A1+A2 as slice F0.** **Left off: awaiting Jordan's pick on
   VISION_SPECS.md; no code written this session.**
+- **2026-07-09 (session 14 — new-user pipeline hardening):** Jordan added a
+  tester and asked how we ENSURE new visitors' songs get downloaded+extracted.
+  /resume verified: flow already worked live (their one uncached track:
+  queued 00:45:39 → done 00:46:31, spectrogram + online cluster assignment) —
+  but the audits exposed the ensure-gaps, closed in 4 pushed commits
+  (df65650, 29a405f, 2db102c, ce325ed; 264 green; CI green on tip — the
+  29a405f run auto-cancelled by the next push's concurrency, covered by the
+  later runs): worker heartbeat + orphan re-queue + WORKER_DOWN/QUEUE_STUCK
+  app-verify flags (the new flag caught its own blind spot on first run —
+  journal #16); post-drain `rebuild_marts` + mtime-keyed explore loaders
+  (117→118 in the marts, new tracks reach /explore unattended); seed ghost
+  guard + deleted the live Hummer ghost row (journal #17 — "119 tracks" had
+  counted it); `register_autostart.ps1` + SELF_HOSTING §4 + logs/ gitignore.
+  Permission classifier correctly blocked bouncing live processes and
+  registering persistence — handed to owner. **Left off: OWNER 2-min step
+  (see ➡️ NEXT ACTION): stop consoles → register_autostart.ps1 →
+  Start-ScheduledTask ×2 → app-verify ALL-false. Then the standing fork:
+  F-v2 or the (smaller) closeout.**
