@@ -42,22 +42,22 @@
   the acoustic map, artist buckets: Muse 31-track "Noisy · Bright" vs "Smooth ·
   Dark"). External reachability separately proven via curl through the
   Cloudflare edge. **ALL EPICS A–E OF APP_SPEC v2 ARE BUILT AND LIVE, at $0.**
-- **➡️ NEXT ACTION — OWNER 2-MINUTE STEP (2026-07-09): put the hardened
-  pipeline live.** The session's code is merged + CI-green but the two RUNNING
-  processes still run pre-heartbeat code (the permission classifier rightly
-  refused to let the agent bounce live processes / register persistence):
-  ① stop the two console processes (webapp + worker), ② `powershell
-  -ExecutionPolicy Bypass -File scripts\register_autostart.ps1`, ③
-  `Start-ScheduledTask "VercilloAnalytics Webapp"` + `…Worker"`, ④
-  `uv run .claude/skills/app-verify/verify_app.py` → expect ALL flags false
-  (incl. the new WORKER_DOWN/QUEUE_STUCK). Until then app-verify reads
-  WORKER_DOWN=true (old worker never beats) — correct, not a false alarm.
-  NEW SESSION? Run **`/resume`** as usual. Then the owner's standing fork —
-  **F-v2** (frame-level audio pass: time_signature, loudness-curve time
-  series on the song page, instrumentalness — extractor addition + corpus
-  re-run) **or closeout** (remaining owner items, now smaller: DKIM/DMARC
-  records, GCP orphan-zone deletion, Spotify extended-quota request +
-  tester allowlist — autostart + nightly backup are DONE via the script).
+- **➡️ NEXT ACTION — ONE owner one-liner left, then the standing fork.**
+  ✅ The hardened pipeline is LIVE (2026-07-09): owner stopped the old
+  processes; the agent restarted webapp + worker on the new code and
+  app-verify came back ALL-GREEN incl. the new flags (worker heartbeat 21 s,
+  WORKER_DOWN/QUEUE_STUCK false; public URL serving). Still pending — reboot
+  persistence, which the permission classifier reserves for the owner's hand:
+  `powershell -ExecutionPolicy Bypass -File scripts\register_autostart.ps1`
+  (registers webapp+worker at-logon tasks + the 03:00 backup; safe to run
+  while the app is up — tasks start at next logon; see SELF_HOSTING §4 for
+  the don't-double-run note). NEW SESSION? Run **`/resume`** as usual. Then
+  the owner's standing fork — **F-v2** (frame-level audio pass:
+  time_signature, loudness-curve time series on the song page,
+  instrumentalness — extractor addition + corpus re-run) **or closeout**
+  (remaining owner items, now smaller: DKIM/DMARC records, GCP orphan-zone
+  deletion — autostart + nightly backup are scripted; extended quota is
+  DEAD as an option, see the front-gate note below).
 - **✅ NEW-USER PIPELINE HARDENED (2026-07-09, 4 commits df65650→ce325ed,
   264 tests green, audit ALL-GREEN):** Jordan's ask — "ensure new visitors'
   songs get downloaded + extracted." Verified the flow ALREADY WORKS live
@@ -77,9 +77,13 @@
   metas**; the earlier "119 tracks" claim here counted the ghost — journal
   #17); **④** `scripts/register_autostart.ps1` (webapp+worker at logon,
   backup 03:00, ExecutionTimeLimit-zeroed) + SELF_HOSTING §4 rewrite.
-  Cache truth: 117 owner-corpus + 1 live-login extraction; Spotify dev-mode
-  25-tester allowlist remains the real front gate for new users (extended
-  quota = closeout item). ✅ **POLISH PASS DONE
+  Cache truth: 117 owner-corpus + 1 live-login extraction. **Front-gate
+  truth (verified 2026-07-09, Spotify Feb-2026 policy):** dev mode caps the
+  allowlist at **5 users** (dashboard shows "1/5 added"; was ~25), adds are
+  manual-only (no API exists), and extended-quota mode now requires a
+  registered business with ≥250K MAU — off the table for a personal pilot,
+  so the 5-seat manual list is the PERMANENT gate. The app now says so:
+  invite-request notice (jvercillo@live.com) on the landing + error pages. ✅ **POLISH PASS DONE
   (2026-07-09):** spectrogram backfill — **117/117 rendered** (deep-dives all
   populated); album-art ♪ tile + initial-letter artist avatars for missing
   images (local files); 🎧 favicon + per-page titles; **www→apex 301
@@ -729,3 +733,20 @@ narrative goes to `notes/engineering_journal.md`, plans to
   (see ➡️ NEXT ACTION): stop consoles → register_autostart.ps1 →
   Start-ScheduledTask ×2 → app-verify ALL-false. Then the standing fork:
   F-v2 or the (smaller) closeout.**
+- **2026-07-09 (session 14b — restart + invite flow + the 5-user reality):**
+  Jordan added tester the first pilot user in the Spotify dashboard (screenshot: "1/5
+  added") and stopped the app for the handoff. Agent restarted webapp +
+  worker on the hardened code → app-verify ALL-GREEN (heartbeat live,
+  public URL serving); task registration still owner's one-liner (classifier
+  holds persistence for the owner). Answered the dynamic-allowlist question
+  with verified facts: **Spotify's Feb-2026 policy caps dev mode at 5 manual
+  adds (no API) and gates extended quota on registered-business + 250K MAU —
+  the 5-seat list is permanent**; corrected every stale ~25/extended-quota
+  claim across SPEC/APP_SPEC/SELF_HOSTING/chronicle/this file. Shipped the
+  landing + error page **invite-request notice** (jvercillo@live.com mailto;
+  logged-out visitors only; 3 new assertions; verified on the live origin
+  AND through the public edge — Cloudflare email-obfuscation wraps the
+  address in served HTML by design, browsers decode it). Suite **265 green**
+  (commit 3832289's message says 267 — miscount, the log here is the truth).
+  **Left off: owner one-liner = register_autostart.ps1. Standing fork
+  unchanged: F-v2 or closeout (DKIM/DMARC, GCP zone).**

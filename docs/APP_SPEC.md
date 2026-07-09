@@ -225,7 +225,10 @@ Run the pilot from the PC for allowlisted testers, at $0:
 - **Backups (D-17):** the cache is an asset (hours of extraction) — a script zips
   `feature_cache.db` + `spectrograms/` on a schedule. Still gitignored, never
   committed.
-- `/privacy` page; session TTLs verified; allowlist + extended-quota request.
+- `/privacy` page; session TTLs verified; allowlist management *(corrected
+  2026-07-09: dev-mode caps at **5 users** since Spotify's Feb-2026 policy, and
+  extended quota is business-only — the manual allowlist is permanent; the
+  landing page carries the invite-request notice)*.
 - **Explicit non-goal:** no cloud migration until the PC is outgrown; when that
   day comes, `docs/SCALING.md` + `DATABASE_URL` are the prepared path.
 **Accept:** an allowlisted tester on a phone, outside the home network, logs in
@@ -309,7 +312,7 @@ Each epic lands in reviewable slices with synthetic tests (ground rule) and CI,
 | **Home-network exposure** | Tunnel means **no inbound port-forward and the home IP is never published**; HTTPS end-to-end; sessions signed + TTL'd; no Spotify secret exists to leak (D-8) |
 | SQLite single-writer limits | WAL + short transactions + a single worker process — correct at pilot scale; `DATABASE_URL` → Postgres is the pressure valve (D-12) |
 | Data loss (disk failure eats the cache) | D-17 scheduled backups + restore drill in Epic E acceptance |
-| Spotify Dev-Mode ~25-user cap | Allowlist; submit + document the extended-quota request (the honest gate) |
+| Spotify Dev-Mode user cap — **5 since Feb 2026** (was ~25); extended quota now business-only (≥250K MAU) | Manual allowlist + the landing-page invite-request flow (email → owner adds in the dashboard → the pipeline handles the rest automatically). Existing users are grandfathered; the 5-seat list is the pilot's honest, permanent gate |
 | LLM cost creep (if a key is set) | $0 deterministic default; key optional; cap `max_tokens`; Ollama documented as the free LLM path |
 | Longitudinal drift over-claim | D-13 — 3-window σ-shift now; opt-in snapshots later; never claim a trajectory we don't have |
 

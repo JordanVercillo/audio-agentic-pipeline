@@ -147,11 +147,14 @@ PKCE-only refactor made the codebase pilot-ready by construction.
 - **Deploy:** containerized → GCP Cloud Run, custom domain
   (vercilloanalytics.com). No secret in the deployment env — infra creds only.
 
-**The honest gate:** Spotify **Development Mode caps apps at ~25 allowlisted
-users**; a truly public "anyone" app requires Spotify extended-quota
-approval. Pilot = public URL + allowlisted testers (friends/recruiters on
-request), with the quota-extension request submitted and documented. The
-spec calls this a *pilot* deliberately.
+**The honest gate:** Spotify **Development Mode caps apps at allowlisted
+users** — *[corrected 2026-07-09: the Feb-2026 platform policy sets the cap
+at **5 users** (was ~25) and restricts extended-quota mode to registered
+businesses with ≥250K MAU, so quota extension is off the table for a
+personal pilot; the manual 5-seat allowlist is the permanent gate, and the
+landing page tells visitors how to request a seat]*. Pilot = public URL +
+allowlisted testers (friends/recruiters on request). The spec calls this a
+*pilot* deliberately.
 
 **Accept:** an allowlisted tester on the public URL logs in with their own
 Spotify account, sees their top items, at least one acoustic-informed
@@ -180,7 +183,7 @@ deploy); can begin design in parallel with P7.
 | YouTube acquisition fragility (yt-dlp churn, encoder deps) | CVE-pinned yt-dlp; env-verify checks *capability* (libmp3lame) not presence (journal #7); idempotent retries |
 | Spotify dev-mode sandboxing tightens further | PKCE + guardrails module isolates the API surface; synthetic path keeps everything else testable |
 | **Leaked client secret (git history)** | Working tree is now **PKCE-only — no secret used or referenced anywhere** (D-8); Jordan rotating the old secret in the dashboard closes the historical exposure (rotation doesn't affect PKCE/client ID) |
-| Pilot gate: Spotify dev-mode ~25-user allowlist | P8 ships as an allowlisted pilot; extended-quota request submitted + documented; spec never claims "public at scale" before approval |
+| Pilot gate: Spotify dev-mode allowlist (**5 users** since the Feb-2026 policy; was ~25) | P8 ships as an allowlisted pilot; extended quota is business-only (≥250K MAU) since Feb 2026, so the 5-seat manual list is the permanent gate — the landing page carries an invite-request notice; spec never claims "public at scale" |
 | Pilot privacy (visitor listening data) | Session-ephemeral by default with TTL; opt-in persistence only; published privacy note; no third-party sharing (P8 acceptance criteria) |
 | 117-track corpus thin for clustering | Honest visuals at n=117; optional corpus expansion via playlist endpoints (allowed surface) if P1 needs density |
 | Single-machine env drift (conda base, PATH ffmpeg) | P6 uv migration + lockfile; env facts pinned in PROJECT_CONTEXT until then |

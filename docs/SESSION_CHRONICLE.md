@@ -37,7 +37,9 @@ promise depends on · #17 at a system boundary, copy meanings, not rows.
   worker after each successful drain.
 - **New-visitor flow (proven live):** login → dashboard queues cache misses →
   worker yt-dlp → 77-dim DSP + spectrogram → cache → marts refresh; observed
-  52 s queued→done. Front gate: Spotify dev-mode 25-tester allowlist.
+  52 s queued→done. Front gate: Spotify dev-mode allowlist — **5 seats**
+  (Feb-2026 policy), manual dashboard adds ONLY (no API); the landing page
+  carries an invite-request notice (jvercillo@live.com).
 - **Quality:** 264 pytest (synthetic; golden evals = the CI guard for LLM
   surfaces), warehouse-audit (+ marts drift flags), app-verify (now incl.
   worker liveness), ruff, 2-job CI on main.
@@ -53,6 +55,7 @@ promise depends on · #17 at a system boundary, copy meanings, not rows.
    consoles, run `register_autostart.ps1`, `Start-ScheduledTask` both, app-verify.
 1. **F-v2** — frame-level audio pass: time_signature, loudness-curve time series,
    instrumentalness (extractor addition + corpus re-run).
-2. **Closeout** — DKIM/DMARC records, delete orphaned GCP Cloud DNS zone,
-   Spotify extended-quota + tester allowlist (autostart + nightly backup: done).
+2. **Closeout** — DKIM/DMARC records, delete orphaned GCP Cloud DNS zone
+   (autostart + nightly backup: scripted; extended quota: DEAD — business-only
+   with ≥250K MAU since Feb 2026, the 5-seat allowlist is permanent).
 3. **A3** — Ollama local-LLM (plan validated in VISION_SPECS §A3).

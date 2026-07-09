@@ -103,7 +103,10 @@ cloudflared service install                # then install as a Windows service (
 1. **Spotify dashboard** → the app → Settings → Redirect URIs → **add**
    `https://vercilloanalytics.com/callback` (keep the existing 127.0.0.1 ones
    for local dev) → Save. Allowlist testers under User Management (Dev Mode
-   caps ~25 users; submit the extended-quota request and note the date).
+   caps **5 users** since the Feb-2026 policy — adds are manual-only in the
+   dashboard's User Management tab, there is no API for it, and extended
+   quota now requires a registered business with ≥250K MAU. The landing
+   page tells visitors to email for a seat).
 2. `.env` (gitignored) — production values:
    ```
    WEBAPP_REDIRECT_URI=https://vercilloanalytics.com/callback
