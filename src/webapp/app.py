@@ -68,6 +68,34 @@ _TIME_RANGES = [
     ("long_term", "All time"),
 ]
 
+# Rough per-track extraction cost (yt-dlp download + librosa DSP + spectrogram),
+# for the progress ETA. Measured ~50 s/track on the owner PC; shown as an
+# estimate only, never a promise. Worker processes the queue serially.
+_SECONDS_PER_TRACK = 50
+
+
+def ingestion_status(range_ids: dict[str, list[str]], cache: FeatureCache) -> dict[str, Any]:
+    """Live ingestion progress for a visitor's tracks — CACHE-ONLY (no Spotify
+    call), so the dashboard can poll it cheaply every few seconds (serves the
+    efficiency goal: polling must not re-hit the API). Pure + testable."""
+    all_ids = list({t for ids in (range_ids or {}).values() for t in ids})
+    if not all_ids:
+        return {"total": 0, "analyzed": 0, "analyzing": 0, "queued": 0,
+                "running": 0, "failed": 0, "current": None, "eta_seconds": 0, "done": True}
+    st = cache.job_status(all_ids)
+    running = cache.running_ids(all_ids)
+    current = None
+    if running:
+        m = cache.get_meta(running[0]) or {}
+        current = {"name": m.get("track_name") or "", "artist": m.get("artist_names") or ""}
+    analyzing = st["queued"] + st["running"]
+    return {
+        "total": st["total"], "analyzed": st["cached"], "analyzing": analyzing,
+        "queued": st["queued"], "running": st["running"], "failed": st["failed"],
+        "current": current, "eta_seconds": analyzing * _SECONDS_PER_TRACK,
+        "done": analyzing == 0,
+    }
+
 
 @lru_cache(maxsize=1)
 def _feature_store() -> Optional[FeatureStore]:
@@ -257,6 +285,16 @@ def create_app() -> FastAPI:
                 status_code=502)
         session["taste"] = _slim_taste(ctx)  # compact grounding for /ask
         return templates.TemplateResponse(request, "dashboard.html", {**ctx, "authed": True})
+
+    @app.get("/status")
+    def status(request: Request):
+        """Live ingestion progress (JSON) — the dashboard polls this while songs
+        analyze. Cache-only: no Spotify call, so polling is cheap."""
+        session = request.state.session
+        if not auth_web.is_authenticated(session):
+            return {"authed": False, "done": True}
+        range_ids = (session.get("taste") or {}).get("range_ids") or {}
+        return {"authed": True, **ingestion_status(range_ids, _feature_cache())}
 
     @app.post("/ask", response_class=HTMLResponse)
     def ask(request: Request, q: str = Form("")):

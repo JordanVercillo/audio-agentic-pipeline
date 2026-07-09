@@ -742,6 +742,42 @@ def test_ask_unauthenticated_redirects_home(client):
     assert r.status_code == 303 and r.headers["location"] == "/"
 
 
+def test_ingestion_status_pure():
+    from ..store.cache import FeatureCache
+    from .app import ingestion_status
+    cache = FeatureCache(url="sqlite://")
+    cache.upsert("a", {"tempo_bpm": 120.0})                # already analyzed (cache hit)
+    cache.remember_meta([{"spotify_track_id": "b", "track_name": "Running Song",
+                          "artist_names": "X"}])
+    cache.enqueue(["b"])
+    cache.claim_next()                                     # b → running
+    cache.enqueue(["c"])                                   # c → queued
+    st = ingestion_status({"s": ["a", "b", "c"]}, cache)
+    assert st["total"] == 3 and st["analyzed"] == 1
+    assert st["running"] == 1 and st["queued"] == 1 and st["analyzing"] == 2
+    assert st["current"]["name"] == "Running Song"         # the in-flight track, by name
+    assert st["eta_seconds"] == 2 * 50 and st["done"] is False
+    assert ingestion_status({}, cache)["done"] is True     # nothing queued → done
+
+
+def test_status_endpoint(client, monkeypatch, tmp_path):
+    from ..store.cache import FeatureCache
+    tc = FeatureCache(url=f"sqlite:///{tmp_path / 'st.db'}")
+    tc.remember_meta([{"spotify_track_id": "b", "track_name": "Song B", "artist_names": "X"}])
+    tc.enqueue(["b"])
+    tc.claim_next()
+    monkeypatch.setattr("src.webapp.app._feature_cache", lambda: tc)
+    client.cookies.set(config.SESSION_COOKIE, _seed_session(taste={"range_ids": {"s": ["b"]}}))
+    j = client.get("/status").json()
+    assert j["authed"] and j["running"] == 1 and j["current"]["name"] == "Song B"
+    assert j["eta_seconds"] == 50 and j["done"] is False
+    # cache-only: /status must never call Spotify (no client wired) — it returned fine
+
+
+def test_status_unauthenticated(client):
+    assert client.get("/status").json() == {"authed": False, "done": True}
+
+
 def test_ask_without_dashboard_redirects_to_dashboard(client):
     client.cookies.set(config.SESSION_COOKIE, _seed_session(taste=None))
     r = client.post("/ask", data={"q": "hi"}, follow_redirects=False)

@@ -444,3 +444,17 @@ class FeatureCache:
         return {"total": len(ids), "cached": cached,
                 "queued": c.get(JOB_QUEUED, 0), "running": c.get(JOB_RUNNING, 0),
                 "failed": c.get(JOB_FAILED, 0)}
+
+    def running_ids(self, track_ids: list[str]) -> list[str]:
+        """Which of these tracks are being extracted right now (status running) —
+        powers the live-progress "analyzing <song>" line without a Spotify call."""
+        ids = list(dict.fromkeys(track_ids))
+        if not ids:
+            return []
+        with self._Session() as s:
+            rows = s.execute(
+                select(ExtractionJob.spotify_track_id).where(
+                    ExtractionJob.spotify_track_id.in_(ids),
+                    ExtractionJob.status == JOB_RUNNING)
+            ).scalars().all()
+        return list(rows)
