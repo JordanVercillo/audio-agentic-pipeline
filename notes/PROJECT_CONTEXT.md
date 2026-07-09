@@ -71,11 +71,12 @@
   jordan@… (backup-on-`stop_app` also wired — on-demand running now protects
   the cache without the nightly task). Live gotcha: a manual MX/SPF delete
   flipped Email Routing to Disabled → **Onboard Domain** re-committed it (in
-  SELF_HOSTING §1a, the $0-email template). **OWNER's last 3 manual bits:**
-  (a) send a test email to jordan@… → confirm it lands (final forwarding
-  proof), (b) **cancel the Google Workspace subscription** (Admin → Billing →
-  Subscriptions — the Cloudflare login IS jordan@…, so only after forwarding
-  proven), (c) delete the orphaned GCP Cloud DNS zone (~$0.20/mo). (autostart +
+  SELF_HOSTING §1a, the $0-email template). ✅ **Forwarding PROVEN 2026-07-09**
+  — a test email to jordan@… landed in the jvercillo@live.com Outlook inbox.
+  **OWNER's last 2 manual bits (both cost-cleanup, non-blocking):** (a)
+  **cancel the Google Workspace subscription** (Admin → Billing → Subscriptions;
+  safe — MX is already Cloudflare, so cancelling doesn't touch forwarding), (b)
+  delete the orphaned GCP Cloud DNS zone (~$0.20/mo). (autostart +
   nightly backup are scripted; extended quota is
   DEAD as an option, see the front-gate note below).
 - **✅ NEW-USER PIPELINE HARDENED (2026-07-09, 4 commits df65650→ce325ed,
