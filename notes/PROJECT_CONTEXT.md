@@ -50,14 +50,22 @@
   logs → `logs\*.log`). Optional reboot persistence (owner's hand — the
   classifier reserves scheduled-task registration): `powershell
   -ExecutionPolicy Bypass -File scripts\register_autostart.ps1` (at-logon tasks
-  + 03:00 backup). **Pick ONE model** — click scripts (manual) OR the tasks
-  (hands-off); they coexist but don't need both (SELF_HOSTING §4). NEW
-  SESSION? Run **`/resume`** as usual. Then
-  the owner's standing fork — **F-v2** (frame-level audio pass:
-  time_signature, loudness-curve time series on the song page,
-  instrumentalness — extractor addition + corpus re-run) **or closeout**
-  (remaining owner items, now smaller: DKIM/DMARC records, GCP orphan-zone
-  deletion — autostart + nightly backup are scripted; extended quota is
+  + 03:00 backup). **DECIDED 2026-07-09 (owner): run ON-DEMAND via the click
+  scripts — NOT 24/7, autostart tasks deferred until the dedicated server he'll
+  build later. Do NOT re-suggest register_autostart for this PC.** One
+  consequence to watch: the nightly backup task isn't registered, so the cache
+  (hours of extraction, the one non-instant asset) is unprotected between
+  manual `backup_cache.py` runs — offered a backup-on-`stop_app` hook (owner to
+  confirm). NEW SESSION? Run **`/resume`** as usual. **Standing next build —
+  F-v2 (RECOMMENDED, owner leaning this way):** frame-level audio pass —
+  loudness-curve time series on the song page + time_signature +
+  instrumentalness (the F1-deferred one). Portfolio-visible DSP depth; the
+  honest cost is re-extraction (audio is transient, D-15) → build it
+  versioned/online-first + a one-shot backfill script (decouples the code from
+  the ~1h corpus re-run). **Closeout** (DKIM/DMARC, GCP orphan-zone deletion)
+  is a ~10-min owner errand, mostly manual dashboard actions, not
+  portfolio-visible — batch it whenever, not a session focus. (autostart +
+  nightly backup are scripted; extended quota is
   DEAD as an option, see the front-gate note below).
 - **✅ NEW-USER PIPELINE HARDENED (2026-07-09, 4 commits df65650→ce325ed,
   264 tests green, audit ALL-GREEN):** Jordan's ask — "ensure new visitors'
