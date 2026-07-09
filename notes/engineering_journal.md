@@ -450,3 +450,30 @@ fine distinction, report the coarse one and say so in the feature's own words.
 > collapsing two indistinguishable answers into one and narrowing the claim —
 > and only real data, not synthetic fixtures, reveals which distinctions are
 > real.*
+
+### 20. Our own guardrail was the stale claim (2026-07-09)
+
+Planning the audio-feature roadmap, Jordan asked whether we could pull Spotify's
+`popularity` directly. Rule 3 of CLAUDE.md and `.agent_prompts/01` both state it
+flatly: "popularity has been removed from Track/Artist response objects" — and
+`fetchers.strip_deprecated_fields` actively deletes it on every fetch. But a
+live check of `GET /tracks` shows `popularity` is still returned, labelled
+**Deprecated** — present, described, discouraged, not gone. Our guardrail had
+hardened an early defensive assumption into a stated fact, and every fetch since
+had been throwing away real, available data on the strength of it.
+
+**The realization:** journal #14 was about trusting a DNS control panel over the
+authoritative answer — a stranger's doc. This is the same failure one layer in:
+*our own* doc was the claim, and we'd been coding against it for months. A
+guardrail that over-restricts is invisible — nothing errors, you just quietly
+never see the data — which is exactly why it survived. The fix isn't just
+un-stripping the field; it's holding project doctrine to the same "verify
+against reality" bar we hold external docs to, and re-checking load-bearing
+"it's gone / it can't / never do X" assertions against the live system now and
+then. (Boundary kept: popularity is *fetched context*, never an ML input —
+Spotify's terms forbid training on their content.)
+
+> *Audit your own guardrails against reality, not just other people's docs. A
+> rule that says "X is impossible" quietly costs you X forever if X quietly
+> became possible — over-restriction fails silently, so re-verify the
+> load-bearing "nevers."*

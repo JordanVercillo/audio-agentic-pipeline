@@ -196,3 +196,83 @@ tool.
 derived features + catalog → F2 stats marts + audit extension → F3 `/explore`
 dashboard → F-v2 (time_signature + loudness-curve time series, needs
 re-extraction).
+
+---
+
+# Roadmap — remaining build sequence (2026-07-09)
+
+**Where we are:** the audio-feature engine is ~complete. Of Spotify's **13
+track-level audio-features** we've rebuilt **10 reliably** — tempo, key, mode,
+loudness, duration, time_signature (measured); energy, danceability,
+acousticness, speechiness (derived) — plus **3 Spotify never offered**
+(brightness, punch, dynamics), plus valence as a *labelled* experimental proxy,
+plus the within-track **loudness curve** (F-v2a). **Deliberately NOT faked:**
+`valence` and `liveness` are learned perceptual judgments with no honest DSP
+version (keep valence as a labelled proxy; skip liveness). **`instrumentalness`
+is REMOVED from the roadmap** — an honest version needs source separation, and
+the tier-credibility cost isn't worth it (the F1 call, reinforced by journal
+#19).
+
+## Finding — `popularity` is Deprecated, NOT removed (verified 2026-07-09)
+
+A live check of `GET /tracks` (journal #14 ethos: verify, don't trust the doc)
+shows `popularity` is still returned, labelled **Deprecated**. Our own
+`.agent_prompts/01` guardrail + CLAUDE.md rule 3 + `fetchers.strip_deprecated_
+fields` are **over-cautious** — they call it "removed" and strip it. Reality:
+available now, may vanish later. **Decision (recommend):** capture it as
+**optional context metadata** — NOT an acoustic feature (it's *fetched*, not
+derived — stay honest), and **NOT an ML input** (Spotify's terms forbid
+training on their content; clustering stays DSP-only). Graceful-degrade if it
+disappears. When built (slice ② below), un-strip in `fetchers.py`, store an
+optional column, and correct CLAUDE.md rule 3 + the guardrail doc from
+"removed" → "deprecated: capture as optional context, never ML, may vanish."
+
+## The sequence (cheap → expensive)
+
+**① F-v2c — fade + beat-grid** *(finishes the F-v2 frame-level pass; ~½ day)*.
+Reallocated from the removed instrumentalness slot. Detect fade-in/fade-out by
+thresholding the RMS envelope we already store, and overlay the beat grid (we
+already compute beats) on the loudness curve. Reliability 🟢 (pure signal).
+Deps: F-v2a. **Accept:** song page shows fade markers + beat ticks; synthetic-
+tested; no re-download.
+
+**② P — popularity context** *(small, foundational)*. Un-strip popularity;
+store an optional per-track column; surface a "your taste vs. popularity" line
+on `/analytics` (skew popular or obscure?) and expose it as a filterable axis
+for ④. Reliability 🟢 (fetched, honestly labelled as such). Policy:
+display/analysis only, never ML. Deps: none. Unblocks ④'s `target_popularity`.
+**Accept:** popularity stored when present + absent-safe; a real "N% more
+obscure than the corpus" line; the three docs corrected; synthetic-tested.
+
+**③ F-v3 — structure timeline** *(the marquee; medium)*. A section-map ribbon
+under the spectrogram + loudness curve: detected sections (librosa
+recurrence/Laplacian on chroma+MFCC), repeated sections colour-matched, each
+with its own loudness/tempo/key. Reliability 🟢 for **boundaries + repeats** —
+we do NOT label "chorus/verse" (semantic → unreliable); honest "detected
+sections." Deps: F-v2a (same page). Online-first + local backfill, no
+re-download. **Accept:** real structure on real songs; backfill over the 117
+corpus; synthetic-tested boundaries; the no-semantic-labels boundary documented.
+
+**④ Epic G — the recommendation explorer** *(the capstone; biggest)*. Rebuild
+Spotify's dead `/recommendations` as a tunable filter over OUR features: seed a
+track (or set targets) → min/max/target on any perceptual feature + meter +
+popularity → ranked matches from the cache (z-distance + cluster-aware).
+Reliability 🟢 (filtering our own reliable features). **The biggest thesis
+win** — proves the features are good enough to power reco-style retrieval. Deps:
+perceptual marts ✓, clusters ✓, slice ② (for `target_popularity`). **Accept:**
+a working `/recommend` surface with the tunables; deterministic + tested.
+
+## After the audio work
+
+**⑤ A3 — Ollama local LLM** *(optional epic; plan validated in §A3 above)*: $0
+real LLM answers for `/ask` + `/classify` on the RTX 4070 Ti, guarded by the F0
+golden evals (currently those surfaces run the deterministic fallback — no key).
+
+**⑥ Polish:** DMARC `p=none` → `quarantine` → `reject` once reports are clean;
+surface the loudness curve on `/analytics` too.
+
+**Recommended order:** ① + ② as a quick foundational batch → ③ F-v3 (marquee) →
+④ G (capstone) → ⑤ A3 → ⑥ polish. Reorder by appetite — ③ is independent of
+① ②, so it can jump the queue if you want the visual payoff first. Every slice
+holds the ground rules: bridge key, Parquet marts, synthetic tests, $0,
+online-first + local backfill (no re-download).

@@ -74,10 +74,18 @@
   **Honesty fix on real data (journal #19):** candidates start at 3 not 2 — a
   4/4 backbeat has period-2 accents that mislabeled 42/117 as 2/4; duple
   collapses to the 4 default (distribution → credible 4/4×83, 3/4×17, odd×17).
-  Marts catalog↔stats parity held. **Next: F-v2c = instrumentalness**
-  (deliberately last — F1 deferred it as a credibility risk; do an honest
-  source-separation version or keep parked). The decoupling keeps paying off:
-  online-first extractor + local backfill = ZERO re-download. **Closeout** is ~DONE (2026-07-09): ① **email moved
+  Marts catalog↔stats parity held. The decoupling keeps paying off:
+  online-first extractor + local backfill = ZERO re-download. ✅ **ROADMAP SET
+  (2026-07-09, `docs/VISION_SPECS.md` → "Roadmap — remaining build sequence"):**
+  reviewed all 13 Spotify audio-features — **10 rebuilt reliably** + 3 bonus
+  (brightness/punch/dynamics) + valence proxy; **instrumentalness REMOVED**
+  (source-separation cost not worth the tier-credibility hit), valence/liveness
+  stay unfaked. **Verified `popularity` is Deprecated-not-removed** (our own
+  guardrail was over-cautious — journal #20). Sequence: **① F-v2c fade+beat-grid
+  → ② P popularity-context → ③ F-v3 structure timeline (marquee) → ④ Epic G
+  recommendation explorer (capstone) → ⑤ A3 Ollama → ⑥ polish**. **➡️ NEXT
+  BUILD: F-v2c** (fade-in/out + beat-grid on the loudness curve — cheap, pure
+  signal, no re-download) — or jump to ③ F-v3 for the visual payoff. **Closeout** is ~DONE (2026-07-09): ① **email moved
   to free Cloudflare Email Routing** (dropped paid Google Workspace, ~$17 CAD/mo
   → $0) — `jordan@vercilloanalytics.com` catch-all forwards to
   `jvercillo@live.com`; MX `route*.mx.cloudflare.net` + SPF + DKIM
