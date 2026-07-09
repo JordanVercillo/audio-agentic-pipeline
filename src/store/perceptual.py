@@ -62,6 +62,11 @@ CATALOG: list[dict[str, str]] = [
      "friendly": "Duration", "description": "Track length in seconds."},
     {"column": "loudness_db", "tier": "measured", "unit": "dBFS",
      "friendly": "Loudness", "description": "Overall loudness: 20·log10(mean RMS), dB full-scale."},
+    {"column": "time_signature", "tier": "measured", "unit": "beats/bar",
+     "friendly": "Time signature",
+     "description": "Estimated beats per bar from beat-accent periodicity. Coarse: duple "
+                    "meter is reported as 4 (2/4 and 4/4 aren't distinguishable from accents), "
+                    "so this surfaces the odd/compound meters (3, 5, 6, 7) against a 4 default."},
     # ── derived (documented blends, percentile-calibrated 0–1) ──
     {"column": "energy", "tier": "derived", "unit": "0–1", "friendly": "Energy",
      "description": "Perceived intensity: RMS level + onset strength + spectral rolloff, ranked against the population."},
@@ -112,6 +117,7 @@ def compute_perceptual(cache: FeatureCache) -> pd.DataFrame:
     ``version``. Incomplete rows (e.g. never-acquired tracks) sit out.
     """
     feats = cache.all_features()
+    ts_map = cache.all_time_signatures()  # promoted column, joined by bridge key
     rows = [{"spotify_track_id": tid, **f} for tid, f in feats.items()
             if all(isinstance(f.get(c), (int, float)) and f.get(c) is not None
                    for c in _REQUIRED)]
@@ -129,6 +135,7 @@ def compute_perceptual(cache: FeatureCache) -> pd.DataFrame:
     out["duration_sec"] = df["duration_sec"].astype(float)
     out["loudness_db"] = df["rms_mean"].map(
         lambda r: round(20.0 * math.log10(max(float(r), _EPS)), 2))
+    out["time_signature"] = out["spotify_track_id"].map(ts_map)  # None where un-estimated
 
     # ── derived blends → percentile-calibrated 0–1 ──
     energy_raw = _z(df["rms_mean"]) + _z(df["onset_strength_mean"]) \
@@ -187,6 +194,8 @@ def compute_feature_stats(df: pd.DataFrame) -> pd.DataFrame:
             edges = np.array([-0.5, 0.5, 1.5])
         elif col == "key":
             edges = np.arange(-0.5, 12.0, 1.0)
+        elif col == "time_signature":
+            edges = np.arange(1.5, 8.5, 1.0)     # discrete meters 2..7
         elif spec["tier"] in ("derived", "experimental"):
             edges = np.linspace(0.0, 1.0, 21)
         else:

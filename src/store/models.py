@@ -35,6 +35,9 @@ class TrackFeatures(Base):
     tempo_bpm = Column(Float)
     rms_mean = Column(Float)
     spectral_centroid_mean = Column(Float)
+    # Estimated meter (beats per bar) — a promoted column (F-v2), NOT in the
+    # features dict, so the frozen vector + 82-col warehouse contract are untouched.
+    time_signature = Column(Integer)
     # Within-track loudness curve (F-v2): a downsampled dBFS time series for the
     # deep-dive chart. Display data — deliberately OUT of `features` so it never
     # touches the 77-dim vector, the 82-col contract, or the perceptual transform.

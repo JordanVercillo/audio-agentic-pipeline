@@ -110,6 +110,17 @@ def test_loudness_curve_upsert_and_targeted_update(cache):
     assert cache.set_loudness_curve("ghost", [-1.0]) is False
 
 
+def test_time_signature_upsert_targeted_update_and_map(cache):
+    cache.upsert("t1", _FEATURES, time_signature=3)
+    cache.upsert("t2", _FEATURES)                       # no meter → excluded from the map
+    assert cache.all_time_signatures() == {"t1": 3}
+    assert cache.set_time_signature("t1", 5) is True
+    assert cache.all_time_signatures()["t1"] == 5
+    assert cache.set_time_signature("ghost", 4) is False  # no row → no-op
+    cache.upsert("t3", _FEATURES, time_signature=0)      # 0 = unknown → stored NULL
+    assert "t3" not in cache.all_time_signatures()
+
+
 def test_similar_ranks_by_acoustic_distance(cache):
     cache.upsert("a", {"tempo_bpm": 120, "rms_mean": 0.20, "spectral_centroid_mean": 2000})
     cache.upsert("near", {"tempo_bpm": 122, "rms_mean": 0.21, "spectral_centroid_mean": 2010})
@@ -146,6 +157,7 @@ def test_extract_one_runs_real_dsp_on_synthetic_audio(cache, tmp_path):
     assert "loudness_curve" not in feats                 # curve rides separately, not in features
     curve = cache.loudness_curve("s1")                   # F-v2: real curve persisted
     assert isinstance(curve, list) and len(curve) >= 2 and all(v <= 0 for v in curve)
+    assert 2 <= cache.all_time_signatures()["s1"] <= 7   # F-v2b: meter estimated + stored
     assert (tmp_path / "spec" / "s1.png").exists()       # mel-spectrogram rendered
     assert cache.missing(["s1"]) == []                   # cached → job done
     assert not (tmp_path / "audio" / "s1.wav").exists()  # audio deleted (D-15)

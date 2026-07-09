@@ -93,7 +93,8 @@ def extract_one(cache: FeatureCache, track_id: str, *, audio_dir: Path,
 
         cache.upsert(track_id, features, spectrogram_uri=str(spec_uri),
                      source="youtube", dsp_version=DSP_VERSION,
-                     loudness_curve=tf.loudness_curve_points())
+                     loudness_curve=tf.loudness_curve_points(),
+                     time_signature=tf.time_signature)
         return True
     except Exception as exc:  # noqa: BLE001 — a bad track must never crash the worker
         logger.warning("extraction failed for %s: %s", track_id, exc)

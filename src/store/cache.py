@@ -82,7 +82,8 @@ class FeatureCache:
     # Forward-only column adds (create_all never ALTERs an existing table).
     # A DB created before a column was introduced gets it here, idempotently —
     # existing rows read NULL. Both SQLite and Postgres take ADD COLUMN online.
-    _ADDED_COLUMNS = {"track_features": {"loudness_curve": "JSON"}}
+    _ADDED_COLUMNS = {"track_features": {"loudness_curve": "JSON",
+                                         "time_signature": "INTEGER"}}
 
     def _migrate_added_columns(self) -> None:
         inspector = sa_inspect(self.engine)
@@ -152,7 +153,8 @@ class FeatureCache:
     # ── writes ─────────────────────────────────────────────────────────────
     def upsert(self, track_id: str, features: dict, *, spectrogram_uri: Optional[str] = None,
                source: str = "youtube", dsp_version: Optional[str] = None,
-               loudness_curve: Optional[list] = None) -> None:
+               loudness_curve: Optional[list] = None,
+               time_signature: Optional[int] = None) -> None:
         """Store a song's features (idempotent) and mark any pending job done."""
         with self._Session() as s:
             s.merge(TrackFeatures(
@@ -162,12 +164,31 @@ class FeatureCache:
                 spectral_centroid_mean=_f(features.get("spectral_centroid_mean")),
                 spectrogram_uri=spectrogram_uri, extraction_source=source,
                 dsp_version=dsp_version, loudness_curve=loudness_curve,
+                time_signature=(int(time_signature) if time_signature else None),
                 extracted_at=utcnow()))
             job = s.get(ExtractionJob, track_id)
             if job is not None:
                 job.status = JOB_DONE
                 job.last_error = None
             s.commit()
+
+    def set_time_signature(self, track_id: str, time_signature: int) -> bool:
+        """Update ONLY a cached track's estimated meter (F-v2 backfill). No-op if absent."""
+        with self._Session() as s:
+            row = s.get(TrackFeatures, track_id)
+            if row is None:
+                return False
+            row.time_signature = int(time_signature) if time_signature else None
+            s.commit()
+            return True
+
+    def all_time_signatures(self) -> dict[str, int]:
+        """Every cached track's estimated meter (only rows that have one)."""
+        with self._Session() as s:
+            rows = s.execute(
+                select(TrackFeatures.spotify_track_id, TrackFeatures.time_signature)
+                .where(TrackFeatures.time_signature.isnot(None))).all()
+        return {tid: int(ts) for tid, ts in rows}
 
     def set_loudness_curve(self, track_id: str, curve: list) -> bool:
         """Update ONLY a cached track's loudness curve (F-v2 backfill).

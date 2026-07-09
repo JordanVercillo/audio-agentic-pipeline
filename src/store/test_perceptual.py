@@ -45,8 +45,8 @@ def _folk(i: float) -> dict:
 def corpus(tmp_path):
     cache = FeatureCache(url=f"sqlite:///{tmp_path / 'p.db'}")
     for i in range(5):
-        cache.upsert(f"club{i}", _club(i))
-        cache.upsert(f"folk{i}", _folk(i))
+        cache.upsert(f"club{i}", _club(i), time_signature=4)   # 4/4 club
+        cache.upsert(f"folk{i}", _folk(i), time_signature=3)   # 3/4 folk waltz
     cache.upsert("ghost", {"tempo_bpm": None})  # never-acquired track
     return cache
 
@@ -59,6 +59,7 @@ def test_measured_features_exact(corpus):
     assert df.loc["folk0", "mode"] == 0.0                  # "minor" → 0
     assert row["duration_sec"] == 200.0
     assert row["loudness_db"] == round(20 * math.log10(0.30), 2)  # exact math
+    assert row["time_signature"] == 4 and df.loc["folk0", "time_signature"] == 3  # promoted column
     assert (df["version"] == PERCEPTUAL_VERSION).all()
 
 
@@ -150,6 +151,9 @@ def test_feature_stats_binning_rules(corpus):
     assert dance[0] == 0.0 and dance[-1] == 1.0 and len(dance) == 21    # fixed 0–1
     tempo = stats.loc["tempo", "bin_edges"]
     assert tempo[0] == 62.0 and tempo[-1] == 122.0                      # population min–max
+    ts = stats.loc["time_signature"]                                   # F-v2b: discrete meters
+    assert ts["bin_edges"] == [1.5, 2.5, 3.5, 4.5, 5.5, 6.5, 7.5]
+    assert ts["n"] == 10 and ts["min"] == 3.0 and ts["max"] == 4.0 and sum(ts["bin_counts"]) == 10
 
 
 # ── rebuild_marts: the single rebuild entry point (script + worker) ─────────

@@ -59,6 +59,59 @@ def loudness_curve_from_signal(signal: AudioSignal, config: Optional[DSPConfig] 
     return [round(float(v), 2) for v in _downsample_loudness_db(rms)]
 
 
+def time_signature_from_signal(signal: AudioSignal, config: Optional[DSPConfig] = None) -> int:
+    """Estimate the meter from a signal — the cheap path for backfilling existing
+    local audio (onset + beat tracking only, no MFCC/HPSS/chroma). Same estimator
+    the extractor runs, so a backfilled meter matches a fresh extraction."""
+    if config is None:
+        config = DSPConfig()
+    onset_env = librosa.onset.onset_strength(
+        y=signal.waveform, sr=signal.sr, hop_length=config.hop_length)
+    _tempo, beat_frames = librosa.beat.beat_track(
+        y=signal.waveform, sr=signal.sr, hop_length=config.hop_length,
+        onset_envelope=onset_env)
+    return _estimate_time_signature(onset_env, beat_frames)
+
+
+# Candidate meters (beats per bar) to test. We start at 3, NOT 2: a 4/4 song
+# with a backbeat (accents on 1 AND 3) has period-2 accent structure, so lag-2
+# autocorrelation competes with lag-4 and would mislabel most 4/4 as 2/4. Duple
+# meter is genuinely ambiguous from accents alone and real 2/4 is vanishingly
+# rare, so duple collapses to the 4 default; the estimator's job is to surface
+# the ODD/compound meters (3, 5, 6, 7). Weak evidence also falls back to 4.
+_METER_CANDIDATES = range(3, 8)
+_METER_DEFAULT = 4
+_METER_MIN_CORR = 0.10
+
+
+def _estimate_time_signature(onset_env: np.ndarray, beat_frames: np.ndarray) -> int:
+    """Estimate beats-per-bar from the periodicity of beat accents.
+
+    Sample the onset-strength envelope at each detected beat, then autocorrelate
+    that per-beat accent signal: the lag whose accents best repeat is the bar
+    length (downbeats recur every N beats). Honest and coarse — weak evidence or
+    too few beats returns 4 (common time), never a fabricated exotic meter.
+    """
+    if beat_frames is None or len(beat_frames) < 8 or onset_env.size == 0:
+        return _METER_DEFAULT
+    idx = np.clip(np.asarray(beat_frames), 0, onset_env.size - 1)
+    accents = onset_env[idx].astype(float)
+    accents = accents - accents.mean()
+    if accents.std() < 1e-8:
+        return _METER_DEFAULT
+    best_lag, best_corr = _METER_DEFAULT, -np.inf
+    for lag in _METER_CANDIDATES:
+        if lag >= accents.size:
+            break
+        a, b = accents[:-lag], accents[lag:]
+        if a.std() < 1e-8 or b.std() < 1e-8:
+            continue
+        corr = float(np.corrcoef(a, b)[0, 1])
+        if corr > best_corr:
+            best_corr, best_lag = corr, lag
+    return int(best_lag) if best_corr >= _METER_MIN_CORR else _METER_DEFAULT
+
+
 def _downsample_loudness_db(rms: np.ndarray, n_points: int = LOUDNESS_CURVE_POINTS) -> np.ndarray:
     """Downsample a per-frame RMS envelope to `n_points` of dBFS.
 
@@ -97,6 +150,10 @@ class TrackFeatures:
     onset_strength_std: float = 0.0
     beat_count: int = 0
     beats_per_sec: float = 0.0
+    # Estimated beats-per-bar (meter numerator), 0 = unknown. A coarse estimate
+    # from beat-accent periodicity, not a scalar off a single transform — so it
+    # rides as a promoted cache column (F-v2), never in the frozen vector/dict.
+    time_signature: int = 0
 
     # ── Energy Features ──
     rms_mean: float = 0.0
@@ -331,6 +388,7 @@ def _extract_rhythm(
         features.beat_count / features.duration_sec
         if features.duration_sec > 0 else 0.0
     )
+    features.time_signature = _estimate_time_signature(onset_env, beat_frames)
 
 
 def _extract_energy(
