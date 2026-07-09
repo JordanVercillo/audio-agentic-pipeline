@@ -32,8 +32,10 @@ if str(_ROOT) not in sys.path:
 
 from src.store.cache import FeatureCache  # noqa: E402
 from src.store.extractor import drain  # noqa: E402
+from src.store.perceptual import PERCEPTUAL_VERSION, rebuild_marts  # noqa: E402
 
 _SPECTROGRAM_DIR = _ROOT / "data" / "spectrograms"
+_MARTS_DIR = _ROOT / "data" / "marts"
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Drain the feature-cache extraction queue.")
@@ -63,6 +65,15 @@ if __name__ == "__main__":
                            on_progress=beat)
             if result["done"] or result["failed"]:
                 print(f"extraction: {result['done']} done, {result['failed']} failed")
+            if result["done"]:
+                # New tracks → refresh the derived layer + marts so they reach
+                # /explore immediately (percentiles recalibrate by design).
+                try:
+                    marts = rebuild_marts(cache, _MARTS_DIR)
+                    print(f"marts refreshed: {marts['n_tracks']} tracks in "
+                          f"{PERCEPTUAL_VERSION}")
+                except Exception as exc:  # noqa: BLE001 — derived layer, never fatal
+                    print(f"mart refresh failed (next successful drain retries): {exc}")
             if not args.loop:
                 break
             time.sleep(args.interval)

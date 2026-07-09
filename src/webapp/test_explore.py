@@ -17,6 +17,30 @@ from .explore import (
     window_strip,
 )
 
+# ── mart loaders: fresh files served without a restart ──────────────────────
+
+
+def test_loaders_pick_up_rewritten_marts(tmp_path, monkeypatch):
+    """The worker rebuilds marts after extractions — the RUNNING webapp must
+    serve the new file on the next request (mtime-keyed, no restart)."""
+    import os
+
+    from . import explore
+    monkeypatch.setattr(explore, "_MARTS", tmp_path)
+    cat = tmp_path / "feature_catalog.parquet"
+
+    pd.DataFrame([{"column": "tempo", "tier": "measured"}]).to_parquet(cat, index=False)
+    os.utime(cat, ns=(1_000_000_000, 1_000_000_000))
+    assert len(explore.load_catalog()) == 1
+
+    pd.DataFrame([{"column": "tempo", "tier": "measured"},
+                  {"column": "energy", "tier": "derived"}]).to_parquet(cat, index=False)
+    os.utime(cat, ns=(2_000_000_000, 2_000_000_000))
+    assert len(explore.load_catalog()) == 2  # new content, same process
+
+    assert explore.load_stats() is None      # absent mart still degrades to None
+
+
 # ── pure view logic ─────────────────────────────────────────────────────────
 
 

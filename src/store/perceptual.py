@@ -27,7 +27,9 @@ every row.
 from __future__ import annotations
 
 import math
+import os
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Optional
 
 import numpy as np
@@ -228,3 +230,35 @@ def persist_perceptual(cache: FeatureCache, df: pd.DataFrame) -> int:
 def catalog_frame() -> pd.DataFrame:
     """The feature catalog as a DataFrame (the /explore picker's source)."""
     return pd.DataFrame(CATALOG)
+
+
+def _write_atomic(df: pd.DataFrame, path: Path) -> None:
+    """Write parquet via a temp file + replace — the webapp reads these files
+    while the worker rewrites them; a half-written mart must never be served."""
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    df.to_parquet(tmp, index=False)
+    os.replace(tmp, path)
+
+
+def rebuild_marts(cache: FeatureCache, marts_dir: Path) -> dict[str, Any]:
+    """Recompute perceptual-v1 and rewrite all three marts (idempotent).
+
+    THE rebuild entry point: scripts/build_feature_marts.py and the extraction
+    worker (post-drain) both call this, so a visitor's freshly-extracted
+    tracks reach /explore with no operator step. Percentile-calibrated columns
+    recalibrate against the grown population — the version travels on every
+    row for exactly this reason. Empty cache → n_tracks 0, nothing written.
+    """
+    df = compute_perceptual(cache)
+    if df.empty:
+        return {"n_tracks": 0, "perceptual": df,
+                "catalog": pd.DataFrame(), "stats": pd.DataFrame()}
+    n = persist_perceptual(cache, df)
+    marts_dir = Path(marts_dir)
+    marts_dir.mkdir(parents=True, exist_ok=True)
+    catalog = catalog_frame()
+    stats = compute_feature_stats(df)
+    _write_atomic(df, marts_dir / "track_perceptual.parquet")
+    _write_atomic(catalog, marts_dir / "feature_catalog.parquet")
+    _write_atomic(stats, marts_dir / "feature_stats.parquet")
+    return {"n_tracks": n, "perceptual": df, "catalog": catalog, "stats": stats}

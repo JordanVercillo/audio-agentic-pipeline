@@ -152,6 +152,30 @@ def test_feature_stats_binning_rules(corpus):
     assert tempo[0] == 62.0 and tempo[-1] == 122.0                      # population min–max
 
 
+# ── rebuild_marts: the single rebuild entry point (script + worker) ─────────
+def test_rebuild_marts_writes_all_three_and_persists(corpus, tmp_path):
+    from .perceptual import rebuild_marts
+    marts = tmp_path / "marts"
+    result = rebuild_marts(corpus, marts)
+    assert result["n_tracks"] == 10
+    for name in ("track_perceptual", "feature_catalog", "feature_stats"):
+        assert (marts / f"{name}.parquet").exists(), name
+    assert not list(marts.glob("*.tmp"))        # atomic writes leave no temp files
+    assert len(corpus.all_perceptual()) == 10   # cache table persisted too
+    # rerun after the population grows — a worker drain does exactly this
+    corpus.upsert("club9", _club(9))
+    assert rebuild_marts(corpus, marts)["n_tracks"] == 11
+    import pandas as pd
+    assert len(pd.read_parquet(marts / "track_perceptual.parquet")) == 11
+
+
+def test_rebuild_marts_empty_cache_writes_nothing(tmp_path):
+    from .perceptual import rebuild_marts
+    cache = FeatureCache(url=f"sqlite:///{tmp_path / 'e.db'}")
+    assert rebuild_marts(cache, tmp_path / "marts")["n_tracks"] == 0
+    assert not (tmp_path / "marts").exists()
+
+
 # ── the audit extension (F2): catalog↔mart parity checks ───────────────────
 def _load_audit_module():
     import importlib.util

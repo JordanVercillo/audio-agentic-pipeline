@@ -27,32 +27,19 @@ if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
 from src.store.cache import FeatureCache  # noqa: E402
-from src.store.perceptual import (  # noqa: E402
-    PERCEPTUAL_VERSION,
-    catalog_frame,
-    compute_feature_stats,
-    compute_perceptual,
-    persist_perceptual,
-)
+from src.store.perceptual import PERCEPTUAL_VERSION, rebuild_marts  # noqa: E402
 
 _MARTS = _ROOT / "data" / "marts"
 
 if __name__ == "__main__":
     cache = FeatureCache()
-    df = compute_perceptual(cache)
-    if df.empty:
+    result = rebuild_marts(cache, _MARTS)
+    if result["n_tracks"] == 0:
         print("no complete cached tracks — seed or extract first")
         sys.exit(1)
+    df, catalog, stats = result["perceptual"], result["catalog"], result["stats"]
 
-    n = persist_perceptual(cache, df)
-    _MARTS.mkdir(parents=True, exist_ok=True)
-    df.to_parquet(_MARTS / "track_perceptual.parquet", index=False)
-    catalog = catalog_frame()
-    catalog.to_parquet(_MARTS / "feature_catalog.parquet", index=False)
-    stats = compute_feature_stats(df)
-    stats.to_parquet(_MARTS / "feature_stats.parquet", index=False)
-
-    print(f"{PERCEPTUAL_VERSION}: {n} tracks transformed "
+    print(f"{PERCEPTUAL_VERSION}: {result['n_tracks']} tracks transformed "
           f"({len(catalog)} catalog features: "
           f"{(catalog['tier'] == 'measured').sum()} measured, "
           f"{(catalog['tier'] == 'derived').sum()} derived, "

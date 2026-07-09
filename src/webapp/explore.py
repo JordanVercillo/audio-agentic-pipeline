@@ -33,17 +33,24 @@ _WINDOW_LABELS = {"short_term": "Last 4 weeks", "medium_term": "Last 6 months",
                   "long_term": "All time"}
 
 
-# ── mart loaders (cached per process; rebuilt marts need an app restart) ────
-@lru_cache(maxsize=1)
+# ── mart loaders (mtime-keyed: the worker rebuilds the marts after new
+#    extractions, and the running webapp must serve the fresh files without
+#    a restart — a rewrite changes the mtime and busts the cache) ────────────
+@lru_cache(maxsize=4)
+def _read_parquet_at(path_str: str, mtime_ns: int) -> pd.DataFrame:
+    return pd.read_parquet(path_str)
+
+
 def load_catalog() -> Optional[pd.DataFrame]:
     path = _MARTS / "feature_catalog.parquet"
-    return pd.read_parquet(path) if path.exists() else None
+    return _read_parquet_at(str(path), path.stat().st_mtime_ns) if path.exists() else None
 
 
-@lru_cache(maxsize=1)
 def load_stats() -> Optional[pd.DataFrame]:
     path = _MARTS / "feature_stats.parquet"
-    return pd.read_parquet(path).set_index("column") if path.exists() else None
+    if not path.exists():
+        return None
+    return _read_parquet_at(str(path), path.stat().st_mtime_ns).set_index("column")
 
 
 def catalog_groups(catalog: pd.DataFrame) -> list[dict[str, Any]]:
