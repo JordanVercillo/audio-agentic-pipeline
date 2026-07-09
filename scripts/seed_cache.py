@@ -69,22 +69,31 @@ def main() -> int:
 
     cache = FeatureCache()
     meta: list[dict] = []
-    n_spec = 0
+    n_spec = n_seeded = n_ghost = 0
     for _, row in distinct.iterrows():
         tid = row["spotify_track_id"]
         features = {c: _clean(row[c]) for c in feature_cols}
-        spec_uri = _make_spectrogram(tid) if args.spectrograms else None
-        n_spec += 1 if spec_uri else 0
-        cache.upsert(tid, features, spectrogram_uri=spec_uri,
-                     source="owner-warehouse", dsp_version="77dim-v1")
+        # Meta is kept for every track (the worker can search for it later),
+        # but a metadata-only warehouse row (never-downloaded track) must NOT
+        # seed features: the cache would report it "analyzed, forever empty"
+        # and the queue could never repair it (journal #13's ghost).
         meta.append({
             "spotify_track_id": tid,
             "track_name": _clean(row.get("track_name")),
             "artist_names": _clean(row.get("artist_names") or row.get("primary_artist_name")),
         })
+        if features.get("tempo_bpm") is None:  # the DSP never ran on this row
+            n_ghost += 1
+            continue
+        spec_uri = _make_spectrogram(tid) if args.spectrograms else None
+        n_spec += 1 if spec_uri else 0
+        cache.upsert(tid, features, spectrogram_uri=spec_uri,
+                     source="owner-warehouse", dsp_version="77dim-v1")
+        n_seeded += 1
     cache.remember_meta(meta)
-    print(f"Seeded {len(distinct)} tracks into the feature cache "
-          f"({n_spec} spectrograms) — db: {cache.engine.url}.")
+    ghost_note = f", {n_ghost} metadata-only skipped" if n_ghost else ""
+    print(f"Seeded {n_seeded} tracks into the feature cache "
+          f"({n_spec} spectrograms{ghost_note}) — db: {cache.engine.url}.")
     return 0
 
 

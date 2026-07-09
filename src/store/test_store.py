@@ -205,6 +205,41 @@ def test_requeue_leaves_fresh_running_alone(cache):
     assert cache.job_status(["live"])["running"] == 1
 
 
+def test_seed_skips_metadata_only_ghost(cache, tmp_path, monkeypatch):
+    """A never-downloaded warehouse row must seed META only — seeded empty
+    features read 'analyzed, forever empty' and the queue can't repair them
+    (journal #13's ghost, observed live as the Hummer row)."""
+    import importlib.util
+    import sys as _sys
+
+    import pandas as pd
+
+    path = Path(__file__).resolve().parents[2] / "scripts" / "seed_cache.py"
+    spec = importlib.util.spec_from_file_location("seed_cache", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+
+    modeled = tmp_path / "modeled"
+    modeled.mkdir()
+    pd.DataFrame([
+        {"spotify_track_id": "real", "time_range": "short_term", "rank": 1,
+         "track_name": "Real", "artist_names": "A", "tempo_bpm": 120.0,
+         "rms_mean": 0.2},
+        {"spotify_track_id": "ghost", "time_range": "short_term", "rank": 2,
+         "track_name": "Ghost", "artist_names": "B", "tempo_bpm": None,
+         "rms_mean": None},  # metadata-only: the DSP never ran
+    ]).to_parquet(modeled / "fact_listening_features.parquet", index=False)
+
+    monkeypatch.setattr(mod, "_MODELED", modeled)
+    monkeypatch.setattr(mod, "FeatureCache", lambda: cache)
+    monkeypatch.setattr(_sys, "argv", ["seed_cache.py"])
+    assert mod.main() == 0
+
+    assert set(cache.get(["real", "ghost"])) == {"real"}   # ghost NOT seeded
+    assert cache.get_meta("ghost")["track_name"] == "Ghost"  # meta kept for later
+    assert cache.missing(["ghost"]) == ["ghost"]           # queue CAN repair it
+
+
 def test_app_verify_worker_flags():
     # Import the skill script's pure flag logic (same pattern as check_marts).
     import importlib.util
