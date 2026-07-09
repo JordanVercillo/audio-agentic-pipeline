@@ -157,14 +157,20 @@ def fade_bounds(curve: Optional[list]) -> tuple[Optional[float], Optional[float]
     return (fin_frac, fout_frac)
 
 
-def loudness_svg(curve: Optional[list], width: int = 560, height: int = 140) -> str:
+def loudness_svg(curve: Optional[list], beat_times: Optional[list] = None,
+                 duration_sec: Optional[float] = None, meter: int = 4,
+                 width: int = 560, height: int = 140) -> str:
     """Inline SVG of the within-track loudness curve (F-v2, deep-dive).
 
     `curve` is the stored dBFS series. The y-axis auto-scales to the track's own
     min/max so the *dynamics* (build-ups, drops, quiet verses) are legible —
     axis labels carry the real dB values so it stays honest. Detected fade-in /
-    fade-out regions (F-v2c) are shaded. Returns "" when there's nothing to draw
-    (song analyzed before F-v2, or too few points).
+    fade-out regions (F-v2c) are shaded, and — when `beat_times` (seconds) +
+    `duration_sec` are given — a **bar grid** is drawn as ticks below the curve:
+    every `meter`-th real detected beat, so the spacing is one true measure
+    (~4× sparser than a full beat grid, legible). Real beat positions, so the
+    spacing tracks tempo; the downbeat *phase* is approximate. Returns "" when
+    there's nothing to draw.
     """
     pts = [float(v) for v in (curve or [])
            if v is not None and math.isfinite(float(v))]
@@ -204,11 +210,24 @@ def loudness_svg(curve: Optional[list], width: int = 560, height: int = 140) -> 
                   f'x2="{fx:.1f}" y2="{base:.1f}"/>'
                   f'<text class="loud-fade-t" x="{fx - 3:.1f}" y="{pad_t + 8:.1f}" '
                   f'text-anchor="end">fade out</text>')
+    # Bar grid (F-v2c): every meter-th real beat → measure-spaced ticks below
+    # the curve (a full beat grid is ~1px/beat at this width — a solid smear).
+    beats = ""
+    if beat_times and duration_sec and duration_sec > 0:
+        step = max(1, int(meter))
+        bt = [float(t) for t in beat_times[::step]
+              if isinstance(t, (int, float)) and 0.0 <= float(t) <= duration_sec]
+        if 0 < len(bt) <= 400:
+            beats = "".join(
+                f'<line class="loud-beat" x1="{pad_l + (t / duration_sec) * plot_w:.1f}" '
+                f'y1="{base:.1f}" x2="{pad_l + (t / duration_sec) * plot_w:.1f}" '
+                f'y2="{base + 4:.1f}"/>' for t in bt)
+
     return (
         f'<svg viewBox="0 0 {width} {height}" class="loudness" role="img" '
         f'aria-label="loudness over time in decibels">'
         f'<polygon class="loud-area" points="{area}"/>'
-        f'<polyline class="loud-line" points="{line}" fill="none"/>{fades}'
+        f'<polyline class="loud-line" points="{line}" fill="none"/>{fades}{beats}'
         f'<text class="loud-ax" x="{pad_l}" y="{pad_t + 8}">{hi:.0f} dB</text>'
         f'<text class="loud-ax" x="{pad_l}" y="{base - 2}">{lo:.0f} dB</text>'
         f'<text class="loud-ax" x="{pad_l}" y="{base + 13}">start</text>'

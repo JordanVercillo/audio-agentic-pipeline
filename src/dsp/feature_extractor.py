@@ -73,6 +73,21 @@ def time_signature_from_signal(signal: AudioSignal, config: Optional[DSPConfig] 
     return _estimate_time_signature(onset_env, beat_frames)
 
 
+def beat_grid_from_signal(signal: AudioSignal, config: Optional[DSPConfig] = None) -> list[float]:
+    """Just the detected beat times (seconds) from a signal — the cheap path for
+    backfilling the beat grid (F-v2c) from existing local audio (onset + beat
+    tracking only)."""
+    if config is None:
+        config = DSPConfig()
+    onset_env = librosa.onset.onset_strength(
+        y=signal.waveform, sr=signal.sr, hop_length=config.hop_length)
+    _tempo, beat_frames = librosa.beat.beat_track(
+        y=signal.waveform, sr=signal.sr, hop_length=config.hop_length,
+        onset_envelope=onset_env)
+    return [round(float(t), 2)
+            for t in librosa.frames_to_time(beat_frames, sr=signal.sr, hop_length=config.hop_length)]
+
+
 # Candidate meters (beats per bar) to test. We start at 3, NOT 2: a 4/4 song
 # with a backbeat (accents on 1 AND 3) has period-2 accent structure, so lag-2
 # autocorrelation competes with lag-4 and would mislabel most 4/4 as 2/4. Duple
@@ -154,6 +169,9 @@ class TrackFeatures:
     # from beat-accent periodicity, not a scalar off a single transform — so it
     # rides as a promoted cache column (F-v2), never in the frozen vector/dict.
     time_signature: int = 0
+    # Detected beat times (seconds) — the beat grid (F-v2c). Display data, like
+    # the loudness curve: a cache column, never in the vector/82-col dict.
+    beat_times: Optional[np.ndarray] = None
 
     # ── Energy Features ──
     rms_mean: float = 0.0
@@ -291,6 +309,13 @@ class TrackFeatures:
             return None
         return [round(float(v), 2) for v in self.loudness_curve]
 
+    def beat_times_list(self) -> Optional[list[float]]:
+        """Detected beat times (seconds) as a JSON-safe list — the beat grid
+        (F-v2c). Travels alongside the summary dict, never inside it."""
+        if self.beat_times is None:
+            return None
+        return [round(float(t), 2) for t in self.beat_times]
+
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 #  MAIN EXTRACTION PIPELINE
@@ -389,6 +414,8 @@ def _extract_rhythm(
         if features.duration_sec > 0 else 0.0
     )
     features.time_signature = _estimate_time_signature(onset_env, beat_frames)
+    features.beat_times = librosa.frames_to_time(
+        beat_frames, sr=sr, hop_length=config.hop_length)
 
 
 def _extract_energy(

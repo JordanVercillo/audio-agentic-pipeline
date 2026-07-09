@@ -19,8 +19,9 @@
       {% if loudness %}
       <div class="loud-wrap">
         {{ loudness|safe }}
-        <p class="cap">Loudness over time — the track's own dynamics in dBFS
-          (rebuilds Spotify's retired audio-analysis loudness curve).</p>
+        <p class="cap">Loudness over time in dBFS, with detected fade regions and a
+          bar grid at the estimated meter (rebuilds Spotify's retired
+          audio-analysis loudness curve).</p>
       </div>
       {% endif %}
       <div class="summary-row">

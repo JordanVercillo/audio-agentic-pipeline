@@ -470,7 +470,11 @@ def create_app() -> FastAPI:
         if features is not None:
             ctx["summary"] = track_summary(features)
             ctx["radar"] = radar_svg(features)
-            ctx["loudness"] = loudness_svg(cache.loudness_curve(track_id))
+            ctx["loudness"] = loudness_svg(
+                cache.loudness_curve(track_id),
+                beat_times=cache.beat_times(track_id),
+                duration_sec=features.get("duration_sec"),
+                meter=cache.time_signature(track_id) or 4)
             ctx["has_spectrogram"] = _spectrogram_path(track_id).exists()
             ctx["similar"] = [
                 {"id": sid, "name": (cache.get_meta(sid) or {}).get("track_name") or sid,

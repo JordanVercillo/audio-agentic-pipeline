@@ -42,6 +42,7 @@ class TrackFeatures(Base):
     # deep-dive chart. Display data — deliberately OUT of `features` so it never
     # touches the 77-dim vector, the 82-col contract, or the perceptual transform.
     loudness_curve = Column(JSON)           # list[float] (dBFS) or null
+    beat_times = Column(JSON)               # list[float] (seconds) — the beat grid (F-v2c)
     # Provenance.
     dsp_version = Column(String)
     extraction_source = Column(String)      # e.g. "youtube"

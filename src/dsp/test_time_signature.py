@@ -41,3 +41,14 @@ def test_extract_sets_time_signature():
     assert isinstance(tf.time_signature, int) and 2 <= tf.time_signature <= 7
     assert "time_signature" not in tf.to_summary_dict()   # promoted column, not a contract feature
     assert len(tf.to_summary_vector()) == 77               # frozen vector untouched
+
+
+def test_extract_sets_beat_grid():
+    from .feature_extractor import beat_grid_from_signal, extract_features
+    sig = generate_test_signal(frequency_hz=220.0, duration_sec=6.0)
+    tf = extract_features(sig)
+    bt = tf.beat_times_list()
+    assert isinstance(bt, list) and all(0.0 <= t <= 6.1 for t in bt)  # seconds, in range
+    assert bt == sorted(bt)                                # beats are ordered
+    assert isinstance(beat_grid_from_signal(sig), list)    # cheap backfill path agrees in shape
+    assert "beat_times" not in tf.to_summary_dict()        # display data, not a contract feature

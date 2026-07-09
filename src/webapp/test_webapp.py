@@ -222,6 +222,19 @@ def test_fade_bounds_and_shading():
     assert "loud-fade" not in loudness_svg([-10] * 20)  # no fade → no shading
 
 
+def test_loudness_svg_bar_grid():
+    from .taste import loudness_svg
+    curve = [-20.0, -10.0, -8.0, -12.0]
+    beats = [0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0]
+    # meter=4 → a bar line every 4th beat → 2 bars from 8 beats
+    assert loudness_svg(curve, beat_times=beats, duration_sec=4.5, meter=4).count("loud-beat") == 2
+    # meter=2 → every 2nd beat → 4 bars
+    assert loudness_svg(curve, beat_times=beats, duration_sec=4.5, meter=2).count("loud-beat") == 4
+    assert "loud-beat" not in loudness_svg(curve)        # no beats given → no grid
+    # beats past the duration are filtered out (meter=1 draws every beat)
+    assert loudness_svg(curve, beat_times=[1.0, 99.0], duration_sec=4.0, meter=1).count("loud-beat") == 1
+
+
 # ── deep-dive routes (Epic B) ──────────────────────────────────────────────
 def test_song_unauthenticated_redirects(client):
     r = client.get("/song/x", follow_redirects=False)

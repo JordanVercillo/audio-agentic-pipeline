@@ -83,7 +83,8 @@ class FeatureCache:
     # A DB created before a column was introduced gets it here, idempotently —
     # existing rows read NULL. Both SQLite and Postgres take ADD COLUMN online.
     _ADDED_COLUMNS = {"track_features": {"loudness_curve": "JSON",
-                                         "time_signature": "INTEGER"}}
+                                         "time_signature": "INTEGER",
+                                         "beat_times": "JSON"}}
 
     def _migrate_added_columns(self) -> None:
         inspector = sa_inspect(self.engine)
@@ -154,7 +155,8 @@ class FeatureCache:
     def upsert(self, track_id: str, features: dict, *, spectrogram_uri: Optional[str] = None,
                source: str = "youtube", dsp_version: Optional[str] = None,
                loudness_curve: Optional[list] = None,
-               time_signature: Optional[int] = None) -> None:
+               time_signature: Optional[int] = None,
+               beat_times: Optional[list] = None) -> None:
         """Store a song's features (idempotent) and mark any pending job done."""
         with self._Session() as s:
             s.merge(TrackFeatures(
@@ -165,7 +167,7 @@ class FeatureCache:
                 spectrogram_uri=spectrogram_uri, extraction_source=source,
                 dsp_version=dsp_version, loudness_curve=loudness_curve,
                 time_signature=(int(time_signature) if time_signature else None),
-                extracted_at=utcnow()))
+                beat_times=beat_times, extracted_at=utcnow()))
             job = s.get(ExtractionJob, track_id)
             if job is not None:
                 job.status = JOB_DONE
@@ -190,6 +192,12 @@ class FeatureCache:
                 .where(TrackFeatures.time_signature.isnot(None))).all()
         return {tid: int(ts) for tid, ts in rows}
 
+    def time_signature(self, track_id: str) -> Optional[int]:
+        """A single track's estimated meter, or None."""
+        with self._Session() as s:
+            row = s.get(TrackFeatures, track_id)
+            return int(row.time_signature) if row and row.time_signature else None
+
     def set_loudness_curve(self, track_id: str, curve: list) -> bool:
         """Update ONLY a cached track's loudness curve (F-v2 backfill).
 
@@ -210,6 +218,22 @@ class FeatureCache:
         with self._Session() as s:
             row = s.get(TrackFeatures, track_id)
             return row.loudness_curve if row is not None else None
+
+    def set_beat_times(self, track_id: str, beat_times: list) -> bool:
+        """Update ONLY a cached track's beat grid (F-v2c backfill). No-op if absent."""
+        with self._Session() as s:
+            row = s.get(TrackFeatures, track_id)
+            if row is None:
+                return False
+            row.beat_times = beat_times
+            s.commit()
+            return True
+
+    def beat_times(self, track_id: str) -> Optional[list]:
+        """The stored detected beat times (seconds), or None."""
+        with self._Session() as s:
+            row = s.get(TrackFeatures, track_id)
+            return row.beat_times if row is not None else None
 
     # ── perceptual-v1 layer (VISION_SPECS F1) ────────────────────────────────
     def upsert_perceptual(self, track_id: str, features: dict, *,
