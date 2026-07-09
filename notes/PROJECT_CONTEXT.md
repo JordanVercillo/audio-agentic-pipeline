@@ -42,16 +42,17 @@
   the acoustic map, artist buckets: Muse 31-track "Noisy · Bright" vs "Smooth ·
   Dark"). External reachability separately proven via curl through the
   Cloudflare edge. **ALL EPICS A–E OF APP_SPEC v2 ARE BUILT AND LIVE, at $0.**
-- **➡️ NEXT ACTION — ONE owner one-liner left, then the standing fork.**
-  ✅ The hardened pipeline is LIVE (2026-07-09): owner stopped the old
-  processes; the agent restarted webapp + worker on the new code and
-  app-verify came back ALL-GREEN incl. the new flags (worker heartbeat 21 s,
-  WORKER_DOWN/QUEUE_STUCK false; public URL serving). Still pending — reboot
-  persistence, which the permission classifier reserves for the owner's hand:
-  `powershell -ExecutionPolicy Bypass -File scripts\register_autostart.ps1`
-  (registers webapp+worker at-logon tasks + the 03:00 backup; safe to run
-  while the app is up — tasks start at next logon; see SELF_HOSTING §4 for
-  the don't-double-run note). NEW SESSION? Run **`/resume`** as usual. Then
+- **➡️ NEXT ACTION — app is UP; owner's control is now a double-click.**
+  ✅ The hardened pipeline is LIVE (verified 2026-07-09, app-verify ALL-GREEN,
+  heartbeat fresh, public edge 200). **Runtime control is now click-to-run:**
+  `start_app.bat` / `stop_app.bat` / `status_app.bat` at the repo root (wrap
+  `scripts/app_control.ps1`; start is idempotent, stop matches by script name,
+  logs → `logs\*.log`). Optional reboot persistence (owner's hand — the
+  classifier reserves scheduled-task registration): `powershell
+  -ExecutionPolicy Bypass -File scripts\register_autostart.ps1` (at-logon tasks
+  + 03:00 backup). **Pick ONE model** — click scripts (manual) OR the tasks
+  (hands-off); they coexist but don't need both (SELF_HOSTING §4). NEW
+  SESSION? Run **`/resume`** as usual. Then
   the owner's standing fork — **F-v2** (frame-level audio pass:
   time_signature, loudness-curve time series on the song page,
   instrumentalness — extractor addition + corpus re-run) **or closeout**
@@ -750,3 +751,13 @@ narrative goes to `notes/engineering_journal.md`, plans to
   (commit 3832289's message says 267 — miscount, the log here is the truth).
   **Left off: owner one-liner = register_autostart.ps1. Standing fork
   unchanged: F-v2 or closeout (DKIM/DMARC, GCP zone).**
+- **2026-07-09 (session 15 — Opus 4.8; click-to-run controls):** Model
+  switched Fable 5 → Opus 4.8 mid-day (clean handoff — tree synced, all work
+  committed). Session teardown had killed the webapp + worker (site 502-ing);
+  built **double-click start/stop/status** (`*_app.bat` → `scripts/app_control.ps1`,
+  commit eeb6328) and used `start` to restore the app (app-verify ALL-GREEN,
+  public edge 200). One build snag: PS 5.1 reads BOM-less files as ANSI →
+  em-dashes broke the parse; rewrote the .ps1 ASCII-only. SELF_HOSTING §4 now
+  documents easy/manual/autostart. **Left off: app UP under the click scripts;
+  reboot persistence still optional via register_autostart.ps1. Standing fork
+  unchanged.**
