@@ -61,6 +61,17 @@ full mailbox. (Keep Workspace only if you need to *send* as the domain.) A live
 check also exposed that the domain never actually had DKIM/DMARC on Workspace —
 Email Routing gives it both automatically.
 
+> **The domain wears three hats, all $0:** ① website (Cloudflare tunnel →
+> uvicorn), ② the *professional identity* `jordan@vercilloanalytics.com` is a
+> free **Microsoft Entra/365** account (Power BI/Office login — no Exchange
+> license, so it has no mailbox of its own; the OWA
+> `OwaUserHasNoMailboxAndNoLicenseAssignedException` is expected), ③ *email* to
+> that address is received via Cloudflare Email Routing (this section). Login
+> (Entra) is independent of MX, so the email cutover doesn't touch Power BI —
+> and cancelling Workspace touches none of the three. Keep the Microsoft
+> account's **Security Info** recovery pointed at a reachable phone / personal
+> inbox, not the domain mailbox.
+
 Setup — Cloudflare dashboard → **Email → Email Routing**:
 1. **Destination Addresses** → add your personal inbox → click the verification
    link Cloudflare emails you (must show **Verified**).
