@@ -17,7 +17,17 @@ Interpretation:
   (`Start-Service cloudflared`, elevated; see docs/SELF_HOSTING.md §2 gotcha).
 - `CACHE_EMPTY` — `uv run python scripts/seed_cache.py --spectrograms`.
 - `MARTS_MISSING` — `uv run python scripts/build_feature_marts.py`.
-- `jobs_by_status.failed` > 0 — inspect `extraction_jobs.last_error`.
+- `WORKER_DOWN` — the extraction worker hasn't beaten within 3 poll intervals
+  (min 300s): new visitors' queued tracks are NOT being extracted. Start it:
+  `uv run python scripts/run_extraction_worker.py --loop` (background). A
+  worker running pre-heartbeat code also reads DOWN — restart it onto current
+  code. Confirm which with a process check
+  (`Get-CimInstance Win32_Process -Filter "Name like 'python%'"`).
+- `QUEUE_STUCK` — a queued/running job untouched >15 min. With WORKER_DOWN:
+  start the worker. Alone: the worker is alive but not consuming — inspect its
+  console/logs and `extraction_jobs`.
+- `jobs_by_status.failed` > 0 — inspect `extraction_jobs.last_error` (a failed
+  job re-queues on the next dashboard visit that includes the track).
 
 The report is a *claim check*, not a claim (journal #4/#14): trust flags over
 any doc that says "running".

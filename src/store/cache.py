@@ -18,6 +18,7 @@ import math
 import os
 import statistics
 from collections import Counter
+from datetime import timedelta
 from pathlib import Path
 from typing import Any, Optional
 
@@ -30,6 +31,7 @@ from .models import (
     TrackFeatures,
     TrackMeta,
     TrackPerceptual,
+    WorkerHeartbeat,
     utcnow,
 )
 
@@ -237,6 +239,40 @@ class FeatureCache:
                 job.status = JOB_FAILED
                 job.last_error = (error or "")[:500]
                 s.commit()
+
+    def requeue_stale_running(self, older_than_seconds: int = 900) -> list[str]:
+        """Re-queue jobs stuck 'running' past the cutoff — a crashed worker's
+        orphans. claim_next marks running and only a live worker ever resolves
+        it, so without this a mid-job crash strands the track forever
+        (enqueue skips live jobs). Returns the re-queued ids."""
+        cutoff = utcnow() - timedelta(seconds=older_than_seconds)
+        with self._Session() as s:
+            jobs = s.execute(
+                select(ExtractionJob).where(
+                    ExtractionJob.status == JOB_RUNNING,
+                    ExtractionJob.updated_at < cutoff)
+            ).scalars().all()
+            for job in jobs:
+                job.status = JOB_QUEUED
+            s.commit()
+            return [j.spotify_track_id for j in jobs]
+
+    def beat(self, worker_name: str = "extraction-worker", *,
+             pid: Optional[int] = None, interval_seconds: Optional[int] = None) -> None:
+        """Record worker liveness (upsert; called once per poll loop)."""
+        with self._Session() as s:
+            s.merge(WorkerHeartbeat(worker_name=worker_name, pid=pid,
+                                    interval_seconds=interval_seconds, beat_at=utcnow()))
+            s.commit()
+
+    def heartbeat(self, worker_name: str = "extraction-worker") -> Optional[dict]:
+        """The worker's last beat, or None if it has never run."""
+        with self._Session() as s:
+            hb = s.get(WorkerHeartbeat, worker_name)
+            if hb is None:
+                return None
+            return {"worker_name": hb.worker_name, "pid": hb.pid,
+                    "interval_seconds": hb.interval_seconds, "beat_at": hb.beat_at}
 
     def similar(self, track_id: str, k: int = 6) -> list[tuple[str, float]]:
         """Nearest cached tracks by z-scored acoustic distance → [(id, distance)].

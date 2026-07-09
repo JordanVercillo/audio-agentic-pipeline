@@ -12,6 +12,7 @@ second process alongside the webapp (APP_SPEC §5).
 """
 
 import argparse
+import os
 import sys
 import tempfile
 import time
@@ -45,10 +46,21 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     cache = FeatureCache()
+
+    def beat() -> None:
+        cache.beat("extraction-worker", pid=os.getpid(), interval_seconds=args.interval)
+
     with tempfile.TemporaryDirectory(prefix="va_audio_") as audio_dir:
         while True:
+            # A previous worker may have died mid-job — reclaim its orphans
+            # (status 'running' blocks re-enqueue until reset).
+            requeued = cache.requeue_stale_running()
+            if requeued:
+                print(f"re-queued {len(requeued)} stale running job(s)")
+            beat()
             result = drain(cache, audio_dir=Path(audio_dir),
-                           spectrogram_dir=_SPECTROGRAM_DIR, max_jobs=args.max)
+                           spectrogram_dir=_SPECTROGRAM_DIR, max_jobs=args.max,
+                           on_progress=beat)
             if result["done"] or result["failed"]:
                 print(f"extraction: {result['done']} done, {result['failed']} failed")
             if not args.loop:

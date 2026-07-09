@@ -105,6 +105,20 @@ class TrackCluster(Base):
     map_y = Column(Float)
 
 
+class WorkerHeartbeat(Base):
+    """Liveness beacon: the extraction worker upserts its row once per poll
+    loop, so the app-verify audit can tell "worker alive" from "queue stuck"
+    (a queue with no consumer fails silently — new visitors' tracks would
+    show "analyzing…" forever)."""
+
+    __tablename__ = "worker_heartbeats"
+
+    worker_name = Column(String, primary_key=True)  # e.g. "extraction-worker"
+    pid = Column(Integer)
+    interval_seconds = Column(Integer)              # the worker's poll interval
+    beat_at = Column(DateTime, default=utcnow)
+
+
 class ArtistProfile(Base):
     """An artist's acoustic bucket, derived from their cached tracks' centroid.
 

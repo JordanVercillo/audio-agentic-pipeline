@@ -163,3 +163,61 @@ def test_drain_processes_the_queue(cache, tmp_path):
                 acquire=_synth_acquire)
     assert res == {"done": 2, "failed": 0}
     assert cache.missing(["d0", "d1"]) == []
+
+
+def test_drain_on_progress_fires_per_job(cache, tmp_path):
+    # A long queue must keep beating the caller's heartbeat — even for failures.
+    from .extractor import drain
+    cache.enqueue(["p0", "p1"])  # no metadata → both fail fast, no DSP needed
+    beats = []
+    drain(cache, audio_dir=tmp_path / "a", spectrogram_dir=tmp_path / "s",
+          acquire=lambda *a: None, on_progress=lambda: beats.append(1))
+    assert len(beats) == 2
+
+
+# ── worker liveness (heartbeat + orphan re-queue) ────────────────────────────
+def test_beat_upserts_a_single_row(cache):
+    cache.beat("extraction-worker", pid=111, interval_seconds=30)
+    first = cache.heartbeat("extraction-worker")
+    cache.beat("extraction-worker", pid=222, interval_seconds=60)
+    second = cache.heartbeat("extraction-worker")
+    assert first is not None and second is not None
+    assert second["pid"] == 222 and second["interval_seconds"] == 60
+    assert second["beat_at"] >= first["beat_at"]  # moved forward, same row
+    assert cache.heartbeat("never-ran") is None
+
+
+def test_requeue_stale_running_reclaims_orphans(cache):
+    cache.enqueue(["stuck"])
+    assert cache.claim_next() == "stuck"  # → running (then the "worker" dies)
+    with cache.engine.begin() as conn:  # backdate: simulate a long-dead claim
+        conn.exec_driver_sql(
+            "UPDATE extraction_jobs SET updated_at = '2020-01-01 00:00:00.000000'")
+    assert cache.requeue_stale_running(older_than_seconds=900) == ["stuck"]
+    assert cache.job_status(["stuck"])["queued"] == 1
+    assert cache.claim_next() == "stuck"  # claimable again
+
+
+def test_requeue_leaves_fresh_running_alone(cache):
+    cache.enqueue(["live"])
+    cache.claim_next()
+    assert cache.requeue_stale_running(older_than_seconds=900) == []
+    assert cache.job_status(["live"])["running"] == 1
+
+
+def test_app_verify_worker_flags():
+    # Import the skill script's pure flag logic (same pattern as check_marts).
+    import importlib.util
+    path = (Path(__file__).resolve().parents[2]
+            / ".claude" / "skills" / "app-verify" / "verify_app.py")
+    spec = importlib.util.spec_from_file_location("verify_app", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    flags = mod.evaluate_worker_flags
+
+    assert flags(None, None, None)["WORKER_DOWN"] is True          # never beat
+    assert flags(10.0, 30, None) == {"WORKER_DOWN": False, "QUEUE_STUCK": False}
+    assert flags(10_000.0, 30, None)["WORKER_DOWN"] is True        # stale beat
+    assert flags(200.0, 30, None)["WORKER_DOWN"] is False          # < 300s floor
+    assert flags(10.0, 30, 1200.0)["QUEUE_STUCK"] is True          # old pending job
+    assert flags(10.0, 30, 60.0)["QUEUE_STUCK"] is False           # fresh queue

@@ -107,8 +107,13 @@ def extract_one(cache: FeatureCache, track_id: str, *, audio_dir: Path,
 
 
 def drain(cache: FeatureCache, *, audio_dir: Path, spectrogram_dir: Path,
-          max_jobs: Optional[int] = None, acquire: AcquireFn = default_acquire) -> dict:
-    """Claim + extract queued jobs until the queue is empty (or max_jobs reached)."""
+          max_jobs: Optional[int] = None, acquire: AcquireFn = default_acquire,
+          on_progress: Optional[Callable[[], None]] = None) -> dict:
+    """Claim + extract queued jobs until the queue is empty (or max_jobs reached).
+
+    `on_progress` fires after every job — a long queue must not starve the
+    caller's liveness heartbeat (one visitor can queue ~an hour of work).
+    """
     done = failed = 0
     while max_jobs is None or (done + failed) < max_jobs:
         track_id = cache.claim_next()
@@ -119,4 +124,6 @@ def drain(cache: FeatureCache, *, audio_dir: Path, spectrogram_dir: Path,
             done += 1
         else:
             failed += 1
+        if on_progress is not None:
+            on_progress()
     return {"done": done, "failed": failed}
