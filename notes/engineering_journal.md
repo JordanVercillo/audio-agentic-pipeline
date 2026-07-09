@@ -477,3 +477,31 @@ Spotify's terms forbid training on their content.)
 > rule that says "X is impossible" quietly costs you X forever if X quietly
 > became possible — over-restriction fails silently, so re-verify the
 > load-bearing "nevers."*
+
+### 21. The fade-out/fade-in asymmetry was the honesty check (2026-07-09)
+
+F-v2c detects fades by thresholding the stored loudness curve. The first cut —
+"the edge sits a bit below the sustained level" — flagged **60% fade-ins**,
+which is absurd for a rock corpus (true production fade-ins are ~10%). Nothing
+errored; the number was just wrong, and a synthetic test with a clean fade curve
+happily passed it. What exposed it was a *musical prior*: real fade-ins are rare,
+fade-outs are common, so a detector reporting them roughly equal is catching
+something else — here, quiet intros (soft openings that aren't production
+fades). Adding a depth gate (the edge must sit ≥20 dB below full — a fade FROM
+SILENCE, not a merely-soft start) pulled it to fade-in 19% / fade-out 34%, and
+the fact that fade-out now exceeded fade-in was the signal the detector had
+become honest. (The beat grid hit the twin of #19's density problem: a full
+beat grid is ~1px/beat — a solid smear — so it draws bars, every meter-th real
+beat, spacing honest and phase approximate.)
+
+**The realization:** a detector's *output distribution*, checked against a
+domain prior, is a validation instrument that unit tests can't be — tests prove
+the code does what you wrote; only real data against "what should the world look
+like?" reveals that what you wrote was the wrong thing. When a new feature lands,
+look at the shape of what it produces across the whole corpus, and ask whether a
+domain expert would find that shape believable.
+
+> *Validate a new estimator by its distribution against a domain prior, not just
+> by unit tests. "Does the mix of answers look like the world?" catches wrong-
+> definition bugs that green tests sail right past — and a known asymmetry
+> (fade-outs beat fade-ins) is a free correctness check.*

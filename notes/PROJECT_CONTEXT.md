@@ -81,11 +81,21 @@
   (brightness/punch/dynamics) + valence proxy; **instrumentalness REMOVED**
   (source-separation cost not worth the tier-credibility hit), valence/liveness
   stay unfaked. **Verified `popularity` is Deprecated-not-removed** (our own
-  guardrail was over-cautious — journal #20). Sequence: **① F-v2c fade+beat-grid
-  → ② P popularity-context → ③ F-v3 structure timeline (marquee) → ④ Epic G
-  recommendation explorer (capstone) → ⑤ A3 Ollama → ⑥ polish**. **➡️ NEXT
-  BUILD: F-v2c** (fade-in/out + beat-grid on the loudness curve — cheap, pure
-  signal, no re-download) — or jump to ③ F-v3 for the visual payoff. **Closeout** is ~DONE (2026-07-09): ① **email moved
+  guardrail was over-cautious — journal #20). Sequence: **~~① F-v2c~~ → ② P
+  popularity-context → ③ F-v3 structure timeline (marquee) → ④ Epic G
+  recommendation explorer (capstone) → ⑤ A3 Ollama → ⑥ polish**. ✅ **F-v2c
+  DONE (2026-07-09, commits d1a…694ed2e, 281 tests):** ①.1 **fade-in/out**
+  detection — a PURE function over the stored loudness curve (zero backfill,
+  all 117 immediately); depth-gated to real fades-from-silence → credible
+  fade-in 19% / fade-out 34% (the fade-out>fade-in asymmetry = the honesty
+  signal, journal #21). ①.2 **beat grid** — `beat_times` cache column (migration
+  #3), extractor + worker + `backfill_beat_times.py` (117/117, ~481 beats/track);
+  rendered as a **bar grid** (every meter-th real beat) since a full beat grid
+  is a 1px/beat smear — ~5–6px legible, honest spacing, phase approximate.
+  Deployed live. **➡️ NEXT BUILD: ② P — popularity context** (un-strip in
+  fetchers, optional column, "taste vs popularity" line, correct the 3
+  over-cautious docs incl. CLAUDE.md rule 3 — owner's nod on that edit) — or
+  jump to ③ F-v3 (marquee) for the bigger visual payoff. **Closeout** is ~DONE (2026-07-09): ① **email moved
   to free Cloudflare Email Routing** (dropped paid Google Workspace, ~$17 CAD/mo
   → $0) — `jordan@vercilloanalytics.com` catch-all forwards to
   `jvercillo@live.com`; MX `route*.mx.cloudflare.net` + SPF + DKIM
