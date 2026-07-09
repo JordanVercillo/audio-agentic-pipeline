@@ -118,6 +118,22 @@ cloudflared service install                # then install as a Windows service (
 
 ## 4. Run procedure (two processes + the tunnel service)
 
+**The easy way — double-click** (in the repo root):
+
+| File | What it does |
+|---|---|
+| `start_app.bat` | Starts the webapp + worker (skips any already running), nudges the tunnel, waits for `:8000`, prints status. |
+| `stop_app.bat` | Stops the webapp + worker (leaves the tunnel service up). |
+| `status_app.bat` | Shows whether each process + the tunnel + `:8000` are up. |
+
+All three wrap `scripts/app_control.ps1` (`-Action start|stop|status|restart`).
+Each process runs detached with its output appended to `logs\*.log`
+(gitignored); the console window stays open on `pause` so you can read the
+result. `start` is idempotent — a second click won't launch a second webapp
+(which couldn't bind `:8000` anyway).
+
+**The manual way** (two terminals, live logs in the foreground):
+
 ```powershell
 # terminal 1 — the webapp
 uv run python scripts/run_webapp.py
@@ -129,6 +145,12 @@ uv run python scripts/run_extraction_worker.py --loop
 First-time data prep: `uv run python scripts/seed_cache.py --spectrograms`
 then `uv run python scripts/train_clusters.py`. Retrain clusters occasionally
 as the cache grows.
+
+> **Pick one runtime model.** The double-click scripts (manual control) and the
+> Scheduled Tasks below (hands-off at logon) both launch the *same* two
+> processes. They coexist safely — `start` won't double-launch — but if you want
+> logon autostart, use the tasks; if you'd rather open/close the app yourself,
+> use the `.bat` files and skip registering the tasks.
 
 **Autostart (one command):**
 
