@@ -388,6 +388,42 @@ def test_classify_unauthenticated_redirects(client):
     assert r.status_code == 303 and r.headers["location"] == "/"
 
 
+# ── polish pass ─────────────────────────────────────────────────────────────
+def test_www_redirects_to_apex(client):
+    r = client.get("/", headers={"host": "www.vercilloanalytics.com"},
+                   follow_redirects=False)
+    assert r.status_code == 301
+    loc = r.headers["location"]
+    assert "vercilloanalytics.com" in loc and "www." not in loc
+
+
+def test_www_redirect_preserves_path_and_query(client):
+    r = client.get("/explore?f=tempo", headers={"host": "www.vercilloanalytics.com"},
+                   follow_redirects=False)
+    assert r.status_code == 301
+    assert r.headers["location"].endswith("/explore?f=tempo")
+
+
+def test_favicon_and_title_present(client):
+    r = client.get("/")
+    assert 'rel="icon"' in r.text
+    assert "<title>Vercillo Analytics — Taste Pilot</title>" in r.text
+
+
+def test_missing_art_and_avatar_get_placeholders():
+    from .app import templates
+    ctx = {"authed": True, "track_total": 1, "coverage": None, "profile": None,
+           "drift": None,
+           "artists": [{"name": "Muse", "genres": "rock", "image": None}],
+           "ranges": [{"key": "short_term", "label": "Last 4 weeks", "tracks": [
+               {"rank": 1, "name": "Local File", "artist": "X", "id": "t1",
+                "art": None, "analyzed": False, "feat": None}]}]}
+    html = templates.get_template("dashboard.html").render(**ctx)
+    assert 'class="art art-ph"' in html          # music-note tile, not a gap
+    assert 'class="avatar avatar-ph"' in html    # initial-letter avatar
+    assert ">M</span>" in html                   # Muse → "M"
+
+
 def test_privacy_page_public_and_honest(client):
     r = client.get("/privacy")
     assert r.status_code == 200

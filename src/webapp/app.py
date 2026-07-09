@@ -200,6 +200,17 @@ def create_app() -> FastAPI:
         )
         return response
 
+    # Registered after (= wraps) the session middleware: www visitors are
+    # bounced to the apex BEFORE any cookie work — session cookies are
+    # host-scoped, so a www login would otherwise strand the session.
+    @app.middleware("http")
+    async def www_redirect(request: Request, call_next):
+        host = request.headers.get("host", "")
+        if host.lower().startswith("www."):
+            return RedirectResponse(
+                str(request.url.replace(netloc=host[4:])), status_code=301)
+        return await call_next(request)
+
     @app.get("/", response_class=HTMLResponse)
     def index(request: Request):
         authed = auth_web.is_authenticated(request.state.session)

@@ -42,14 +42,20 @@
   the acoustic map, artist buckets: Muse 31-track "Noisy · Bright" vs "Smooth ·
   Dark"). External reachability separately proven via curl through the
   Cloudflare edge. **ALL EPICS A–E OF APP_SPEC v2 ARE BUILT AND LIVE, at $0.**
-- **➡️ NEXT ACTION — owner live-test of `/explore`** (restart the webapp, log in
-  → Explore in the nav; try danceability/loudness, the X×Y scatter, the
-  deep-dive stat links), **then choose: F-v2** (frame-level audio pass:
+- **➡️ NEXT ACTION — owner's call: F-v2** (frame-level audio pass:
   time_signature, loudness-curve time series on the song page,
-  instrumentalness — needs extractor addition + corpus re-run) **or the polish
-  pass or closeout** (PR cadence is direct-to-main now; remaining owner items
-  unchanged: DKIM/DMARC, autostart, nightly backups, GCP zone deletion,
-  extended-quota request). ✅ **Epic F slice F3 DONE (2026-07-08): the
+  instrumentalness — extractor addition + corpus re-run) **or closeout**
+  (remaining owner items: DKIM/DMARC records, Task Scheduler autostart +
+  nightly backup task, GCP orphan-zone deletion, Spotify extended-quota
+  request + tester allowlist). **App is RUNNING live right now** (webapp +
+  worker `--loop` background tasks; tunnel service). ✅ **POLISH PASS DONE
+  (2026-07-09):** spectrogram backfill — **117/117 rendered** (deep-dives all
+  populated); album-art ♪ tile + initial-letter artist avatars for missing
+  images (local files); 🎧 favicon + per-page titles; **www→apex 301
+  middleware** (registered outside the session layer — host-scoped cookies
+  made www logins strand sessions; verified LIVE: www…/explore?f=tempo → 301
+  apex w/ path+query); ask-page → Explore link. 4 new tests → **255 green**;
+  live edge checks all pass. ✅ **Epic F slice F3 DONE (2026-07-08): the
   `/explore` dashboard — Vision B's payoff. EPIC F RECOMMENDED SCOPE COMPLETE
   (F0+F1+F2+F3); only F-v2 remains.** `src/webapp/explore.py` (pure view
   logic): tier-grouped picker from the catalog; population histogram from
