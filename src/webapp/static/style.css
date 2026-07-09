@@ -141,6 +141,9 @@ ol.tracks li:hover .feat-pop { display: flex; }
 .loud-area { fill: var(--spotify); fill-opacity: .22; }
 .loud-line { stroke: var(--spotify); stroke-width: 1.5; }
 .loud-ax { fill: var(--muted); font-size: 10px; }
+.loud-fade { fill: var(--ink); fill-opacity: .06; }
+.loud-fade-line { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 2 2; }
+.loud-fade-t { fill: var(--muted); font-size: 9px; }
 .summary-row { display: flex; gap: 1.5rem; margin-top: .9rem; }
 .summary-row span, .summary-row a { display: flex; flex-direction: column; color: var(--ink); text-decoration: none; }
 .summary-row a:hover b { color: var(--spotify); }

@@ -208,6 +208,20 @@ def test_loudness_svg():
     assert loudness_svg(None) == "" and loudness_svg([-3.0]) == ""  # nothing to draw
 
 
+def test_fade_bounds_and_shading():
+    from .taste import fade_bounds, loudness_svg
+    # fade-in (4 pts), sustained (12), fade-out (3)
+    curve = [-50, -40, -30, -20] + [-10] * 12 + [-25, -35, -45]
+    fin, fout = fade_bounds(curve)
+    assert fin is not None and 0.10 < fin < 0.35      # fade-in ends ~1/5 in
+    assert fout is not None and 0.75 < fout < 0.95    # fade-out starts near the end
+    assert fade_bounds([-10] * 20) == (None, None)    # constant level → no fades
+    assert fade_bounds([-10, -10]) == (None, None)    # too short
+    svg = loudness_svg(curve)
+    assert "loud-fade" in svg and "fade in" in svg and "fade out" in svg
+    assert "loud-fade" not in loudness_svg([-10] * 20)  # no fade → no shading
+
+
 # ── deep-dive routes (Epic B) ──────────────────────────────────────────────
 def test_song_unauthenticated_redirects(client):
     r = client.get("/song/x", follow_redirects=False)

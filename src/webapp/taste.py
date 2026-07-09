@@ -115,13 +115,56 @@ def radar_svg(features: dict, size: int = 240) -> str:
         f'<polygon points="{" ".join(pts)}" class="radar-poly"/>{"".join(labels)}</svg>')
 
 
+_FADE_DROP_DB = 8.0     # "arrived at full" = within this many dB of the sustained level
+_FADE_MIN_DEPTH_DB = 20.0  # the edge must start/end at least this far below full —
+#                            separates a real fade FROM SILENCE (25–45 dB down) from a
+#                            merely quiet intro (~6–12 dB down)
+_FADE_MIN_FRAC = 0.04   # ignore fades shorter than 4% of the track (onset ramps)
+
+
+def fade_bounds(curve: Optional[list]) -> tuple[Optional[float], Optional[float]]:
+    """Fade-in-end and fade-out-start as fractions of the track (0–1), from the
+    stored loudness curve (F-v2c) — rebuilds Spotify audio-analysis'
+    end_of_fade_in / start_of_fade_out. Pure over data we already have (no
+    re-extraction). None unless the track genuinely fades from/to near-silence:
+    the edge must sit ≥15 dB below the sustained level AND take ≥3% of the track
+    to arrive — so a quiet intro or a bare onset ramp does NOT count as a fade.
+    """
+    pts = [float(v) for v in (curve or [])
+           if v is not None and math.isfinite(float(v))]
+    n = len(pts)
+    if n < 5:
+        return (None, None)
+    full = sorted(pts)[int(0.8 * (n - 1))]   # ~80th pct = sustained loud level
+    reach = full - _FADE_DROP_DB             # loudness has "arrived" at full
+    deep = full - _FADE_MIN_DEPTH_DB         # edge is quiet enough to be a true fade
+
+    fin_frac = None
+    if pts[0] <= deep:                       # starts near silence
+        fin = 0
+        while fin < n and pts[fin] < reach:
+            fin += 1
+        if fin < n and fin / (n - 1) >= _FADE_MIN_FRAC:
+            fin_frac = fin / (n - 1)
+
+    fout_frac = None
+    if pts[-1] <= deep:                       # ends near silence
+        fout = n - 1
+        while fout >= 0 and pts[fout] < reach:
+            fout -= 1
+        if fout >= 0 and (1.0 - fout / (n - 1)) >= _FADE_MIN_FRAC:
+            fout_frac = fout / (n - 1)
+    return (fin_frac, fout_frac)
+
+
 def loudness_svg(curve: Optional[list], width: int = 560, height: int = 140) -> str:
     """Inline SVG of the within-track loudness curve (F-v2, deep-dive).
 
     `curve` is the stored dBFS series. The y-axis auto-scales to the track's own
     min/max so the *dynamics* (build-ups, drops, quiet verses) are legible —
-    axis labels carry the real dB values so it stays honest. Returns "" when
-    there's nothing to draw (song analyzed before F-v2, or too few points).
+    axis labels carry the real dB values so it stays honest. Detected fade-in /
+    fade-out regions (F-v2c) are shaded. Returns "" when there's nothing to draw
+    (song analyzed before F-v2, or too few points).
     """
     pts = [float(v) for v in (curve or [])
            if v is not None and math.isfinite(float(v))]
@@ -142,11 +185,30 @@ def loudness_svg(curve: Optional[list], width: int = 560, height: int = 140) -> 
 
     line = " ".join(f"{x_of(i):.1f},{y_of(v):.1f}" for i, v in enumerate(pts))
     area = f"{pad_l:.1f},{base:.1f} {line} {pad_l + plot_w:.1f},{base:.1f}"
+
+    # Fade regions (F-v2c) — shaded band + boundary marker + label.
+    fin_frac, fout_frac = fade_bounds(pts)
+    fades = ""
+    if fin_frac:
+        fx = pad_l + fin_frac * plot_w
+        fades += (f'<rect class="loud-fade" x="{pad_l:.1f}" y="{pad_t:.1f}" '
+                  f'width="{fin_frac * plot_w:.1f}" height="{plot_h:.1f}"/>'
+                  f'<line class="loud-fade-line" x1="{fx:.1f}" y1="{pad_t:.1f}" '
+                  f'x2="{fx:.1f}" y2="{base:.1f}"/>'
+                  f'<text class="loud-fade-t" x="{fx + 3:.1f}" y="{pad_t + 8:.1f}">fade in</text>')
+    if fout_frac:
+        fx = pad_l + fout_frac * plot_w
+        fades += (f'<rect class="loud-fade" x="{fx:.1f}" y="{pad_t:.1f}" '
+                  f'width="{(1 - fout_frac) * plot_w:.1f}" height="{plot_h:.1f}"/>'
+                  f'<line class="loud-fade-line" x1="{fx:.1f}" y1="{pad_t:.1f}" '
+                  f'x2="{fx:.1f}" y2="{base:.1f}"/>'
+                  f'<text class="loud-fade-t" x="{fx - 3:.1f}" y="{pad_t + 8:.1f}" '
+                  f'text-anchor="end">fade out</text>')
     return (
         f'<svg viewBox="0 0 {width} {height}" class="loudness" role="img" '
         f'aria-label="loudness over time in decibels">'
         f'<polygon class="loud-area" points="{area}"/>'
-        f'<polyline class="loud-line" points="{line}" fill="none"/>'
+        f'<polyline class="loud-line" points="{line}" fill="none"/>{fades}'
         f'<text class="loud-ax" x="{pad_l}" y="{pad_t + 8}">{hi:.0f} dB</text>'
         f'<text class="loud-ax" x="{pad_l}" y="{base - 2}">{lo:.0f} dB</text>'
         f'<text class="loud-ax" x="{pad_l}" y="{base + 13}">start</text>'
