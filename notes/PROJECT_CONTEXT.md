@@ -42,7 +42,15 @@
   the acoustic map, artist buckets: Muse 31-track "Noisy · Bright" vs "Smooth ·
   Dark"). External reachability separately proven via curl through the
   Cloudflare edge. **ALL EPICS A–E OF APP_SPEC v2 ARE BUILT AND LIVE, at $0.**
-- **➡️ NEXT ACTION — owner's call: F-v2** (frame-level audio pass:
+- **➡️ NEXT ACTION — NEW SESSION? Run `/resume`** (the session-pickup
+  orchestrator, `.claude/skills/resume/`): reads this file +
+  [`docs/SESSION_CHRONICLE.md`](docs/SESSION_CHRONICLE.md) (the full build-arc
+  record of the 2026-07-04→09 marathon), then VERIFIES live state via the new
+  **`app-verify`** skill (webapp/public/tunnel/cache/marts/evals flags —
+  proven: caught a false PUBLIC_DOWN from Cloudflare challenging urllib's UA,
+  fixed) + warehouse-audit, reports, and continues. Cache is now **119 tracks**
+  (the worker extracted new ones from live logins — the shared cache growing
+  from real use, as designed). Then the owner's standing fork — **F-v2** (frame-level audio pass:
   time_signature, loudness-curve time series on the song page,
   instrumentalness — extractor addition + corpus re-run) **or closeout**
   (remaining owner items: DKIM/DMARC records, Task Scheduler autostart +
