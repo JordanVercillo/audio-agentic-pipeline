@@ -33,9 +33,10 @@ reused for every future one (§9 is the generic checklist).
 
 ## 1. One-time: move DNS to Cloudflare (~20 min, owner)
 
-> ⚠️ **The domain carries Google Workspace email.** The MX + SPF records must
-> survive the move — verify them at step 3 before switching nameservers. (DKIM +
-> DMARC are added afterward in §1a — they were never present pre-cutover.)
+> ⚠️ **The domain's email records must survive the nameserver move** — verify
+> MX + SPF at step 3 before switching. (At cutover the domain still used Google
+> Workspace email; it has since moved to free **Cloudflare Email Routing** —
+> §1a. Setting up fresh? Skip the Workspace records and go straight to §1a.)
 
 1. Create a free account at cloudflare.com → **Add a site** →
    `vercilloanalytics.com` → **Free** plan.
@@ -50,32 +51,53 @@ reused for every future one (§9 is the generic checklist).
 6. Wait for the zone to show **Active** in Cloudflare (minutes; up to 48 h).
 7. **Send yourself a test email** to confirm Workspace mail still flows.
 
-### 1a. Email authentication + DNS closeout (2026-07-09)
+### 1a. Email = Cloudflare Email Routing (free) — the $0 mailbox (2026-07-09)
 
-A live-DNS check (`Resolve-DnsName -Type TXT google._domainkey.<domain>
--Server 1.1.1.1`) showed **DKIM and DMARC were never actually present** — MX +
-SPF only. Both were added as a closeout pass. DKIM cannot be copied; it is
-**generated** per-domain in Google Workspace:
+**Decision:** dropped Google Workspace (paid, ~$17 CAD/mo) for **Cloudflare
+Email Routing** (free). `jordan@vercilloanalytics.com` now *forwards* to a
+personal inbox at $0 — you receive at the domain address and reply from your
+personal one. Right for a receive-only invite contact; no reason to pay for a
+full mailbox. (Keep Workspace only if you need to *send* as the domain.) A live
+check also exposed that the domain never actually had DKIM/DMARC on Workspace —
+Email Routing gives it both automatically.
 
-1. **DKIM** — admin.google.com → **Apps → Google Workspace → Gmail →
-   Authenticate email** → select the domain → **Generate new record** (2048-bit,
-   selector `google`). Copy the host (`google._domainkey`) + the
-   `v=DKIM1; k=rsa; p=…` value → add as a **TXT** record in Cloudflare (paste the
-   whole value; Cloudflare auto-splits long TXT). Return to Admin → **Start
-   authentication**.
-2. **DMARC** — Cloudflare → add **TXT** `_dmarc` →
-   `v=DMARC1; p=none; rua=mailto:jordan@vercilloanalytics.com; fo=1`. Start at
-   `p=none` (monitor, no delivery risk); tighten to `quarantine` then `reject`
-   once the `rua` reports show SPF/DKIM aligned for a week or two.
-3. **Verify:** `Resolve-DnsName -Type TXT google._domainkey.<domain> -Server
-   1.1.1.1` and `… _dmarc.<domain> …` return the new values (allow a few min).
+Setup — Cloudflare dashboard → **Email → Email Routing**:
+1. **Destination Addresses** → add your personal inbox → click the verification
+   link Cloudflare emails you (must show **Verified**).
+2. **Routing rules** → enable **Catch-all** → *Send to* → your verified address
+   (forwards `jordan@`, `hello@`, anything `@the-domain`).
+3. **Delete the old provider's MX + SPF** in DNS → Records — they conflict with
+   Email Routing's. It then installs its own **locked** records:
+   `MX route1/2/3.mx.cloudflare.net`, `TXT cf2024-1._domainkey …` (DKIM, auto),
+   `TXT @ v=spf1 include:_spf.mx.cloudflare.net ~all`.
+   > **Gotcha (hit live):** after a *manual* MX/SPF delete, Email Routing can
+   > flip to **Disabled / Not configured** and refuse to auto-commit. Fix:
+   > Email Routing → **Onboard Domain** re-runs the wizard and writes the
+   > records cleanly — the verified destination + catch-all survive.
+4. **DMARC** — the DNS page's "Add a DMARC record" recommendation → **Add**.
+   Cloudflare **DMARC Management** installs `_dmarc → v=DMARC1; p=none;
+   rua=mailto:<id>@dmarc-reports.cloudflare.net` and parses the reports for you
+   (no XML in your inbox). Its dashboard lags — trust the DNS record over the
+   "no RUA found" banner.
 
-**Orphaned Google Cloud DNS zone** (the deleted zone behind the old
+**Verify (authoritative — journal #14):**
+```powershell
+$d = "vercilloanalytics.com"
+Resolve-DnsName -Type MX  $d -Server 1.1.1.1                       # route*.mx.cloudflare.net
+Resolve-DnsName -Type TXT $d -Server 1.1.1.1                       # SPF _spf.mx.cloudflare.net
+Resolve-DnsName -Type TXT "cf2024-1._domainkey.$d" -Server 1.1.1.1 # DKIM
+Resolve-DnsName -Type TXT "_dmarc.$d" -Server 1.1.1.1              # DMARC
+```
+Then send a test email to the domain address and confirm it lands in the
+personal inbox. **Only then cancel Workspace** (Google Admin → Billing →
+Subscriptions → Cancel). Note the Cloudflare *login* is the domain address, so
+forwarding must be working first (a reset email would route through it).
+
+**Orphaned Google Cloud DNS zone** (deleted zone behind the old
 `ns-cloud-*.googledomains.com` delegation, ~$0.20/mo): console.cloud.google.com
-→ **Network services → Cloud DNS** (check each project) → open the zone →
-delete its records (all but the auto `NS`/`SOA`) → **Delete zone**. CLI:
-`gcloud dns managed-zones list` then `gcloud dns managed-zones delete <zone>`
-(delete record-sets first if it refuses). Safe now that Cloudflare is
+→ **Network services → Cloud DNS** (check each project) → delete its records
+(all but the auto `NS`/`SOA`) → **Delete zone**. CLI: `gcloud dns managed-zones
+list` then `gcloud dns managed-zones delete <zone>`. Safe now that Cloudflare is
 authoritative.
 
 ## 2. One-time: the tunnel on this PC

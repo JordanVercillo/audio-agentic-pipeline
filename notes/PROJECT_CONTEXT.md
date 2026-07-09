@@ -62,15 +62,20 @@
   instrumentalness (the F1-deferred one). Portfolio-visible DSP depth; the
   honest cost is re-extraction (audio is transient, D-15) → build it
   versioned/online-first + a one-shot backfill script (decouples the code from
-  the ~1h corpus re-run). **Closeout** (DKIM/DMARC, GCP orphan-zone deletion)
-  is IN PROGRESS (2026-07-09): code side DONE — invite email switched to the
-  official **jordan@vercilloanalytics.com** (MX/SPF verified live) and
-  **backup-on-`stop_app`** wired (on-demand running now protects the cache
-  without the nightly task). OWNER dashboard steps remain, walkthrough in
-  **SELF_HOSTING §1a**: ① generate DKIM in Google Workspace admin + add the
-  TXT at Cloudflare (a live check proved DKIM+DMARC were NEVER present — the
-  doc had claimed DKIM existed; journal #14 again), ② add the `_dmarc` TXT
-  (`p=none` to start), ③ delete the orphaned GCP Cloud DNS zone. (autostart +
+  the ~1h corpus re-run). **Closeout** is ~DONE (2026-07-09): ① **email moved
+  to free Cloudflare Email Routing** (dropped paid Google Workspace, ~$17 CAD/mo
+  → $0) — `jordan@vercilloanalytics.com` catch-all forwards to
+  `jvercillo@live.com`; MX `route*.mx.cloudflare.net` + SPF + DKIM
+  (`cf2024-1._domainkey`) + DMARC (Cloudflare DMARC Management) ALL verified
+  live via authoritative DNS. Invite CTA already switched to
+  jordan@… (backup-on-`stop_app` also wired — on-demand running now protects
+  the cache without the nightly task). Live gotcha: a manual MX/SPF delete
+  flipped Email Routing to Disabled → **Onboard Domain** re-committed it (in
+  SELF_HOSTING §1a, the $0-email template). **OWNER's last 3 manual bits:**
+  (a) send a test email to jordan@… → confirm it lands (final forwarding
+  proof), (b) **cancel the Google Workspace subscription** (Admin → Billing →
+  Subscriptions — the Cloudflare login IS jordan@…, so only after forwarding
+  proven), (c) delete the orphaned GCP Cloud DNS zone (~$0.20/mo). (autostart +
   nightly backup are scripted; extended quota is
   DEAD as an option, see the front-gate note below).
 - **✅ NEW-USER PIPELINE HARDENED (2026-07-09, 4 commits df65650→ce325ed,
