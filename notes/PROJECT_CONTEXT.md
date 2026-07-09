@@ -95,7 +95,31 @@
   Deployed live. **➡️ NEXT BUILD: ② P — popularity context** (un-strip in
   fetchers, optional column, "taste vs popularity" line, correct the 3
   over-cautious docs incl. CLAUDE.md rule 3 — owner's nod on that edit) — or
-  jump to ③ F-v3 (marquee) for the bigger visual payoff. **Closeout** is ~DONE (2026-07-09): ① **email moved
+  jump to ③ F-v3 (marquee) for the bigger visual payoff.
+- ✅ **SECURITY + ROBUSTNESS REVIEW (2026-07-09, commits 26891b1←): whole-app
+  audit via 2 review subagents + a strategic pass; 7 real fixes, all tested,
+  deployed, 286 green.** **Security surface came back STRONG** — auth, session
+  signing/rotation, PKCE `state`/CSRF, the DuckDB read-only sandbox, yt-dlp
+  (ytsearch prefix = no SSRF/shell), path handling, and secret hygiene all
+  verified clean. Fixed: **① XSS** — track/artist names were interpolated into
+  `|safe` SVG `<title>`s unescaped (`scatter_svg`/`scatter_xy_svg`) → now
+  `markupsafe.escape`d (self-XSS now, cross-user the moment F-v3/G render others'
+  names). **② + ③ two HIGH availability bugs** in the extraction path: no
+  dead-letter + `enqueue` reset `attempts` → a permanently-unfetchable track
+  hot-looped re-download+DSP forever (now `MAX_ATTEMPTS=3` dead-letter, attempts
+  preserved); the worker `--loop` body was unguarded → one transient WAL
+  snapshot-stale DB error killed the only consumer (now try/except: log+continue).
+  **④–⑦ MEDIUM:** `upsert` preserves display cols (re-seed no longer NULLs the
+  F-v2 backfills), migration ALTER race-guarded, marts `os.replace` Windows-retry,
+  `/spectrogram` auth-gated (enumeration oracle closed — verified 303 live).
+  **Hardening backlog (lower severity, deferred — do opportunistically):**
+  single-instance worker lock (a manual 2nd worker can double-write a
+  spectrogram), a `warehouse-audit` **distribution-sanity check** (flag
+  implausible feature distributions — operationalizes journal #21, catches the
+  feature-validity bugs synthetic tests can't), stamp population-`n` on
+  perceptual rows (percentile-drift honesty), yt-dlp base62 track-id assertion,
+  `www_redirect` host allowlist, `/logout`→POST. Journal #22 (the review method).
+- **Closeout** is ~DONE (2026-07-09): ① **email moved
   to free Cloudflare Email Routing** (dropped paid Google Workspace, ~$17 CAD/mo
   → $0) — `jordan@vercilloanalytics.com` catch-all forwards to
   `jvercillo@live.com`; MX `route*.mx.cloudflare.net` + SPF + DKIM

@@ -505,3 +505,35 @@ domain expert would find that shape believable.
 > by unit tests. "Does the mix of answers look like the world?" catches wrong-
 > definition bugs that green tests sail right past — and a known asymmetry
 > (fade-outs beat fade-ins) is a free correctness check.*
+
+## Whole-application review
+
+### 22. The strategic review predicted where the code bugs would be (2026-07-09)
+
+A full-app audit run as three parallel streams: two cold review subagents (one
+on the webapp security surface, one on the data-layer robustness) plus my own
+architecture/strategy pass. Before either agent reported, the strategic pass had
+already named the top fragility: "yt-dlp match-blindness + the queue are the
+biggest data-quality/availability holes." Both agents came back and the two HIGH
+findings were exactly that — a permanently-unfetchable track hot-looping because
+`enqueue` reset the attempt counter (no dead-letter), and the worker `--loop`
+crashing the only consumer on a transient DB error. The security surface, by
+contrast, came back clean everywhere the design had been deliberate (PKCE state,
+the DuckDB capability-sandbox, the ytsearch prefix, session signing) with one
+real defect where a hand-built string bypassed the framework's default
+protection (SVG `<title>` interpolation skipping Jinja autoescape).
+
+**The realization:** bugs cluster where the architecture is *thin*, not
+randomly — the places you'd point to as "the risky part" on a whiteboard are
+where the confirmed defects actually live, and the places the framework or a
+deliberate design decision covers (autoescape, parameterized SQL, capability
+removal) stay clean. That means a strategic "where is this thin?" pass is a
+real triage instrument, not hand-waving: it tells you where to aim the expensive
+deep review. And fanning the deep review out to parallel agents while holding
+the synthesis yourself — verifying each confirmed finding by hand before
+touching code (the one XSS sink, read and reproduced, before escaping) — kept
+the fix set precise: 7 real fixes, zero speculative churn, one clean pass.
+
+> *Bugs pool where the architecture is thin — so a "where is this fragile?"
+> strategic pass predicts the deep review's findings and tells you where to aim
+> it. Fan the search out; keep the synthesis and the verify-before-fix yourself.*
