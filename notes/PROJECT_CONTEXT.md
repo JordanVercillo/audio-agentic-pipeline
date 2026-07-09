@@ -796,3 +796,23 @@ narrative goes to `notes/engineering_journal.md`, plans to
   documents easy/manual/autostart. **Left off: app UP under the click scripts;
   reboot persistence still optional via register_autostart.ps1. Standing fork
   unchanged.**
+- **2026-07-09 (session 16 — Opus 4.8; $0 email + Epic F-v2):** Long
+  multi-front session. **① backup-on-`stop_app`** wired (proven live). **②
+  Email → $0:** dropped paid Google Workspace for free **Cloudflare Email
+  Routing** — `jordan@vercilloanalytics.com` catch-all → jvercillo@live.com;
+  MX/SPF/DKIM/DMARC all live (verified via authoritative DNS); invite CTA
+  switched to jordan@…; hit + documented the Email-Routing "manual MX delete →
+  Disabled → Onboard Domain" gotcha; clarified the domain's 3 free hats (site /
+  Microsoft-Entra identity / CF email — `OwaUserHasNoMailboxAndNoLicense…` is
+  expected). Forwarding proven end-to-end. Corrected every stale ~25/extended-
+  quota claim (Feb-2026 policy = 5 seats, extended quota business-only). **③
+  Epic F-v2 (2 of 3 slices):** F-v2a within-track **loudness curve** on the
+  song page (951cb5a), F-v2b estimated **time_signature** as a measured
+  /explore feature (199f8e3, catalog 13→14) — both promoted cache columns
+  (frozen vector/82-col contract untouched), backfilled 117/117 from LOCAL
+  MP3s (no re-download). Journals #18 (create_all builds, never ALTERs → forward
+  migration) + #19 (backbeat masquerades as 2/4 → narrow the claim). **277 tests
+  green, CI green, app deployed via `app_control restart`, all audits green.**
+  Memory files written (domain setup, on-demand runtime). **Left off (owner
+  PAUSED): remaining = F-v2c instrumentalness (honest source-separation or
+  park), owner cost-cleanup (cancel Workspace + GCP zone), A3 Ollama epic.**
