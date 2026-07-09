@@ -399,3 +399,27 @@ not the sending system's shape.
 > *At a system boundary, copy meanings, not rows. If presence implies a
 > promise in the target system, the loader must enforce the promise — and
 > fix the producer, not just every consumer.*
+
+## Epic F-v2 — frame-level audio
+
+### 18. create_all builds tables, never evolves them (2026-07-09)
+
+F-v2a added a `loudness_curve` column to the `track_features` model. Every test
+passed (temp DBs are built fresh by `Base.metadata.create_all`, which emits the
+full current schema) — then the backfill hit the LIVE cache and threw
+`no such column: track_features.loudness_curve`. `create_all` only issues
+`CREATE TABLE IF NOT EXISTS`; against a table that already exists it does
+*nothing*, so a column added to the model never reaches a database created
+before it. The green suite hid it precisely because tests never carry a schema
+forward — they start from zero every time.
+
+**The realization:** the test path and the production path exercise different
+schema lifecycles. Fresh-create (tests) and evolve-in-place (the running cache)
+are not the same code, and only one of them was covered. The fix is a tiny
+forward-only migration on init — inspect the live columns, `ALTER TABLE ADD
+COLUMN` the missing ones (idempotent, NULL for old rows, online on both SQLite
+and Postgres) — so the persistent DB self-heals the moment new code opens it.
+
+> *A green suite proves your CREATE path, not your ALTER path. If a long-lived
+> DB outlives the schema, add columns with an idempotent migration on startup —
+> `create_all` will silently skip them on a table that already exists.*

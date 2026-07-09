@@ -55,14 +55,22 @@
   build later. Do NOT re-suggest register_autostart for this PC.** One
   consequence to watch: the nightly backup task isn't registered, so the cache
   (hours of extraction, the one non-instant asset) is unprotected between
-  manual `backup_cache.py` runs — offered a backup-on-`stop_app` hook (owner to
-  confirm). NEW SESSION? Run **`/resume`** as usual. **Standing next build —
-  F-v2 (RECOMMENDED, owner leaning this way):** frame-level audio pass —
-  loudness-curve time series on the song page + time_signature +
-  instrumentalness (the F1-deferred one). Portfolio-visible DSP depth; the
-  honest cost is re-extraction (audio is transient, D-15) → build it
-  versioned/online-first + a one-shot backfill script (decouples the code from
-  the ~1h corpus re-run). **Closeout** is ~DONE (2026-07-09): ① **email moved
+  manual `backup_cache.py` runs — ✅ **backup-on-`stop_app` now WIRED** (every
+  stop snapshots the cache; proven live). NEW SESSION? Run **`/resume`** as
+  usual. **Standing next build — F-v2 (IN PROGRESS):** frame-level audio pass.
+  ✅ **F-v2a DONE (2026-07-09, commit 951cb5a, 272 tests):** the within-track
+  **loudness curve** on the song page — per-frame RMS→dBFS (120-pt downsample),
+  honest measurement rebuilding Spotify's retired get-audio-analysis series;
+  kept OUT of the frozen 77-dim vector / 82-col dict; `loudness_curve` cache
+  column + forward-only `_migrate_added_columns` (journal #18); `loudness_svg`
+  area chart; **`scripts/backfill_loudness.py` filled 117/117 from LOCAL owner
+  MP3s — no re-download** (data/raw_audio survives even though worker audio is
+  transient). Deployed live via `app_control restart`. **Next: F-v2b =
+  time_signature** (a real librosa meter estimate → a new *measured* catalog
+  feature), then **F-v2c = instrumentalness** (deliberately last — F1 deferred
+  it as a credibility risk; do an honest source-separation version or keep
+  parked). The decoupling worked: online-first extractor + local backfill meant
+  ZERO re-download for the corpus. **Closeout** is ~DONE (2026-07-09): ① **email moved
   to free Cloudflare Email Routing** (dropped paid Google Workspace, ~$17 CAD/mo
   → $0) — `jordan@vercilloanalytics.com` catch-all forwards to
   `jvercillo@live.com`; MX `route*.mx.cloudflare.net` + SPF + DKIM
