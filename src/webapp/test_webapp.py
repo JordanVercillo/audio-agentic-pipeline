@@ -276,13 +276,21 @@ def test_song_deep_dive_renders_features_and_similar(client, monkeypatch, tmp_pa
     assert "loud-line" in r.text and "Loudness over time" in r.text  # F-v2 curve rendered
 
 
+def test_spectrogram_requires_auth(client):
+    # gated so 200-vs-404 can't be an analyzed-track enumeration oracle
+    r = client.get("/spectrogram/anything", follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "/"
+
+
 def test_spectrogram_404_when_missing(client):
+    client.cookies.set(config.SESSION_COOKIE, _seed_session(taste=None))
     assert client.get("/spectrogram/nope").status_code == 404
 
 
 def test_spectrogram_serves_png(client, monkeypatch, tmp_path):
     monkeypatch.setattr("src.webapp.app._SPECTROGRAM_DIR", tmp_path)
     (tmp_path / "pic.png").write_bytes(b"\x89PNG\r\n\x1a\n")
+    client.cookies.set(config.SESSION_COOKIE, _seed_session(taste=None))
     r = client.get("/spectrogram/pic")
     assert r.status_code == 200 and r.headers["content-type"] == "image/png"
 

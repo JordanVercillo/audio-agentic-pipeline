@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import math
 import os
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
@@ -243,10 +244,21 @@ def catalog_frame() -> pd.DataFrame:
 
 def _write_atomic(df: pd.DataFrame, path: Path) -> None:
     """Write parquet via a temp file + replace — the webapp reads these files
-    while the worker rewrites them; a half-written mart must never be served."""
+    while the worker rewrites them; a half-written mart must never be served.
+
+    On Windows os.replace raises PermissionError if a reader has the target open
+    (a POSIX rename would just succeed), so retry briefly through pandas' short
+    read window instead of failing the whole mart rebuild."""
     tmp = path.with_suffix(path.suffix + ".tmp")
     df.to_parquet(tmp, index=False)
-    os.replace(tmp, path)
+    for attempt in range(5):
+        try:
+            os.replace(tmp, path)
+            return
+        except PermissionError:
+            if attempt == 4:
+                raise
+            time.sleep(0.1)
 
 
 def rebuild_marts(cache: FeatureCache, marts_dir: Path) -> dict[str, Any]:

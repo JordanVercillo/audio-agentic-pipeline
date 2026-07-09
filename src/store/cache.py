@@ -24,6 +24,7 @@ from typing import Any, Optional
 
 from sqlalchemy import create_engine, event, select, text
 from sqlalchemy import inspect as sa_inspect
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import sessionmaker
 
 from .models import (
@@ -98,11 +99,12 @@ class FeatureCache:
                 continue
             present = {c["name"] for c in inspector.get_columns(table)}
             missing = {name: typ for name, typ in columns.items() if name not in present}
-            if not missing:
-                continue
-            with self.engine.begin() as conn:
-                for name, typ in missing.items():
-                    conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {name} {typ}"))
+            for name, typ in missing.items():
+                try:  # each ALTER its own txn: a first-boot race where the other
+                    with self.engine.begin() as conn:  # process added it first is fine
+                        conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {name} {typ}"))
+                except OperationalError:
+                    pass  # duplicate column (added concurrently) — self-heals
 
     def close(self) -> None:
         """Release pooled connections — required before file-level operations on
@@ -162,8 +164,25 @@ class FeatureCache:
                loudness_curve: Optional[list] = None,
                time_signature: Optional[int] = None,
                beat_times: Optional[list] = None) -> None:
-        """Store a song's features (idempotent) and mark any pending job done."""
+        """Store a song's features (idempotent) and mark any pending job done.
+
+        Display artifacts (spectrogram_uri, loudness_curve, time_signature,
+        beat_times) are PRESERVED when a caller doesn't supply them — merge would
+        otherwise NULL them. This makes a features-only re-write (e.g. re-running
+        seed_cache after the F-v2 backfills) truly idempotent instead of wiping
+        every backfilled curve/meter/grid/spectrogram.
+        """
         with self._Session() as s:
+            existing = s.get(TrackFeatures, track_id)
+            if existing is not None:
+                if spectrogram_uri is None:
+                    spectrogram_uri = existing.spectrogram_uri
+                if loudness_curve is None:
+                    loudness_curve = existing.loudness_curve
+                if not time_signature:
+                    time_signature = existing.time_signature
+                if beat_times is None:
+                    beat_times = existing.beat_times
             s.merge(TrackFeatures(
                 spotify_track_id=track_id, features=features,
                 tempo_bpm=_f(features.get("tempo_bpm")),

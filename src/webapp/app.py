@@ -484,7 +484,12 @@ def create_app() -> FastAPI:
         return templates.TemplateResponse(request, "song.html", ctx)
 
     @app.get("/spectrogram/{track_id}")
-    def spectrogram(track_id: str):
+    def spectrogram(request: Request, track_id: str):
+        # Auth-gate BEFORE the existence check so an unauthenticated caller can't
+        # use 200-vs-404 as an analyzed-track enumeration oracle. The <img> on
+        # /song sends the session cookie, so legit rendering is unaffected.
+        if not auth_web.is_authenticated(request.state.session):
+            return RedirectResponse("/", status_code=303)
         path = _spectrogram_path(track_id)
         if not path.exists():
             from fastapi import HTTPException

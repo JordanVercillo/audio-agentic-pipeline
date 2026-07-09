@@ -31,6 +31,18 @@ def test_upsert_and_get_roundtrip(cache):
     assert got["t1"]["tempo_bpm"] == 128.0 and got["t1"]["harmonic_ratio"] == 0.8
 
 
+def test_upsert_preserves_display_columns_when_not_supplied(cache):
+    # a features-only re-write (re-running seed_cache after the F-v2 backfills)
+    # must NOT null the backfilled loudness curve / meter / beat grid
+    cache.upsert("t1", _FEATURES, spectrogram_uri="path/x.png",
+                 loudness_curve=[-30.0, -10.0], time_signature=4, beat_times=[0.5, 1.0])
+    cache.upsert("t1", {**_FEATURES, "tempo_bpm": 99.0})  # like seed_cache: no display kwargs
+    assert cache.get(["t1"])["t1"]["tempo_bpm"] == 99.0   # features DID update
+    assert cache.loudness_curve("t1") == [-30.0, -10.0]   # display columns PRESERVED
+    assert cache.all_time_signatures()["t1"] == 4
+    assert cache.beat_times("t1") == [0.5, 1.0]
+
+
 def test_missing_dedups_and_excludes_cached(cache):
     cache.upsert("t1", _FEATURES)
     assert cache.missing(["t1", "t2", "t3", "t2"]) == ["t2", "t3"]
