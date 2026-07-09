@@ -32,6 +32,15 @@ from ..store.cache import FeatureCache
 from . import auth_web, config
 from .analytics import acoustic_signature, cluster_color, cluster_composition, scatter_svg
 from .archetype import derive_archetype
+from .explore import (
+    catalog_groups,
+    histogram_svg,
+    load_catalog,
+    load_stats,
+    percentile_of,
+    scatter_xy_svg,
+    window_strip,
+)
 from .featurestore import FeatureStore
 from .rag import TasteRAG
 from .sessions import CookieSigner, SessionStore
@@ -357,6 +366,82 @@ def create_app() -> FastAPI:
             "authed": True, "archetype": ctx["archetype"],
             "narrative": result["narrative"], "source": result["source"],
         })
+
+    def _explore_context(session: dict[str, Any], f: str, x: str, y: str,
+                         ) -> Optional[dict[str, Any]]:
+        """The /explore view: marts + the visitor's overlay. None = no dashboard yet."""
+        taste = session.get("taste") or {}
+        range_ids: dict[str, list[str]] = taste.get("range_ids") or {}
+        if not range_ids:
+            return None
+
+        catalog = load_catalog()
+        stats = load_stats()
+        if catalog is None or stats is None:
+            return {"authed": True, "built": False}
+
+        cols = list(catalog["column"])
+        f = f if f in cols else ("danceability" if "danceability" in cols else cols[0])
+        x = x if x in cols else "tempo"
+        y = y if y in cols else "energy"
+
+        cache = _feature_cache()
+        perceptual = cache.all_perceptual()
+        user_ids = [t for ids in range_ids.values() for t in ids]
+        user_set = set(user_ids)
+
+        population = [p[f] for p in perceptual.values()
+                      if isinstance(p.get(f), (int, float))]
+        user_vals = [perceptual[t][f] for t in dict.fromkeys(user_ids)
+                     if t in perceptual and isinstance(perceptual[t].get(f), (int, float))]
+
+        spec = catalog[catalog["column"] == f].iloc[0].to_dict()
+        srow = stats.loc[f]
+        chip = None
+        if user_vals:
+            med = sorted(user_vals)[len(user_vals) // 2]
+            chip = {"pct": percentile_of(med, population),
+                    "n": len(user_vals),
+                    "median": round(med, 2 if abs(med) < 10 else 0)}
+
+        per_window = {w: [perceptual[t][f] for t in ids
+                          if t in perceptual and isinstance(perceptual[t].get(f), (int, float))]
+                      for w, ids in range_ids.items()}
+
+        model = cl.latest_model(cache, "song")
+        assigned = cl.track_assignments(cache, model.id) if model else {}
+        meta = cache.all_meta()
+        points = [{"id": tid, "x": p.get(x), "y": p.get(y),
+                   "cluster_id": (assigned.get(tid) or {}).get("cluster_id"),
+                   "name": (meta.get(tid) or {}).get("track_name", tid)}
+                  for tid, p in perceptual.items()]
+
+        return {
+            "authed": True, "built": True,
+            "groups": catalog_groups(catalog),
+            "f": f, "x": x, "y": y, "spec": spec,
+            "stat": {"n": int(srow["n"]), "p50": srow["p50"],
+                     "min": srow["min"], "max": srow["max"]},
+            "hist": histogram_svg(srow, user_vals),
+            "chip": chip,
+            "strip": window_strip(per_window, spec.get("unit", "")),
+            "scatter": scatter_xy_svg(points, user_set,
+                                      x_label=str(catalog.set_index("column").loc[x, "friendly"]),
+                                      y_label=str(catalog.set_index("column").loc[y, "friendly"])),
+            "columns": [{"column": c["column"], "friendly": c["friendly"]}
+                        for c in catalog.to_dict("records")],
+        }
+
+    @app.get("/explore", response_class=HTMLResponse)
+    def explore(request: Request, f: str = "danceability",
+                x: str = "tempo", y: str = "energy"):
+        session = request.state.session
+        if not auth_web.is_authenticated(session):
+            return RedirectResponse("/", status_code=303)
+        ctx = _explore_context(session, f, x, y)
+        if ctx is None:
+            return RedirectResponse("/dashboard", status_code=303)
+        return templates.TemplateResponse(request, "explore.html", ctx)
 
     @app.get("/song/{track_id}", response_class=HTMLResponse)
     def song(request: Request, track_id: str):

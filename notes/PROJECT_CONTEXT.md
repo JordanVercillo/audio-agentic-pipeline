@@ -42,13 +42,30 @@
   the acoustic map, artist buckets: Muse 31-track "Noisy · Bright" vs "Smooth ·
   Dark"). External reachability separately proven via curl through the
   Cloudflare edge. **ALL EPICS A–E OF APP_SPEC v2 ARE BUILT AND LIVE, at $0.**
-- **➡️ NEXT ACTION — Epic F slice F3: the `/explore` dashboard** (VISION_SPECS
-  B3: feature picker from `feature_catalog` grouped by tier; population
-  histogram from `feature_stats` + the user's tracks overlaid + percentile
-  chips; feature×feature scatter over `track_perceptual` colored by the Epic-C
-  clusters; per-window strips; charts per the dataviz-skill procedure w/ the
-  validated palette). Then F-v2 (time_signature, loudness-curve time series,
-  instrumentalness — frame-level audio). ✅ **Epic F slice F2 DONE (2026-07-08):
+- **➡️ NEXT ACTION — owner live-test of `/explore`** (restart the webapp, log in
+  → Explore in the nav; try danceability/loudness, the X×Y scatter, the
+  deep-dive stat links), **then choose: F-v2** (frame-level audio pass:
+  time_signature, loudness-curve time series on the song page,
+  instrumentalness — needs extractor addition + corpus re-run) **or the polish
+  pass or closeout** (PR cadence is direct-to-main now; remaining owner items
+  unchanged: DKIM/DMARC, autostart, nightly backups, GCP zone deletion,
+  extended-quota request). ✅ **Epic F slice F3 DONE (2026-07-08): the
+  `/explore` dashboard — Vision B's payoff. EPIC F RECOMMENDED SCOPE COMPLETE
+  (F0+F1+F2+F3); only F-v2 remains.** `src/webapp/explore.py` (pure view
+  logic): tier-grouped picker from the catalog; population histogram from
+  `feature_stats` (one series + the visitor's ringed green dots + native
+  <title> hover); **exact percentile chips** computed server-side vs the live
+  population; feature×feature scatter over `track_perceptual` colored by the
+  Epic-C clusters (gray = unclustered), labeled axes; per-window strip w/ the
+  recent-vs-all-time delta sentence; marts-not-built empty state; unknown
+  feature param falls back gracefully. Route `/explore?f=&x=&y=` (auth-gated,
+  form-GET selects, no JS required beyond auto-submit), nav link, deep-dive
+  stat links → explorer. **Real-data proof: 13-feature catalog served, 117
+  perceptual rows, sample chips "danceability above 65% / loudness above 72%
+  of corpus", strip delta "your last 4 weeks run 11 bpm higher than your
+  all-time." 9 new tests (percentile math, histogram bars/dots/axis, scatter
+  ring/gray/axes, strip means+delta, tier grouping, route auth/no-taste/
+  not-built/happy-path/fallback) → 251 green.** ✅ **Epic F slice F2 DONE (2026-07-08):
   `feature_stats` mart + audit extension.** `compute_feature_stats` in
   `perceptual.py` — one row per catalog feature: n/mean/std/min/p5–p95/max +
   deterministic histograms (mode 2 bins, key 12, 0–1-calibrated fixed [0,1]×20,

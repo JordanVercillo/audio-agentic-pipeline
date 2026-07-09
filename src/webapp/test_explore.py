@@ -1,0 +1,160 @@
+"""
+test_explore.py — the Audio-Feature Explorer (VISION_SPECS F3), synthetic.
+"""
+
+from __future__ import annotations
+
+import pandas as pd
+import pytest
+
+from . import config
+from .app import create_app
+from .explore import (
+    catalog_groups,
+    histogram_svg,
+    percentile_of,
+    scatter_xy_svg,
+    window_strip,
+)
+
+# ── pure view logic ─────────────────────────────────────────────────────────
+
+
+def test_percentile_of_exact():
+    pop = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    assert percentile_of(5, pop) == 50
+    assert percentile_of(10, pop) == 100
+    assert percentile_of(0.5, pop) == 0
+    assert percentile_of(3.0, []) == 50  # graceful empty population
+
+
+def _stats_row():
+    return pd.Series({"bin_edges": [0.0, 0.5, 1.0], "bin_counts": [3, 7],
+                      "n": 10, "p50": 0.6, "min": 0.0, "max": 1.0})
+
+
+def test_histogram_svg_bars_dots_and_axis():
+    svg = histogram_svg(_stats_row(), user_values=[0.25, 0.9])
+    assert svg.startswith("<svg") and svg.count("<rect") == 2      # one bar per bin
+    assert svg.count('fill="#1db954"') == 2                        # the visitor's dots
+    assert "<title>you: 0.25</title>" in svg
+    assert "<title>0–0.5: 3 songs</title>" in svg                  # hover layer
+    assert ">0</text>" in svg and ">1</text>" in svg               # axis min/max
+
+
+def test_scatter_xy_svg_rings_user_and_grays_unclustered():
+    points = [{"id": f"p{i}", "x": float(i), "y": float(i % 4),
+               "cluster_id": (i % 2) if i < 6 else None, "name": f"P{i}"}
+              for i in range(8)]
+    svg = scatter_xy_svg(points, {"p0"}, x_label="Tempo", y_label="Energy")
+    assert 'stroke="#171a21"' in svg and "<title>P0</title>" in svg  # ringed + named
+    assert 'fill="#9aa0ac"' in svg                                   # unclustered = gray
+    assert "Tempo →" in svg and "Energy →" in svg                    # labeled axes
+    assert scatter_xy_svg(points[:2], set(), x_label="a", y_label="b") is None
+
+
+def test_window_strip_means_and_delta():
+    strip = window_strip({"short_term": [130.0, 134.0], "long_term": [120.0, 122.0]},
+                         unit="bpm")
+    assert [w["label"] for w in strip["windows"]] == ["Last 4 weeks", "All time"]
+    assert strip["windows"][0]["mean"] == 132.0
+    assert "11 bpm higher" in strip["delta"]
+    assert window_strip({}, unit="") is None
+    assert window_strip({"short_term": [1.0]}, unit="")["delta"] is None  # one window
+
+
+def test_catalog_groups_tier_order():
+    cat = pd.DataFrame([
+        {"column": "valence_proxy", "tier": "experimental"},
+        {"column": "tempo", "tier": "measured"},
+        {"column": "energy", "tier": "derived"},
+    ])
+    groups = catalog_groups(cat)
+    assert [g["tier"] for g in groups] == ["measured", "derived", "experimental"]
+
+
+# ── the route ───────────────────────────────────────────────────────────────
+@pytest.fixture
+def client():
+    from fastapi.testclient import TestClient
+    return TestClient(create_app())
+
+
+def _seed_session(taste=None):
+    from .app import _signer, _store
+    sid = _store.new()
+    sess = _store.get(sid)
+    sess["token"] = {"access_token": "x"}
+    if taste is not None:
+        sess["taste"] = taste
+    return _signer.sign(sid)
+
+
+def test_explore_unauthenticated_redirects(client):
+    r = client.get("/explore", follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "/"
+
+
+def test_explore_without_dashboard_redirects(client):
+    client.cookies.set(config.SESSION_COOKIE, _seed_session(taste={}))
+    r = client.get("/explore", follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "/dashboard"
+
+
+def test_explore_marts_not_built_state(client, monkeypatch):
+    monkeypatch.setattr("src.webapp.app.load_catalog", lambda: None)
+    monkeypatch.setattr("src.webapp.app.load_stats", lambda: None)
+    client.cookies.set(config.SESSION_COOKIE, _seed_session(
+        taste={"range_ids": {"short_term": ["t1"]}}))
+    r = client.get("/explore")
+    assert r.status_code == 200 and "build_feature_marts" in r.text
+
+
+def _synthetic_marts():
+    catalog = pd.DataFrame([
+        {"column": "tempo", "tier": "measured", "unit": "bpm",
+         "friendly": "Tempo", "description": "Estimated tempo."},
+        {"column": "energy", "tier": "derived", "unit": "0–1",
+         "friendly": "Energy", "description": "Perceived intensity."},
+        {"column": "danceability", "tier": "derived", "unit": "0–1",
+         "friendly": "Danceability", "description": "Dance-floor fit."},
+    ])
+    stats = pd.DataFrame([
+        {"column": "tempo", "bin_edges": [60.0, 120.0, 180.0], "bin_counts": [2, 2],
+         "n": 4, "p50": 120.0, "min": 60.0, "max": 180.0},
+        {"column": "energy", "bin_edges": [0.0, 0.5, 1.0], "bin_counts": [2, 2],
+         "n": 4, "p50": 0.5, "min": 0.0, "max": 1.0},
+        {"column": "danceability", "bin_edges": [0.0, 0.5, 1.0], "bin_counts": [1, 3],
+         "n": 4, "p50": 0.7, "min": 0.0, "max": 1.0},
+    ]).set_index("column")
+    return catalog, stats
+
+
+def test_explore_happy_path(client, monkeypatch, tmp_path):
+    from ..store.cache import FeatureCache
+    catalog, stats = _synthetic_marts()
+    monkeypatch.setattr("src.webapp.app.load_catalog", lambda: catalog)
+    monkeypatch.setattr("src.webapp.app.load_stats", lambda: stats)
+
+    tc = FeatureCache(url=f"sqlite:///{tmp_path / 'x.db'}")
+    vals = [("u1", 130.0, 0.9, 0.95), ("u2", 70.0, 0.2, 0.30),
+            ("pop1", 100.0, 0.5, 0.50), ("pop2", 160.0, 0.7, 0.80)]
+    for tid, tempo, energy, dance in vals:
+        tc.upsert_perceptual(tid, {"tempo": tempo, "energy": energy,
+                                   "danceability": dance}, version="perceptual-v1")
+        tc.remember_meta([{"spotify_track_id": tid, "track_name": tid.upper(),
+                           "artist_names": "A"}])
+    monkeypatch.setattr("src.webapp.app._feature_cache", lambda: tc)
+
+    taste = {"range_ids": {"short_term": ["u1"], "long_term": ["u2"]}}
+    client.cookies.set(config.SESSION_COOKIE, _seed_session(taste=taste))
+    r = client.get("/explore?f=danceability")
+    assert r.status_code == 200
+    assert "Danceability" in r.text and "tier-badge derived" in r.text
+    assert 'class="hist"' in r.text                      # population histogram
+    assert "your median" in r.text.lower()               # percentile chip
+    assert 'class="cluster-map"' in r.text               # the scatter rendered
+    assert "Last 4 weeks" in r.text                      # window strip
+    # unknown feature falls back gracefully
+    r2 = client.get("/explore?f=nonsense")
+    assert r2.status_code == 200 and "Danceability" in r2.text

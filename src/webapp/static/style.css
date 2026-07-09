@@ -130,7 +130,8 @@ ol.tracks li:hover .feat-pop { display: flex; }
 }
 .cap { color: var(--muted); font-size: .75rem; margin: .5rem 0 0; }
 .summary-row { display: flex; gap: 1.5rem; margin-top: .9rem; }
-.summary-row span { display: flex; flex-direction: column; }
+.summary-row span, .summary-row a { display: flex; flex-direction: column; color: var(--ink); text-decoration: none; }
+.summary-row a:hover b { color: var(--spotify); }
 .summary-row b { font-size: 1.15rem; }
 .summary-row small { color: var(--muted); text-transform: uppercase; letter-spacing: .04em; font-size: .68rem; }
 .radar { width: 100%; height: auto; }
@@ -180,6 +181,36 @@ a.artist:hover { border-color: var(--spotify); }
 .arch-evidence.standalone { background: var(--panel); border: 1px solid var(--line);
   border-radius: 12px; padding: 1rem 1.2rem; margin: 0; }
 .profile .qa { margin-top: 1.25rem; margin-bottom: 1rem; }
+
+/* ── the audio-feature explorer (Epic F) ── */
+.picker { display: flex; align-items: center; gap: .6rem; margin: 0 0 1.1rem; flex-wrap: wrap; }
+.picker label { color: var(--muted); font-size: .8rem; text-transform: uppercase; letter-spacing: .04em; }
+.picker select {
+  background: var(--panel-2); color: var(--ink); border: 1px solid var(--line);
+  border-radius: 8px; padding: .5rem .8rem; font-size: .95rem;
+}
+.picker select:focus { outline: none; border-color: var(--spotify); }
+.feature-head h2 { display: flex; align-items: center; gap: .6rem; margin: 0 0 .2rem; }
+.feature-head p { margin: 0 0 1rem; }
+.tier-badge { font-size: .65rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em;
+  border-radius: 999px; padding: .15rem .55rem; border: 1px solid var(--line); color: var(--muted); }
+.tier-badge.measured { color: var(--spotify); border-color: var(--spotify); }
+.tier-badge.derived { color: #7aa2ff; border-color: #7aa2ff; }
+.tier-badge.experimental { color: #e6c84b; border-color: #e6c84b; }
+.unit { color: var(--muted); }
+.hist-key { display: flex; gap: 1rem; align-items: center; flex-wrap: wrap; margin-bottom: .5rem; }
+.pct-chip { margin-left: auto; background: var(--panel-2); border: 1px solid var(--line);
+  border-radius: 999px; padding: .3rem .8rem; font-size: .8rem; color: var(--muted); }
+.pct-chip b { color: var(--spotify); }
+.hist { width: 100%; height: auto; display: block; }
+.axis { fill: var(--muted); font-size: 10px; }
+.strip { display: flex; gap: 1rem; align-items: center; flex-wrap: wrap;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+  padding: .8rem 1.1rem; margin-top: 1rem; }
+.strip-cell { display: flex; flex-direction: column; }
+.strip-cell small { color: var(--muted); text-transform: uppercase; letter-spacing: .04em; font-size: .68rem; }
+.strip-cell b { font-size: 1.05rem; font-variant-numeric: tabular-nums; }
+.strip-delta { margin-left: auto; color: var(--muted); font-size: .88rem; }
 
 .abuckets { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 1rem; }
 .abucket { background: var(--panel); border: 1px solid var(--line); border-left-width: 3px;

@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="dash">
+  <h1>Explore the audio features</h1>
+
+  {% if not built %}
+  <div class="insight empty">
+    <div class="insight-badge">Feature marts not built yet</div>
+    <p class="muted">Run <code>uv run python scripts/build_feature_marts.py</code> —
+      the catalog, population statistics, and this explorer light up from there.</p>
+  </div>
+  {% else %}
+
+  <form class="picker" method="get" action="/explore">
+    <label for="f">Feature</label>
+    <select name="f" id="f" onchange="this.form.submit()">
+      {% for g in groups %}
+      <optgroup label="{{ g.tier }}">
+        {% for feat in g.features %}
+        <option value="{{ feat.column }}" {{ 'selected' if feat.column == f else '' }}>
+          {{ feat.friendly }}</option>
+        {% endfor %}
+      </optgroup>
+      {% endfor %}
+    </select>
+    <input type="hidden" name="x" value="{{ x }}">
+    <input type="hidden" name="y" value="{{ y }}">
+    <noscript><button type="submit" class="btn arch-btn">Go</button></noscript>
+  </form>
+
+  <div class="feature-head">
+    <h2>{{ spec.friendly }} <span class="tier-badge {{ spec.tier }}">{{ spec.tier }}</span></h2>
+    <p class="muted">{{ spec.description }}
+      {% if spec.unit %}<span class="unit">· unit: {{ spec.unit }}</span>{% endif %}</p>
+  </div>
+
+  <div class="map-card">
+    <div class="hist-key">
+      <span class="chip"><span class="dot" style="background:#7aa2ff"></span>everyone ({{ stat.n }} songs)</span>
+      <span class="chip"><span class="dot" style="background:#1db954"></span>you{% if chip %} ({{ chip.n }} analyzed){% endif %}</span>
+      {% if chip %}
+      <span class="pct-chip">your median {{ spec.friendly|lower }} sits above
+        <b>{{ chip.pct }}%</b> of the corpus</span>
+      {% endif %}
+    </div>
+    {{ hist|safe }}
+    <p class="cap">Population distribution (median {{ stat.p50 }}); your analyzed
+      tracks are the green dots along the baseline — hover for values.</p>
+  </div>
+
+  {% if strip %}
+  <div class="strip">
+    {% for w in strip.windows %}
+    <span class="strip-cell"><small>{{ w.label }}</small><b>{{ w.mean }}</b></span>
+    {% endfor %}
+    {% if strip.delta %}<span class="strip-delta">{{ strip.delta }}</span>{% endif %}
+  </div>
+  {% endif %}
+
+  <h2 class="section">Feature × feature</h2>
+  <form class="picker xy" method="get" action="/explore">
+    <input type="hidden" name="f" value="{{ f }}">
+    <label for="x">X</label>
+    <select name="x" id="x" onchange="this.form.submit()">
+      {% for c in columns %}<option value="{{ c.column }}" {{ 'selected' if c.column == x else '' }}>{{ c.friendly }}</option>{% endfor %}
+    </select>
+    <label for="y">Y</label>
+    <select name="y" id="y" onchange="this.form.submit()">
+      {% for c in columns %}<option value="{{ c.column }}" {{ 'selected' if c.column == y else '' }}>{{ c.friendly }}</option>{% endfor %}
+    </select>
+    <noscript><button type="submit" class="btn arch-btn">Go</button></noscript>
+  </form>
+  {% if scatter %}
+  <div class="map-card">
+    {{ scatter|safe }}
+    <p class="cap">Every cached song; colors are the sound clusters from your
+      analytics page, gray = not yet clustered. Your tracks are ringed — hover
+      for names.</p>
+  </div>
+  {% endif %}
+
+  {% endif %}
+</section>
+{% endblock %}

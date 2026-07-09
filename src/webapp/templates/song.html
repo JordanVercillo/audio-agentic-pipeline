@@ -16,9 +16,9 @@
       <div class="spec-pending">Spectrogram is being generated…</div>
       {% endif %}
       <div class="summary-row">
-        <span><b>{{ summary.tempo }}</b><small>tempo</small></span>
-        <span><b>{{ summary.energy }}</b><small>energy</small></span>
-        <span><b>{{ summary.brightness }}</b><small>brightness</small></span>
+        <a href="/explore?f=tempo"><b>{{ summary.tempo }}</b><small>tempo</small></a>
+        <a href="/explore?f=energy"><b>{{ summary.energy }}</b><small>energy</small></a>
+        <a href="/explore?f=brightness"><b>{{ summary.brightness }}</b><small>brightness</small></a>
       </div>
     </div>
     <div class="song-radar">
