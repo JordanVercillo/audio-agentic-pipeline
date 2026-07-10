@@ -27,6 +27,12 @@ footer.site a:hover { color: var(--ink); }
 .brand { font-weight: 700; letter-spacing: -.01em; }
 .brand span { color: var(--muted); font-weight: 500; }
 header nav { display: flex; gap: 1.25rem; align-items: center; }
+header nav form.logout { margin: 0; }
+header nav form.logout button {
+  background: none; border: 0; padding: 0; color: inherit; font: inherit;
+  cursor: pointer;
+}
+header nav form.logout button:hover { text-decoration: underline; }
 header nav a.cta, .btn {
   background: var(--spotify); color: var(--spotify-ink); font-weight: 700;
   padding: .55rem 1.1rem; border-radius: 999px;

@@ -211,6 +211,19 @@ def test_extract_one_runs_real_dsp_on_synthetic_audio(cache, tmp_path):
     assert not (tmp_path / "audio" / "s1.wav").exists()  # audio deleted (D-15)
 
 
+def test_extract_one_rejects_path_shaped_ids(cache, tmp_path):
+    # The id becomes a filename — a path-shaped id must fail BEFORE acquisition.
+    from .extractor import extract_one
+
+    def _must_not_run(*a):
+        raise AssertionError("acquire must not be called for an invalid id")
+
+    for bad in ("../../etc/passwd", "a/b", "x" * 100, ""):
+        ok = extract_one(cache, bad, audio_dir=tmp_path / "a",
+                         spectrogram_dir=tmp_path / "s", acquire=_must_not_run)
+        assert ok is False
+
+
 def test_extract_one_no_metadata_fails(cache, tmp_path):
     from .extractor import extract_one
     cache.enqueue(["s2"])  # queued but no remember_meta → no search query

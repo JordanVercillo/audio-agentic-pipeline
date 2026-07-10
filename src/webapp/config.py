@@ -36,6 +36,9 @@ _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
 # ── Auth (public values only) ──
 REDIRECT_URI = os.environ.get("WEBAPP_REDIRECT_URI", "http://127.0.0.1:8000/callback")
+# The one public host this app serves. The www→apex redirect matches ONLY
+# www.<this> — never an arbitrary Host header (that would be an open redirect).
+CANONICAL_HOST = os.environ.get("WEBAPP_CANONICAL_HOST", "vercilloanalytics.com")
 # Least privilege: the pilot only needs the visitor's top items.
 SCOPES = "user-top-read"
 

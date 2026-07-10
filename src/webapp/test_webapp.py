@@ -468,6 +468,29 @@ def test_www_redirect_preserves_path_and_query(client):
     assert r.headers["location"].endswith("/explore?f=tempo")
 
 
+def test_www_redirect_ignores_foreign_hosts(client):
+    # An allowlist, not a prefix-strip: a spoofed Host must NOT mint a 301 to
+    # an attacker's domain (open redirect via Host header).
+    r = client.get("/", headers={"host": "www.evil.com"}, follow_redirects=False)
+    assert r.status_code == 200                      # served normally, no redirect
+    r = client.get("/", headers={"host": "www.vercilloanalytics.com:443"},
+                   follow_redirects=False)
+    assert r.status_code == 301                      # port-suffixed canonical still matches
+
+
+def test_logout_is_post_only(client):
+    assert client.get("/logout", follow_redirects=False).status_code == 405  # CSRF-proof
+    r = client.post("/logout", follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "/"
+
+
+def test_header_logout_is_a_form():
+    from .app import templates
+    html = templates.env.get_template("index.html").render(authed=True)
+    assert '<form class="logout" method="post" action="/logout">' in html
+    assert 'href="/logout"' not in html              # no GET link remains
+
+
 def test_favicon_and_title_present(client):
     r = client.get("/")
     assert 'rel="icon"' in r.text

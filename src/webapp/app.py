@@ -233,10 +233,13 @@ def create_app() -> FastAPI:
     # host-scoped, so a www login would otherwise strand the session.
     @app.middleware("http")
     async def www_redirect(request: Request, call_next):
-        host = request.headers.get("host", "")
-        if host.lower().startswith("www."):
+        # Allowlisted: ONLY www.<our apex> redirects. Matching any "www.*" Host
+        # would let a spoofed Host header mint a 301 to an attacker's domain.
+        host = request.headers.get("host", "").split(":")[0].lower()
+        if host == f"www.{config.CANONICAL_HOST}":
             return RedirectResponse(
-                str(request.url.replace(netloc=host[4:])), status_code=301)
+                str(request.url.replace(netloc=config.CANONICAL_HOST)),
+                status_code=301)
         return await call_next(request)
 
     @app.get("/", response_class=HTMLResponse)
@@ -534,8 +537,10 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=404, detail="no spectrogram")
         return FileResponse(path, media_type="image/png")
 
-    @app.get("/logout")
+    @app.post("/logout")
     def logout(request: Request):
+        # POST-only: a GET link could be triggered cross-site (<img src=/logout>)
+        # to force-logout visitors — nuisance CSRF, closed by requiring a form.
         _store.delete(request.state.sid)
         request.state.sid = _store.new()
         return RedirectResponse("/", status_code=303)

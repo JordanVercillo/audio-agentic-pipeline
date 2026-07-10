@@ -17,6 +17,7 @@ Ground rules honored:
 from __future__ import annotations
 
 import logging
+import re
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -27,6 +28,12 @@ from .cache import FeatureCache
 logger = logging.getLogger(__name__)
 
 DSP_VERSION = "77dim-v1"
+
+# The id becomes a FILENAME ({id}.mp3 / {id}.png) — this is the worker-side
+# twin of the webapp's path-traversal strip (defense in depth). The threat is
+# the CHARSET (separators/dots), not length: base62-only makes traversal
+# unspellable; the cap just bounds the filename. (Real Spotify ids: 22 base62.)
+_TRACK_ID_RE = re.compile(r"[0-9A-Za-z]{1,64}")
 
 # (track_id, track_name, artist_names, dest_dir) -> path to the audio file, or None.
 AcquireFn = Callable[[str, str, str, Path], Optional[Path]]
@@ -73,6 +80,10 @@ def extract_one(cache: FeatureCache, track_id: str, *, audio_dir: Path,
 
     Never raises — any failure marks the job failed so the worker keeps draining.
     """
+    if not _TRACK_ID_RE.fullmatch(track_id or ""):
+        cache.fail(track_id, "invalid track id shape")
+        return False
+
     meta = cache.get_meta(track_id)
     if not meta or not meta.get("track_name"):
         cache.fail(track_id, "no track metadata for the audio search")
