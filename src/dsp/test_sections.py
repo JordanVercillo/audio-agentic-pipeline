@@ -21,8 +21,11 @@ def _tone(freqs: list[float], seconds: float, sr: int = SAMPLE_RATE) -> np.ndarr
     return (y / np.max(np.abs(y))).astype(np.float32)
 
 
-def _aba_signal(part: float = 6.0) -> AudioSignal:
-    """A (220 Hz triad) — B (dissonant high cluster) — A again."""
+def _aba_signal(part: float = 10.0) -> AudioSignal:
+    """A (220 Hz triad) — B (dissonant high cluster) — A again.
+
+    Parts are 10 s — comfortably above the 7 s minimum-section merge, so the
+    fixture stays valid ground truth for the tuned detector."""
     a = _tone([220.0, 277.2, 329.6], part)          # A-major-ish triad
     b = _tone([466.2, 622.3, 830.6], part)          # a distant, brighter cluster
     y = np.concatenate([a, b, a])
@@ -35,7 +38,7 @@ def _aba_signal(part: float = 6.0) -> AudioSignal:
 def test_aba_boundaries_and_repeat_identity():
     secs = sections_from_signal(_aba_signal())
     assert len(secs) >= 3
-    assert secs[0]["start"] == 0.0 and secs[-1]["end"] > 17.5   # spans the track
+    assert secs[0]["start"] == 0.0 and secs[-1]["end"] > 29.5   # spans the track
     # contiguous, ordered, no overlaps
     for prev, cur in zip(secs[:-1], secs[1:], strict=True):
         assert cur["start"] == prev["end"]
@@ -44,10 +47,10 @@ def test_aba_boundaries_and_repeat_identity():
     assert any(s["label"] != secs[0]["label"] for s in secs[1:-1])
     # labels are first-appearance ordered: the first section is always 0
     assert secs[0]["label"] == 0
-    # a boundary lands near each true texture change (±2 s)
+    # a boundary lands near each true texture change (±2.5 s)
     bounds = [s["start"] for s in secs[1:]]
-    assert any(abs(b - 6.0) <= 2.0 for b in bounds)
-    assert any(abs(b - 12.0) <= 2.0 for b in bounds)
+    assert any(abs(b - 10.0) <= 2.5 for b in bounds)
+    assert any(abs(b - 20.0) <= 2.5 for b in bounds)
 
 
 def test_sections_carry_honest_stats():

@@ -136,7 +136,12 @@ def _estimate_time_signature(onset_env: np.ndarray, beat_frames: np.ndarray) -> 
 # eigenvectors embed frames so KMeans groups them into section TYPES. The
 # eigengap picks how many types the song actually supports (2..6).
 _SECTION_K_MAX = 6
-_SECTION_MIN_SEC = 3.0        # merge blips shorter than this into a neighbor
+# Tuned on the real corpus (journal #21: check the DISTRIBUTION, not just the
+# unit tests): with 3 s minimums + light smoothing, 20/117 tracks fragmented
+# into 25–63 "sections" — label ping-pong, not structure. Musical sections run
+# ~8 s and up, so blips under 7 s merge and labels smooth over ~9 beats.
+_SECTION_MIN_SEC = 7.0        # merge spans shorter than this into a neighbor
+_SECTION_SMOOTH = 9           # median-filter width over per-beat labels (~5 s)
 _SECTION_MIN_FRAMES = 12      # too little structure to segment → one section
 
 
@@ -172,7 +177,7 @@ def _section_labels(rec_feats: np.ndarray, path_feats: np.ndarray,
     k = int(ks[np.argmax(evals[ks] - evals[ks - 1])])  # eigengap heuristic
     emb = librosa.util.normalize(evecs[:, :k], norm=2, axis=1)
     labels = KMeans(n_clusters=k, n_init=10, random_state=42).fit_predict(emb)
-    return median_filter(labels, size=5, mode="nearest")
+    return median_filter(labels, size=_SECTION_SMOOTH, mode="nearest")
 
 
 def _assemble_sections(labels: np.ndarray, frame_times: np.ndarray,
@@ -199,22 +204,38 @@ def _assemble_sections(labels: np.ndarray, frame_times: np.ndarray,
         end = duration if s[1] >= len(labels) else float(frame_times[s[1]])
         return end - start
 
+    # A span's identity is its MAJORITY label (blip absorption means the first
+    # frame's label can misrepresent the span).
+    def _span_label(s: list[int]) -> int:
+        return int(np.bincount(labels[s[0]:s[1]]).argmax())
+
     merged: list[list[int]] = []
     for s in spans:
         if merged and _span_dur(s) < _SECTION_MIN_SEC:
-            merged[-1][1] = s[1]
-        elif not merged and _span_dur(s) < _SECTION_MIN_SEC and len(spans) > 1:
-            s[1] = spans[1][1]          # fold the opening blip into its neighbor
-            merged.append(s)
-            spans[1] = s                # neighbor consumed
+            merged[-1][1] = s[1]        # absorb the blip backward
         else:
             merged.append(s)
+    # The opening span can't merge backward — fold it forward instead
+    # (majority labeling keeps the survivor's identity honest).
+    if len(merged) > 1 and _span_dur(merged[0]) < _SECTION_MIN_SEC:
+        merged[1][0] = merged[0][0]
+        merged.pop(0)
+
+    # Coalesce adjacent SAME-label spans (absorption can leave A|A neighbors —
+    # a boundary between two identical sections is noise, not structure).
+    coalesced: list[list[int]] = []
+    for s in merged:
+        if coalesced and _span_label(coalesced[-1]) == _span_label(s):
+            coalesced[-1][1] = s[1]
+        else:
+            coalesced.append(s)
+    merged = coalesced
 
     # letters by first appearance — A is the first sound heard, not "verse"
     relabel: dict[int, int] = {}
     out: list[dict] = []
     for s in merged:
-        lab = int(labels[s[0]])
+        lab = _span_label(s)
         relabel.setdefault(lab, len(relabel))
         start = 0.0 if s is merged[0] else float(frame_times[s[0]])
         end = duration if s is merged[-1] else float(frame_times[min(s[1], len(frame_times) - 1)])
@@ -270,7 +291,15 @@ def _compute_sections(chroma: np.ndarray, mfcc: np.ndarray,
     msync = (msync - msync.mean(axis=1, keepdims=True)) / (
         msync.std(axis=1, keepdims=True) + 1e-9)
 
-    labels = _section_labels(csync, msync)
+    # Recurrence sees harmony AND timbre (z-balanced stack): chroma alone made
+    # harmonically-static songs read as one section — Knights of Cydonia riffs
+    # around E throughout, but its parts differ in TIMBRE (harmonica → gallop
+    # → vocals). Caught by spot-checking real songs, not synthetic fixtures.
+    csync_z = (csync - csync.mean(axis=1, keepdims=True)) / (
+        csync.std(axis=1, keepdims=True) + 1e-9)
+    rec_feats = np.vstack([csync_z, msync])
+
+    labels = _section_labels(rec_feats, msync)
     frame_times = np.concatenate([[0.0], librosa.frames_to_time(slices, sr=sr, hop_length=hop)])
     beat_times = librosa.frames_to_time(np.asarray(beat_frames, dtype=int), sr=sr, hop_length=hop)
     return _assemble_sections(labels, frame_times, csync, beat_times,

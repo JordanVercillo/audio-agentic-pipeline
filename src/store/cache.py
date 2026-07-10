@@ -90,7 +90,8 @@ class FeatureCache:
     # existing rows read NULL. Both SQLite and Postgres take ADD COLUMN online.
     _ADDED_COLUMNS = {"track_features": {"loudness_curve": "JSON",
                                          "time_signature": "INTEGER",
-                                         "beat_times": "JSON"},
+                                         "beat_times": "JSON",
+                                         "sections": "JSON"},
                       "track_meta": {"popularity": "INTEGER"}}
 
     def _migrate_added_columns(self) -> None:
@@ -164,14 +165,15 @@ class FeatureCache:
                source: str = "youtube", dsp_version: Optional[str] = None,
                loudness_curve: Optional[list] = None,
                time_signature: Optional[int] = None,
-               beat_times: Optional[list] = None) -> None:
+               beat_times: Optional[list] = None,
+               sections: Optional[list] = None) -> None:
         """Store a song's features (idempotent) and mark any pending job done.
 
         Display artifacts (spectrogram_uri, loudness_curve, time_signature,
-        beat_times) are PRESERVED when a caller doesn't supply them — merge would
-        otherwise NULL them. This makes a features-only re-write (e.g. re-running
-        seed_cache after the F-v2 backfills) truly idempotent instead of wiping
-        every backfilled curve/meter/grid/spectrogram.
+        beat_times, sections) are PRESERVED when a caller doesn't supply them —
+        merge would otherwise NULL them. This makes a features-only re-write
+        (e.g. re-running seed_cache after the F-v2/F-v3 backfills) truly
+        idempotent instead of wiping every backfilled artifact.
         """
         with self._Session() as s:
             existing = s.get(TrackFeatures, track_id)
@@ -184,6 +186,8 @@ class FeatureCache:
                     time_signature = existing.time_signature
                 if beat_times is None:
                     beat_times = existing.beat_times
+                if sections is None:
+                    sections = existing.sections
             s.merge(TrackFeatures(
                 spotify_track_id=track_id, features=features,
                 tempo_bpm=_f(features.get("tempo_bpm")),
@@ -192,7 +196,7 @@ class FeatureCache:
                 spectrogram_uri=spectrogram_uri, extraction_source=source,
                 dsp_version=dsp_version, loudness_curve=loudness_curve,
                 time_signature=(int(time_signature) if time_signature else None),
-                beat_times=beat_times, extracted_at=utcnow()))
+                beat_times=beat_times, sections=sections, extracted_at=utcnow()))
             job = s.get(ExtractionJob, track_id)
             if job is not None:
                 job.status = JOB_DONE
@@ -259,6 +263,22 @@ class FeatureCache:
         with self._Session() as s:
             row = s.get(TrackFeatures, track_id)
             return row.beat_times if row is not None else None
+
+    def set_sections(self, track_id: str, sections: list) -> bool:
+        """Update ONLY a cached track's detected sections (F-v3 backfill)."""
+        with self._Session() as s:
+            row = s.get(TrackFeatures, track_id)
+            if row is None:
+                return False
+            row.sections = sections
+            s.commit()
+            return True
+
+    def sections(self, track_id: str) -> Optional[list]:
+        """The stored detected sections, or None (analyzed pre-F-v3)."""
+        with self._Session() as s:
+            row = s.get(TrackFeatures, track_id)
+            return row.sections if row is not None else None
 
     # ── perceptual-v1 layer (VISION_SPECS F1) ────────────────────────────────
     def upsert_perceptual(self, track_id: str, features: dict, *,

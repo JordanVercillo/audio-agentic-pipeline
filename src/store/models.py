@@ -43,6 +43,7 @@ class TrackFeatures(Base):
     # touches the 77-dim vector, the 82-col contract, or the perceptual transform.
     loudness_curve = Column(JSON)           # list[float] (dBFS) or null
     beat_times = Column(JSON)               # list[float] (seconds) — the beat grid (F-v2c)
+    sections = Column(JSON)                 # [{start,end,label,…}] — detected structure (F-v3)
     # Provenance.
     dsp_version = Column(String)
     extraction_source = Column(String)      # e.g. "youtube"

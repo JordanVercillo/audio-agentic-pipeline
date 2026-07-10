@@ -174,6 +174,19 @@ def test_time_signature_upsert_targeted_update_and_map(cache):
     assert "t3" not in cache.all_time_signatures()
 
 
+def test_sections_upsert_preserved_and_targeted_update(cache):
+    secs = [{"start": 0.0, "end": 30.0, "label": 0, "tempo_bpm": 120.0,
+             "loudness_db": -12.0, "key": 9, "mode": "minor"}]
+    cache.upsert("t1", _FEATURES, sections=secs)
+    assert cache.sections("t1") == secs
+    cache.upsert("t1", _FEATURES)                      # features-only re-write…
+    assert cache.sections("t1") == secs                # …preserves sections (like F-v2 cols)
+    assert cache.set_sections("t1", secs + secs) is True
+    assert len(cache.sections("t1")) == 2
+    assert cache.sections("missing") is None
+    assert cache.set_sections("ghost", secs) is False  # no row → no-op
+
+
 def test_beat_times_upsert_targeted_update_and_get(cache):
     cache.upsert("t1", _FEATURES, beat_times=[0.5, 1.0, 1.5])
     assert cache.beat_times("t1") == [0.5, 1.0, 1.5]
