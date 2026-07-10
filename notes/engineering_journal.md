@@ -561,3 +561,29 @@ otherwise the first thing it blocks is its own rollout.
 > the threat it was built for. Supervised restarts are the most common
 > "second instance" — give the supervisor an explicit takeover path instead
 > of teaching operators to bypass the lock.*
+
+### 24. The detector was blind to the axis the structure lived on (2026-07-10)
+
+F-v3's section detector passed its synthetic A–B–A test and produced a
+credible corpus distribution after the fragmentation tuning — and then the
+spot-check of NAMED songs caught what neither instrument could: Knights of
+Cydonia, famously a six-minute suite of distinct parts, came back as ONE
+366-second section. The cause was principled, not a bug: recurrence ran on
+chroma (harmony), and KoC riffs around E throughout — harmonically static,
+its structure lives in TIMBRE (harmonica → gallop → vocals). The detector
+literally could not see the dimension the song's structure was on. Stacking
+z-balanced chroma+MFCC into the recurrence fixed it (3 honest sections), and
+the corpus distribution improved everywhere (single-section tracks 24→9).
+
+**The realization:** three validation instruments, three different bugs.
+Synthetic fixtures caught the merge/coverage logic; the corpus DISTRIBUTION
+(#21) caught fragmentation and the A|A coalesce artifact; but only
+spot-checking songs where I personally know the ground truth caught the
+representation blindness — a detector can be well-behaved statistically while
+measuring the wrong thing. Named examples with known answers are the
+regression suite for meaning.
+
+> *Validate on three levels: synthetic fixtures for logic, corpus
+> distributions for statistical sanity, and a handful of NAMED examples whose
+> ground truth you personally know for meaning. Each catches a class of bug
+> the others structurally cannot.*

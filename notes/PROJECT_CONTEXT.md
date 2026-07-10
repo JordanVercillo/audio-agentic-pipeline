@@ -103,10 +103,26 @@
   batched /tracks calls** (silent PKCE refresh — deprecated-not-removed
   re-confirmed live). Real lines: owner "63/100 — more obscure than 55% of the
   corpus" (median 67); crafted obscure taste → "more obscure than 97%".
-  **➡️ NEXT BUILD: ③ F-v3 — the structure timeline** (the marquee: section-map
-  ribbon, honest boundaries via recurrence on chroma+MFCC, repeated sections
-  colour-matched, no chorus/verse labels) — then ④ Epic G (reco explorer, now
-  fully unblocked incl. target_popularity).
+  ✅ **③ F-v3 — STRUCTURE TIMELINE DONE (2026-07-10, commits →27fd23d, 311
+  tests, deployed, all audits green):** the marquee — rebuilt the sections[]
+  of Spotify's retired get-audio-analysis via simplified Laplacian
+  segmentation (path-enhanced recurrence + MFCC path graph, eigengap k,
+  seeded KMeans); `sections` cache column (migration #5, preserve-if-absent);
+  worker persists; `backfill_sections.py` 117/117 from LOCAL MP3s (no
+  re-download); **section ribbon** on the song page (same letter/color =
+  same-sounding part, hover = span/tempo/loudness/key, the no-chorus/verse
+  honesty line stated IN the UI). **Three real-data tuning rounds** (journal
+  #24 — validate on 3 levels): fragmentation (25–63 fake sections → 7s min +
+  9-beat smoothing), A|A coalesce artifact (majority-vote span labels), and
+  chroma-blindness — Knights of Cydonia read as ONE 366s section because its
+  structure is TIMBRAL (harmonica→gallop→vocals) while recurrence saw only
+  harmony → z-balanced chroma+MFCC stack. Final corpus: mode 3–4
+  sections/track, max 14, min dur 7.1s, 549 sections; spot-checks: Prayer
+  A-B-A-B-A, Hexagons 9 secs/4 letters, KoC 3 coarse-but-honest.
+  **➡️ NEXT BUILD: ④ Epic G — the recommendation explorer** (the capstone:
+  tunable min/max/target filters over our features + meter + popularity,
+  seed-track mode, z-distance + cluster-aware ranking — all ingredients live)
+  — then ⑤ A3 Ollama, ⑥ polish.
 - ✅ **SECURITY + ROBUSTNESS REVIEW (2026-07-09, commits 26891b1←): whole-app
   audit via 2 review subagents + a strategic pass; 7 real fixes, all tested,
   deployed, 286 green.** **Security surface came back STRONG** — auth, session
@@ -937,3 +953,17 @@ narrative goes to `notes/engineering_journal.md`, plans to
   audits clean, deployed (app was owner-stopped on-demand; restart brought it
   up on the new code). **Left off: slice ② DONE — next is ③ F-v3 structure
   timeline (marquee), then ④ Epic G reco explorer (fully unblocked).**
+- **2026-07-10 (session 21 — F-v3, the structure timeline):** Built the
+  marquee in 3 commits (detection core → persistence+backfill → ribbon,
+  →27fd23d). Simplified McFee-Ellis Laplacian segmentation; sections column
+  (migration #5); 117/117 backfilled locally; ribbon + honesty caption on the
+  song page. The build WAS the validation story (journal #24): synthetic
+  fixture caught merge/coverage logic (incl. a count-based sync gate that
+  pure tones fooled — coverage gate now), the corpus distribution caught
+  fragmentation (25–63 fake sections) and the A|A coalesce artifact, and
+  NAMED-song spot-checks caught representation blindness (KoC = one 366s
+  section under chroma-only recurrence → chroma+MFCC stack; single-section
+  tracks 24→9). 311 tests; deployed; app-verify ALL GREEN. **Left off: F-v3
+  DONE — the within-track story is complete (spectrogram + loudness curve +
+  fades + bar grid + section ribbon). Next: ④ Epic G recommendation explorer
+  (capstone), then ⑤ A3 Ollama, ⑥ polish.**
