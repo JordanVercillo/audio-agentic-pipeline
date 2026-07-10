@@ -6,7 +6,7 @@ Spotify has severely restricted its API. "Development Mode" is now heavily sandb
 
 # Hard Constraints & Deprecations (DO NOT USE)
 - NO AUDIO FEATURES: The `/audio-features` and `/audio-analysis` endpoints are completely deprecated and removed for third-party use. Never suggest extracting BPM, danceability, energy, or acousticness from the Spotify API.
-- NO POPULARITY METRICS: The `popularity` field has been removed from Track/Artist response objects. 
+- POPULARITY IS DEPRECATED, NOT REMOVED *(corrected 2026-07-10 after a live check of GET /tracks — journal #20; the original "removed" claim here was an over-hardened assumption)*: the `popularity` field is still returned on Track objects, labelled Deprecated. Policy: MAY be captured as optional fetched context (absent-safe — it can vanish any day); MUST NOT be treated as an acoustic feature (it is fetched, not derived) and MUST NOT be an ML input (Spotify's terms forbid training on their content).
 - NO IMPLICIT GRANT: The Implicit Grant OAuth flow is deprecated. Use Authorization Code Flow with PKCE.
 - NO INDIVIDUAL LIBRARY ENDPOINTS: `/me/tracks`, `/me/albums`, and `/me/following` are deprecated.
 

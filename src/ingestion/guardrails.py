@@ -18,7 +18,8 @@ Hard blocks:
     ✖ current_user_saved_albums()   → deprecated, use /me/library
 
 Field stripping:
-    ✖ .popularity            → removed from Track/Artist/Album responses
+    (none currently — `popularity` is deprecated-NOT-removed; captured as
+     optional fetched context, never an ML input. See _DEPRECATED_FIELDS.)
 
 Reference: 01_spotify_api_guardrails.md
 """
@@ -125,26 +126,31 @@ def safe_api_call(
 #  RESPONSE FIELD STRIPPING
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-# Fields removed from API responses in 2026.
-# We strip them proactively to prevent downstream code from
-# accidentally depending on data that may be absent or stale.
-_DEPRECATED_FIELDS = {"popularity"}
+# CORRECTED 2026-07-10 (journal #20): a live check of GET /tracks showed
+# `popularity` is DEPRECATED, NOT REMOVED — still returned, discouraged, may
+# vanish. Our earlier guardrail hardened a defensive assumption into "removed"
+# and silently threw the field away on every fetch. Policy now:
+#   - popularity is CAPTURED as optional fetched context (absent-safe),
+#   - it is NEVER an acoustic feature (it's fetched, not derived) and NEVER
+#     an ML input (Spotify's terms forbid training on their content),
+#   - nothing may HARD-depend on it (it can disappear any day).
+_DEPRECATED_FIELDS: set[str] = set()  # nothing currently needs stripping
 
 
 def strip_deprecated_fields(obj: dict) -> dict:
     """
-    Remove deprecated fields from a Spotify API response object.
+    Remove hard-removed fields from a Spotify API response object.
 
-    Per 01_spotify_api_guardrails.md, the `popularity` field has been
-    removed from Track, Artist, and Album response objects. Even if
-    the field occasionally appears in cached responses, we must not
-    propagate it into our data pipeline.
+    Currently a no-op passthrough: `popularity` — the one field this used to
+    strip — turned out to be deprecated-not-removed (see the policy note on
+    _DEPRECATED_FIELDS). The hook stays so a future real removal is a
+    one-line change on every fetch path at once.
 
     Args:
         obj: A raw Spotify API response dict (track, artist, or album).
 
     Returns:
-        The same dict with deprecated fields removed.
+        The same dict with any hard-removed fields dropped.
     """
     for field in _DEPRECATED_FIELDS:
         obj.pop(field, None)

@@ -134,6 +134,22 @@ def test_remember_and_get_meta(cache):
     assert cache.get_meta("nope") is None
 
 
+def test_remember_meta_popularity_preserve_if_absent(cache):
+    # popularity rides along when present (fetched context — journal #20)…
+    cache.remember_meta([{"spotify_track_id": "p1", "track_name": "Song",
+                          "artist_names": "Band", "popularity": 61}])
+    assert cache.get_meta("p1")["popularity"] == 61
+    # …and a later item WITHOUT it must not NULL what an earlier fetch stored
+    # (the field is deprecated upstream and can vanish from responses any day).
+    cache.remember_meta([{"spotify_track_id": "p1", "track_name": "Song (Remaster)"}])
+    m = cache.get_meta("p1")
+    assert m["popularity"] == 61 and m["track_name"] == "Song (Remaster)"
+    assert m["artist_names"] == "Band"                 # omitted field preserved too
+    cache.remember_meta([{"spotify_track_id": "p1", "popularity": 70}])
+    assert cache.get_meta("p1")["popularity"] == 70    # last sight wins
+    assert cache.all_popularity() == {"p1": 70}        # corpus baseline getter
+
+
 def test_loudness_curve_upsert_and_targeted_update(cache):
     # upsert carries the curve; get it back
     cache.upsert("t1", _FEATURES, loudness_curve=[-30.0, -12.0, -6.0])

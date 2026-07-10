@@ -59,6 +59,10 @@ class TrackMeta(Base):
     track_name = Column(String)
     artist_names = Column(String)
     album_name = Column(String)
+    # Spotify popularity 0–100 at last sight — deprecated-NOT-removed upstream
+    # (journal #20). Fetched CONTEXT: display/analysis only, never an ML input;
+    # nullable because the field may vanish upstream any day.
+    popularity = Column(Integer)
 
 
 class ExtractionJob(Base):

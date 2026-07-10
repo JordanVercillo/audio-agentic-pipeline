@@ -5,7 +5,7 @@ Tests the components that DON'T require user authentication:
     1. Module imports (all 4 submodules)
     2. Guardrails (deprecated endpoint blocking, field stripping)
     3. Client Credentials auth (public endpoints)
-    4. Track metadata fetch (single track, no popularity)
+    4. Track metadata fetch (single track; the warehouse path stays popularity-free)
     5. Search
     6. Parquet serialization round-trip
 
@@ -72,11 +72,13 @@ def run_smoke_test(interactive: bool = False):
 
     # ── 3. Guardrails — field stripping ──
     print("\n━━━ TEST 3: Guardrails — Field Stripping ━━━")
+    # CORRECTED 2026-07-10 (journal #20): popularity is deprecated-NOT-removed
+    # and now survives as optional fetched context (never an ML input).
     fake_track = {"id": "test123", "name": "Test Track", "popularity": 85}
     stripped = strip_deprecated_fields(fake_track)
-    assert "popularity" not in stripped, "popularity field should be stripped!"
-    assert "name" in stripped, "Non-deprecated fields should remain"
-    print("   ✅ popularity field correctly stripped from response objects")
+    assert stripped.get("popularity") == 85, "popularity should be KEPT (context)"
+    assert "name" in stripped, "fields should remain"
+    print("   ✅ popularity kept as optional context (deprecated-not-removed)")
 
     # ── 4. Client Credentials auth ──
     print("\n━━━ TEST 4: Client Credentials Authentication ━━━")
@@ -164,3 +166,19 @@ if __name__ == "__main__":
         sys.stdout.reconfigure(encoding="utf-8")
     interactive = "--interactive" in sys.argv
     run_smoke_test(interactive=interactive)
+
+
+# ── pytest-collected (pure, no network) ──────────────────────────────────────
+def test_strip_keeps_popularity_as_context():
+    """journal #20: popularity is deprecated-NOT-removed — captured, not stripped."""
+    from src.ingestion.guardrails import strip_deprecated_fields
+    track = {"id": "t", "name": "N", "popularity": 73}
+    assert strip_deprecated_fields(track).get("popularity") == 73
+
+
+def test_track_record_popularity_is_optional():
+    from src.ingestion.fetchers import _track_to_record
+    base = {"id": "t1", "name": "Song", "explicit": False, "duration_ms": 1000,
+            "disc_number": 1, "track_number": 1, "artists": [], "album": {}}
+    assert _track_to_record({**base, "popularity": 61})["popularity"] == 61
+    assert _track_to_record(base)["popularity"] is None  # absent-safe (may vanish upstream)

@@ -90,7 +90,8 @@ class FeatureCache:
     # existing rows read NULL. Both SQLite and Postgres take ADD COLUMN online.
     _ADDED_COLUMNS = {"track_features": {"loudness_curve": "JSON",
                                          "time_signature": "INTEGER",
-                                         "beat_times": "JSON"}}
+                                         "beat_times": "JSON"},
+                      "track_meta": {"popularity": "INTEGER"}}
 
     def _migrate_added_columns(self) -> None:
         inspector = sa_inspect(self.engine)
@@ -285,7 +286,9 @@ class FeatureCache:
 
     # ── track metadata (for the worker's YouTube query) ─────────────────────
     def remember_meta(self, items: list[dict]) -> None:
-        """Upsert minimal metadata (name/artist) so the worker can search for the audio."""
+        """Upsert minimal metadata (name/artist) so the worker can search for the
+        audio, plus last-seen popularity (fetched context). Preserve-if-absent:
+        an item that omits a field never NULLs what an earlier fetch stored."""
         if not items:
             return
         with self._Session() as s:
@@ -293,12 +296,32 @@ class FeatureCache:
                 tid = it.get("spotify_track_id") or it.get("id")
                 if not tid:
                     continue
-                s.merge(TrackMeta(
-                    spotify_track_id=tid,
-                    track_name=it.get("track_name") or it.get("name"),
-                    artist_names=it.get("artist_names") or it.get("artist"),
-                    album_name=it.get("album_name")))
+                pop = it.get("popularity")
+                pop = int(pop) if pop is not None else None
+                row = s.get(TrackMeta, tid)
+                if row is None:
+                    s.add(TrackMeta(
+                        spotify_track_id=tid,
+                        track_name=it.get("track_name") or it.get("name"),
+                        artist_names=it.get("artist_names") or it.get("artist"),
+                        album_name=it.get("album_name"), popularity=pop))
+                    continue
+                row.track_name = it.get("track_name") or it.get("name") or row.track_name
+                row.artist_names = (it.get("artist_names") or it.get("artist")
+                                    or row.artist_names)
+                row.album_name = it.get("album_name") or row.album_name
+                if pop is not None:
+                    row.popularity = pop  # last sight wins; absent keeps the old value
             s.commit()
+
+    def all_popularity(self) -> dict[str, int]:
+        """Every track's last-seen Spotify popularity (only rows that have one) —
+        the corpus baseline for the taste-vs-popularity context line."""
+        with self._Session() as s:
+            rows = s.execute(
+                select(TrackMeta.spotify_track_id, TrackMeta.popularity)
+                .where(TrackMeta.popularity.isnot(None))).all()
+        return {tid: int(p) for tid, p in rows}
 
     def get_meta(self, track_id: str) -> Optional[dict]:
         with self._Session() as s:
@@ -306,7 +329,8 @@ class FeatureCache:
             if m is None:
                 return None
             return {"spotify_track_id": m.spotify_track_id, "track_name": m.track_name,
-                    "artist_names": m.artist_names, "album_name": m.album_name}
+                    "artist_names": m.artist_names, "album_name": m.album_name,
+                    "popularity": m.popularity}
 
     # ── queue ──────────────────────────────────────────────────────────────
     def enqueue(self, track_ids: list[str]) -> list[str]:

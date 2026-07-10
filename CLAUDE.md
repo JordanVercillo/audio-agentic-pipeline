@@ -27,8 +27,12 @@ live state).
 2. **Parquet only** for feature matrices and warehouse layers — never CSV.
    `pyarrow` engine. (ADR-006.)
 3. **Respect the 2026 Spotify API reality** (`.agent_prompts/01_spotify_api_guardrails.md`):
-   `/audio-features`, `/audio-analysis`, and `popularity` are GONE. Audio
-   characteristics come from LOCAL DSP only. PKCE auth only.
+   `/audio-features` and `/audio-analysis` are GONE — audio characteristics
+   come from LOCAL DSP only. `popularity` is **deprecated-NOT-removed**
+   (verified live 2026-07-09, journal #20): captured as optional fetched
+   *context* — display/analysis only, **never** an acoustic feature and
+   **never** an ML input (Spotify's terms); nothing may hard-depend on it.
+   PKCE auth only.
 4. **No secrets, period — PKCE-only auth.** No client secret exists anywhere
    in this project (code, env, deployment); the only credentials are
    `SPOTIPY_CLIENT_ID` (public by design) + `SPOTIPY_REDIRECT_URI` via env

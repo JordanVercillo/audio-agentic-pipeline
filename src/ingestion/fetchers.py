@@ -11,14 +11,15 @@ Allowed Surface Area (per 01_spotify_api_guardrails.md):
     ✔ GET /playlists/{id}/tracks  — Playlist contents
     ✔ GET /search                 — Search
     ✔ GET /me                     — User profile
-    ✔ GET /tracks/{id}            — Track metadata (no popularity)
-    ✔ GET /artists/{id}           — Artist metadata (no popularity)
-    ✔ GET /albums/{id}            — Album metadata (no popularity)
+    ✔ GET /tracks/{id}            — Track metadata
+    ✔ GET /artists/{id}           — Artist metadata
+    ✔ GET /albums/{id}            — Album metadata
 
 Every function enforces:
     - Guardrail-checked API calls (no deprecated endpoints)
-    - Deprecated field stripping (no popularity)
     - spotify_track_id as the universal key on all track records
+    - `popularity` rides along as OPTIONAL fetched context (deprecated-not-
+      removed upstream, journal #20) — absent-safe, never an ML input
 """
 
 from datetime import datetime
@@ -599,6 +600,9 @@ def _track_to_record(
         "album_release_date": track.get("album", {}).get("release_date"),
         # Album cover (not deprecated — present on the top-tracks response).
         "album_image_url": (track.get("album", {}).get("images") or [{}])[0].get("url"),
+        # Deprecated-NOT-removed (verified live 2026-07-09; journal #20):
+        # optional fetched CONTEXT — absent-safe, never an ML input.
+        "popularity": track.get("popularity"),
     }
 
     if time_range:
