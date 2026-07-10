@@ -222,6 +222,29 @@ def test_fade_bounds_and_shading():
     assert "loud-fade" not in loudness_svg([-10] * 20)  # no fade → no shading
 
 
+def test_sections_svg_ribbon():
+    from .taste import sections_svg
+    secs = [
+        {"start": 0.0, "end": 60.0, "label": 0, "tempo_bpm": 120.0,
+         "loudness_db": -14.0, "key": 9, "mode": "minor"},
+        {"start": 60.0, "end": 120.0, "label": 1, "tempo_bpm": 128.0,
+         "loudness_db": -9.0, "key": 4, "mode": "major"},
+        {"start": 120.0, "end": 180.0, "label": 0, "tempo_bpm": 121.0,
+         "loudness_db": -13.0, "key": 9, "mode": "minor"},
+    ]
+    svg = sections_svg(secs, 180.0)
+    assert svg.count("sec-rect") == 3
+    # repeat identity: the two label-0 sections share a fill the middle doesn't
+    import re
+    fills = re.findall(r'fill="(#\w{6})"', svg)
+    assert fills[0] == fills[2] != fills[1]
+    assert ">A<" in svg and ">B<" in svg          # letters by first appearance
+    assert "1:00–2:00" in svg and "128 bpm" in svg and "E major" in svg  # hover stats
+    assert "3:00" in svg                          # duration axis label
+    assert sections_svg(None, 180.0) == "" and sections_svg([], 180.0) == ""
+    assert sections_svg(secs, 0) == ""            # degenerate duration
+
+
 def test_loudness_svg_bar_grid():
     from .taste import loudness_svg
     curve = [-20.0, -10.0, -8.0, -12.0]
@@ -263,7 +286,12 @@ def test_song_unauthenticated_redirects(client):
 def test_song_deep_dive_renders_features_and_similar(client, monkeypatch, tmp_path):
     from ..store.cache import FeatureCache
     tc = FeatureCache(url=f"sqlite:///{tmp_path / 'c.db'}")
-    tc.upsert("sng1", _feat(128), loudness_curve=[-38.0, -20.0, -9.0, -6.0])
+    tc.upsert("sng1", {**_feat(128), "duration_sec": 200.0},
+              loudness_curve=[-38.0, -20.0, -9.0, -6.0],
+              sections=[{"start": 0.0, "end": 100.0, "label": 0, "tempo_bpm": 128.0,
+                         "loudness_db": -12.0, "key": 0, "mode": "major"},
+                        {"start": 100.0, "end": 200.0, "label": 1, "tempo_bpm": 126.0,
+                         "loudness_db": -10.0, "key": 0, "mode": "major"}])
     tc.upsert("sng2", _feat(130))
     tc.remember_meta([{"spotify_track_id": "sng1", "track_name": "Hush", "artist_names": "Muse"},
                       {"spotify_track_id": "sng2", "track_name": "Other", "artist_names": "Band"}])
@@ -274,6 +302,8 @@ def test_song_deep_dive_renders_features_and_similar(client, monkeypatch, tmp_pa
     assert "Hush" in r.text and "<svg" in r.text          # name + radar
     assert "Songs like this" in r.text and "Other" in r.text  # nearest neighbor
     assert "loud-line" in r.text and "Loudness over time" in r.text  # F-v2 curve rendered
+    assert "sec-rect" in r.text and "Detected sections" in r.text    # F-v3 ribbon
+    assert "chorus/verse" in r.text                                  # the honesty caption
 
 
 def test_spectrogram_requires_auth(client):

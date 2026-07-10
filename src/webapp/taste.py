@@ -236,6 +236,63 @@ def loudness_svg(curve: Optional[list], beat_times: Optional[list] = None,
         f'</svg>')
 
 
+# Section ribbon (F-v3). A dedicated palette — cluster colors keep their
+# app-wide meaning (sound clusters); section letters are per-song identities.
+_SECTION_COLORS = ["#7aa2ff", "#f2a65a", "#67c9a5", "#c792ea", "#e0648a", "#8d99ae"]
+_SECTION_LETTERS = "ABCDEFGH"
+_PITCHES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
+
+
+def _mmss(seconds: float) -> str:
+    s = int(round(seconds))
+    return f"{s // 60}:{s % 60:02d}"
+
+
+def sections_svg(sections: Optional[list], duration_sec: Optional[float],
+                 width: int = 560, height: int = 46) -> str:
+    """Inline SVG ribbon of the detected sections (F-v3, deep-dive).
+
+    Same LETTER/color = the same-sounding part (repeat identity from
+    self-similarity). Letters follow first appearance — deliberately NOT
+    "chorus"/"verse": semantic labels aren't reliably inferable, so we don't
+    claim them. Hover a section for its span, tempo, loudness, and key.
+    Returns "" when there's nothing to draw.
+    """
+    secs = sections or []
+    if len(secs) < 1 or not duration_sec or duration_sec <= 0:
+        return ""
+    pad_l, pad_r, pad_t, bar_h = 8, 8, 4, 24
+    plot_w = width - pad_l - pad_r
+    base = pad_t + bar_h
+    parts = [f'<svg viewBox="0 0 {width} {height}" class="sections" role="img" '
+             f'aria-label="detected song sections">']
+    for s in secs:
+        x0 = pad_l + (float(s["start"]) / duration_sec) * plot_w
+        x1 = pad_l + (min(float(s["end"]), duration_sec) / duration_sec) * plot_w
+        w = max(x1 - x0, 1.0)
+        lab = int(s.get("label", 0))
+        letter = _SECTION_LETTERS[lab % len(_SECTION_LETTERS)]
+        color = _SECTION_COLORS[lab % len(_SECTION_COLORS)]
+        key, mode = s.get("key", -1), s.get("mode", "")
+        keyname = f"{_PITCHES[key]} {mode}" if 0 <= key <= 11 and mode else "—"
+        loud = s.get("loudness_db")
+        tip = (f"{letter} · {_mmss(s['start'])}–{_mmss(s['end'])} · "
+               f"{s.get('tempo_bpm', 0):.0f} bpm · "
+               f"{loud if loud is not None else '—'} dB · {keyname}")
+        parts.append(
+            f'<rect class="sec-rect" x="{x0:.1f}" y="{pad_t}" width="{w:.1f}" '
+            f'height="{bar_h}" fill="{color}"><title>{tip}</title></rect>')
+        if w >= 16:
+            parts.append(f'<text class="sec-letter" x="{x0 + w / 2:.1f}" '
+                         f'y="{pad_t + bar_h / 2 + 3.5:.1f}" '
+                         f'text-anchor="middle">{letter}</text>')
+    parts.append(f'<text class="loud-ax" x="{pad_l}" y="{base + 13}">0:00</text>')
+    parts.append(f'<text class="loud-ax" x="{pad_l + plot_w:.1f}" y="{base + 13}" '
+                 f'text-anchor="end">{_mmss(duration_sec)}</text>')
+    parts.append("</svg>")
+    return "".join(parts)
+
+
 def drift_over_rows(per_range_rows: dict[str, list[dict]]) -> Optional[dict[str, Any]]:
     """Recent-vs-all-time σ-shift over the visitor's OWN cached features (D-9).
 

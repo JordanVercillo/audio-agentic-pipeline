@@ -160,6 +160,10 @@ ol.tracks li:hover .feat-pop { display: flex; }
 .loud-beat { stroke: var(--muted); stroke-width: 1; opacity: .3; }
 .pop-line { margin: .9rem 0 0; }
 .pop-line .cap { display: block; }
+.sections { width: 100%; height: auto; display: block; }
+.sec-rect { stroke: var(--panel); stroke-width: 1.5; rx: 3; opacity: .85; }
+.sec-rect:hover { opacity: 1; }
+.sec-letter { fill: #0a0d10; font-size: 11px; font-weight: 700; pointer-events: none; }
 .summary-row { display: flex; gap: 1.5rem; margin-top: .9rem; }
 .summary-row span, .summary-row a { display: flex; flex-direction: column; color: var(--ink); text-decoration: none; }
 .summary-row a:hover b { color: var(--spotify); }

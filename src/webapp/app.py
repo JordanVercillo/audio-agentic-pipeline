@@ -50,7 +50,14 @@ from .explore import (
 from .featurestore import FeatureStore
 from .rag import TasteRAG
 from .sessions import CookieSigner, SessionStore
-from .taste import absolute_profile, drift_over_rows, loudness_svg, radar_svg, track_summary
+from .taste import (
+    absolute_profile,
+    drift_over_rows,
+    loudness_svg,
+    radar_svg,
+    sections_svg,
+    track_summary,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -531,6 +538,8 @@ def create_app() -> FastAPI:
                 beat_times=cache.beat_times(track_id),
                 duration_sec=features.get("duration_sec"),
                 meter=cache.time_signature(track_id) or 4)
+            ctx["sections"] = sections_svg(
+                cache.sections(track_id), features.get("duration_sec"))
             ctx["has_spectrogram"] = _spectrogram_path(track_id).exists()
             ctx["similar"] = [
                 {"id": sid, "name": (cache.get_meta(sid) or {}).get("track_name") or sid,

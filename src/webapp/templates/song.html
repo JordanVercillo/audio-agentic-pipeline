@@ -24,6 +24,15 @@
           audio-analysis loudness curve).</p>
       </div>
       {% endif %}
+      {% if sections %}
+      <div class="loud-wrap">
+        {{ sections|safe }}
+        <p class="cap">Detected sections — the same letter and color mean the
+          same-sounding part (repeats found by self-similarity). Honest
+          boundaries only: no “chorus/verse” claims. Hover a section for its
+          tempo, loudness, and key.</p>
+      </div>
+      {% endif %}
       <div class="summary-row">
         <a href="/explore?f=tempo"><b>{{ summary.tempo }}</b><small>tempo</small></a>
         <a href="/explore?f=energy"><b>{{ summary.energy }}</b><small>energy</small></a>
