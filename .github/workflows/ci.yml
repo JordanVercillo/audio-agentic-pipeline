@@ -8,6 +8,10 @@ on:
   push:
   pull_request:
 
+# The jobs only read the repo — never grant the default write token.
+permissions:
+  contents: read
+
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true

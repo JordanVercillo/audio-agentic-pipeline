@@ -16,8 +16,10 @@ this ALONGSIDE the register_autostart.ps1 scheduled tasks - is safe.
 
 Processes are launched detached (their own hidden console), so they keep running
 after this script - and the launching terminal - exits. Output is appended to
-logs\webapp.log / logs\worker.log (gitignored). 'stop' finds them by their
-command line (the script filename), so it targets only this app's Python.
+logs\webapp.log / logs\worker.log (gitignored, rotated at 5 MB on start).
+'stop' matches processes by THIS repo's absolute script path (or the
+space-anchored relative form) - a bare filename substring could catch another
+checkout's processes or an editor with the filename in its argv.
 
 ASCII-only on purpose: Windows PowerShell 5.1 reads a BOM-less file as ANSI, so
 non-ASCII punctuation would corrupt the parse.
@@ -42,9 +44,19 @@ $services = @(
         Script = (Join-Path $repo 'scripts\run_extraction_worker.py'); AppArgs = '--loop --interval 30'; Log = 'worker.log' }
 )
 
-function Get-ServiceProcs($match) {
+function Get-ServiceProcs($svc) {
+    # Anchored matching: this repo's ABSOLUTE script path, or the space-anchored
+    # relative form (a manual `python scripts\run_x.py` from the repo). A bare
+    # filename substring would also catch another checkout's processes or an
+    # editor/linter with the filename in its argv - and Stop-Process -Force them.
+    $abs = $svc.Script
+    $rel = "scripts\$($svc.Match)"
+    $relFwd = "scripts/$($svc.Match)"
     Get-CimInstance Win32_Process -Filter "Name like 'python%'" |
-        Where-Object { $_.CommandLine -and ($_.CommandLine -like "*$match*") }
+        Where-Object { $_.CommandLine -and (
+            ($_.CommandLine -like "*$abs*") -or
+            ($_.CommandLine -like "* $rel*") -or
+            ($_.CommandLine -like "* $relFwd*")) }
 }
 
 function Test-Health {
@@ -66,14 +78,21 @@ function Start-App {
     # No-spaces assumption keeps the cmd redirection quoting-free and reliable.
     # (This repo path has none. If it ever moves under a spaced path, use
     #  register_autostart.ps1 instead - it quotes properly.)
-    if ("$py$repo$logs" -match '\s') {
-        throw "A path contains a space; use scripts\register_autostart.ps1 instead."
+    if ("$py$repo$logs" -match '[\s&|()^%!;]') {
+        throw "A path contains a space or cmd metacharacter; use scripts\register_autostart.ps1 instead."
     }
     New-Item -ItemType Directory -Force -Path $logs | Out-Null
+    # Cap runaway logs: a persistent worker error prints every poll; rotate at 5 MB.
+    foreach ($s in $services) {
+        $logPath = Join-Path $logs $s.Log
+        if ((Test-Path $logPath) -and ((Get-Item $logPath).Length -gt 5MB)) {
+            Move-Item -Force $logPath "$logPath.old"
+        }
+    }
 
     Write-Host "Starting Vercillo Analytics..." -ForegroundColor Cyan
     foreach ($s in $services) {
-        $existing = Get-ServiceProcs $s.Match
+        $existing = Get-ServiceProcs $s
         if ($existing) {
             Write-Host ("  {0,-7} already running (PID {1}) - left as is" -f `
                 $s.Name, ($existing.ProcessId -join ', ')) -ForegroundColor Yellow
@@ -119,7 +138,7 @@ function Stop-App {
     Write-Host "Stopping Vercillo Analytics..." -ForegroundColor Cyan
     $any = $false
     foreach ($s in $services) {
-        $procs = Get-ServiceProcs $s.Match
+        $procs = Get-ServiceProcs $s
         if (-not $procs) {
             Write-Host ("  {0,-7} not running" -f $s.Name) -ForegroundColor DarkGray
             continue
@@ -154,7 +173,7 @@ function Stop-App {
 function Show-Status {
     Write-Host "`n---- status ----------------------------" -ForegroundColor Cyan
     foreach ($s in $services) {
-        $procs = Get-ServiceProcs $s.Match
+        $procs = Get-ServiceProcs $s
         if ($procs) {
             Write-Host ("  {0,-7} RUNNING  (PID {1})" -f $s.Name, ($procs.ProcessId -join ', ')) -ForegroundColor Green
         } else {
