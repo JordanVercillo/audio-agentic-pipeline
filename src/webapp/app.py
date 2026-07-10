@@ -30,7 +30,13 @@ from ..ingestion.fetchers import fetch_top_artists, fetch_top_tracks
 from ..store import clusters as cl
 from ..store.cache import FeatureCache
 from . import auth_web, config
-from .analytics import acoustic_signature, cluster_color, cluster_composition, scatter_svg
+from .analytics import (
+    acoustic_signature,
+    cluster_color,
+    cluster_composition,
+    popularity_context,
+    scatter_svg,
+)
 from .archetype import derive_archetype
 from .explore import (
     catalog_groups,
@@ -337,6 +343,13 @@ def create_app() -> FastAPI:
         population = list(cache.all_features().values())
         ctx["signature"] = acoustic_signature(list(cached.values()), population)
 
+        # Taste vs popularity (slice P) — fetched context, absent-safe: renders
+        # only when enough popularity values have been seen (the field is
+        # deprecated upstream and may be missing entirely).
+        pops = cache.all_popularity()
+        ctx["popularity"] = popularity_context(
+            [pops[t] for t in set(all_ids) if t in pops], list(pops.values()))
+
         model = cl.latest_model(cache, "song")
         if model is not None:
             ctx["trained"] = True
@@ -385,6 +398,7 @@ def create_app() -> FastAPI:
         # Enrich the session taste — /ask and /classify ground on these (Epic D).
         taste["signature"] = ctx["signature"]
         taste["archetype"] = ctx["archetype"]
+        taste["popularity"] = (ctx.get("popularity") or {}).get("line")
         comp = ctx.get("composition") or {}
         taste["clusters"] = {
             "windows": {w: [{"label": s["label"], "share": s["share"]} for s in segs]

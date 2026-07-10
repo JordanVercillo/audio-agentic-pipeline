@@ -36,6 +36,12 @@
   </div>
   {% endif %}
 
+  {% if popularity %}
+  <p class="pop-line">{{ popularity.line }}
+    <span class="cap">Spotify popularity across {{ popularity.n }} of your tracks —
+      fetched metadata, not an acoustic measure.</span></p>
+  {% endif %}
+
   {% if drift %}
   <div class="insight drift" style="margin-top:1rem">
     <div class="insight-badge">Taste drift · recent vs all-time</div>

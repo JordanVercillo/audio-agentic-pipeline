@@ -107,6 +107,9 @@ def _grounding_text(taste: dict[str, Any], glossary: dict[str, str]) -> str:
             f"Taste drift (recent vs all-time): {drift['label']} "
             f"(RMS sigma-shift {drift['score']}, {drift.get('n_short', '?')} vs "
             f"{drift.get('n_long', '?')} overlapping tracks).")
+    pop = taste.get("popularity")
+    if pop:
+        lines.append(f"Popularity context (Spotify metadata, not acoustic): {pop}")
     artists = taste.get("artists") or []
     if artists:
         alist = "; ".join(

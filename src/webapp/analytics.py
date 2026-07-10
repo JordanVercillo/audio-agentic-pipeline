@@ -145,3 +145,38 @@ def scatter_svg(population: list[dict], user_points: list[dict],
             f'<title>{escape(tip)}</title></circle>')  # track/artist names are untrusted
     parts.append("</svg>")
     return "".join(parts)
+
+
+def popularity_context(user_pops: list, corpus_pops: list) -> Optional[dict[str, Any]]:
+    """The taste-vs-popularity line (slice P) — FETCHED context, honestly framed.
+
+    Spotify popularity is metadata we fetch (deprecated-not-removed upstream,
+    journal #20), never an acoustic measure — the template labels it as such.
+    Percentile framing needs a real baseline: with a corpus of ≥20 valued
+    tracks we rank the visitor's mean against it (same at-or-below math as
+    /explore); below that we fall back to Spotify's absolute 0–100 scale; and
+    under 3 user values we say nothing rather than something noisy.
+    """
+    vals = [float(v) for v in user_pops if v is not None]
+    if len(vals) < 3:
+        return None
+    mean = sum(vals) / len(vals)
+    out: dict[str, Any] = {"mean": round(mean), "n": len(vals)}
+    corpus = [float(v) for v in corpus_pops if v is not None]
+    if len(corpus) >= 20:
+        from .explore import percentile_of
+        pct = percentile_of(mean, corpus)
+        out["basis"] = "corpus"
+        if pct >= 50:
+            out["line"] = (f"Your rotation averages {out['mean']}/100 popularity — "
+                           f"more mainstream than {pct}% of the corpus.")
+        else:
+            out["line"] = (f"Your rotation averages {out['mean']}/100 popularity — "
+                           f"more obscure than {100 - pct}% of the corpus.")
+    else:
+        out["basis"] = "absolute"
+        band = ("solidly mainstream" if mean >= 65
+                else "a mixed rotation" if mean >= 40 else "deep-cut territory")
+        out["line"] = (f"Your rotation averages {out['mean']}/100 on Spotify's "
+                       f"popularity scale — {band}.")
+    return out

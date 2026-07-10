@@ -295,6 +295,30 @@ def test_spectrogram_serves_png(client, monkeypatch, tmp_path):
     assert r.status_code == 200 and r.headers["content-type"] == "image/png"
 
 
+# ── popularity context (slice P — fetched metadata, never acoustic) ────────
+def test_popularity_context_percentile_and_fallback():
+    from .analytics import popularity_context
+    corpus = list(range(0, 100, 5))                       # n=20 → percentile basis
+    hi = popularity_context([80, 85, 90], corpus)
+    assert hi["basis"] == "corpus" and "more mainstream than" in hi["line"]
+    lo = popularity_context([5, 10, 15], corpus)
+    assert "more obscure than" in lo["line"]
+    ab = popularity_context([70, 71, 72], [50] * 5)       # corpus too small → absolute
+    assert ab["basis"] == "absolute" and "solidly mainstream" in ab["line"]
+    assert "deep-cut" in popularity_context([10, 12, 14], [])["line"]
+    assert popularity_context([80, 85], corpus) is None   # <3 user values → say nothing
+    assert popularity_context([None, None, 80], corpus) is None  # None-safe counting
+
+
+def test_rag_grounding_includes_popularity_line():
+    from .rag import _grounding_text
+    taste = {"popularity": "Your rotation averages 44/100 popularity — more obscure "
+                           "than 61% of the corpus."}
+    g = _grounding_text(taste, {})
+    assert "Popularity context (Spotify metadata, not acoustic)" in g
+    assert "44/100" in g
+
+
 # ── analytics view logic (Epic C) ──────────────────────────────────────────
 def test_acoustic_signature_ranks_the_extreme_feature():
     from .analytics import acoustic_signature
@@ -541,9 +565,9 @@ def test_analytics_renders_clusters_signature_and_map(client, monkeypatch, tmp_p
         tc.upsert(f"a{i}", _blob_a(i))
         tc.upsert(f"b{i}", _blob_b(i))
         meta.append({"spotify_track_id": f"a{i}", "track_name": f"Slow {i}",
-                     "artist_names": f"CalmArtist{i // 2}"})
+                     "artist_names": f"CalmArtist{i // 2}", "popularity": 70 + i})
         meta.append({"spotify_track_id": f"b{i}", "track_name": f"Fast {i}",
-                     "artist_names": f"LoudArtist{i // 2}"})
+                     "artist_names": f"LoudArtist{i // 2}", "popularity": 20 + i})
     tc.remember_meta(meta)
     assert train_song_clusters(tc, coords="pca") is not None
     assert train_artist_clusters(tc) is not None
@@ -559,6 +583,9 @@ def test_analytics_renders_clusters_signature_and_map(client, monkeypatch, tmp_p
     assert "acoustic signature" in r.text.lower()
     assert "Your taste archetype" in r.text and 'action="/classify"' in r.text  # Epic D card
     assert "cluster-map" in r.text                     # the SVG map rendered
+    # slice P: the popularity line renders (12-track corpus < 20 → absolute
+    # basis) with its honest fetched-not-acoustic caption
+    assert "popularity scale" in r.text and "not an acoustic measure" in r.text
     assert "Artists who sound alike" in r.text and "LoudArtist0" in r.text
     assert 'class="comp-bar"' in r.text                # composition bars
 
