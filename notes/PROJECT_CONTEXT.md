@@ -92,10 +92,21 @@
   #3), extractor + worker + `backfill_beat_times.py` (117/117, ~481 beats/track);
   rendered as a **bar grid** (every meter-th real beat) since a full beat grid
   is a 1px/beat smear — ~5–6px legible, honest spacing, phase approximate.
-  Deployed live. **➡️ NEXT BUILD: ② P — popularity context** (un-strip in
-  fetchers, optional column, "taste vs popularity" line, correct the 3
-  over-cautious docs incl. CLAUDE.md rule 3 — owner's nod on that edit) — or
-  jump to ③ F-v3 (marquee) for the bigger visual payoff.
+  Deployed live. ✅ **② P — POPULARITY CONTEXT DONE (2026-07-10, commits
+  →4957f73, 304 tests, audits clean, deployed):** popularity captured as
+  optional fetched CONTEXT (never acoustic, never ML — policy encoded at every
+  layer); the 3 over-cautious docs CORRECTED (CLAUDE.md rule 3, agent-prompt
+  01 w/ dated note, guardrails/fetchers); `track_meta.popularity` (migration
+  #4) + preserve-if-absent `remember_meta` (also fixed a latent field-clobber);
+  `popularity_context()` line on `/analytics` w/ honest fetched-not-acoustic
+  caption + RAG grounding; `backfill_popularity.py` valued **119/119 in 3
+  batched /tracks calls** (silent PKCE refresh — deprecated-not-removed
+  re-confirmed live). Real lines: owner "63/100 — more obscure than 55% of the
+  corpus" (median 67); crafted obscure taste → "more obscure than 97%".
+  **➡️ NEXT BUILD: ③ F-v3 — the structure timeline** (the marquee: section-map
+  ribbon, honest boundaries via recurrence on chroma+MFCC, repeated sections
+  colour-matched, no chorus/verse labels) — then ④ Epic G (reco explorer, now
+  fully unblocked incl. target_popularity).
 - ✅ **SECURITY + ROBUSTNESS REVIEW (2026-07-09, commits 26891b1←): whole-app
   audit via 2 review subagents + a strategic pass; 7 real fixes, all tested,
   deployed, 286 green.** **Security surface came back STRONG** — auth, session
@@ -913,3 +924,16 @@ narrative goes to `notes/engineering_journal.md`, plans to
   GREEN. 299 tests; CI pending at wrap. **Left off: hardening backlog EMPTY.
   Next build unchanged — ② P popularity-context, or jump to ③ F-v3 structure
   timeline. A3 Ollama queued after the audio work.**
+- **2026-07-10 (session 20 — slice ② P, popularity context):** Built in 3
+  commits (P.1 capture+docs → P.2 surface → P.3 backfill, →4957f73). The
+  journal-#20 correction went live: guardrail un-stripped (with the policy
+  note), CLAUDE.md rule 3 + agent-prompt 01 corrected, popularity captured to
+  `track_meta` (migration #4) via preserve-if-absent `remember_meta`;
+  `/analytics` gained the taste-vs-popularity line (percentile vs corpus at
+  n≥20, absolute bands below, silent under 3 values; honest caption) and the
+  RAG grounding carries it labelled "Spotify metadata, not acoustic".
+  Warehouse safety verified up front (fact build subsets explicit columns —
+  D-4 contract untouched). Live backfill valued 119/119 in 3 calls. 304 tests,
+  audits clean, deployed (app was owner-stopped on-demand; restart brought it
+  up on the new code). **Left off: slice ② DONE — next is ③ F-v3 structure
+  timeline (marquee), then ④ Epic G reco explorer (fully unblocked).**
