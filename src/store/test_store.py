@@ -329,6 +329,24 @@ def test_seed_skips_metadata_only_ghost(cache, tmp_path, monkeypatch):
     assert cache.missing(["ghost"]) == ["ghost"]           # queue CAN repair it
 
 
+def test_another_worker_alive_decision(cache):
+    from datetime import datetime, timedelta, timezone
+
+    from .extractor import another_worker_alive
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    fresh = {"pid": 111, "interval_seconds": 30, "beat_at": now - timedelta(seconds=60)}
+    stale = {"pid": 111, "interval_seconds": 30, "beat_at": now - timedelta(seconds=3600)}
+    assert another_worker_alive(fresh, my_pid=222, now=now) is True    # other pid, fresh → refuse
+    assert another_worker_alive(fresh, my_pid=111, now=now) is False   # our own beat → fine
+    assert another_worker_alive(stale, my_pid=222, now=now) is False   # dead worker → start
+    assert another_worker_alive(None, my_pid=222, now=now) is False    # never ran → start
+    future = {"pid": 111, "interval_seconds": 30, "beat_at": now + timedelta(seconds=60)}
+    assert another_worker_alive(future, my_pid=222, now=now) is True   # clock skew → be safe
+    # end-to-end through the cache: a live beat from another pid blocks a start
+    cache.beat("extraction-worker", pid=111, interval_seconds=30)
+    assert another_worker_alive(cache.heartbeat("extraction-worker"), my_pid=222) is True
+
+
 def test_app_verify_worker_flags():
     # Import the skill script's pure flag logic (same pattern as check_marts).
     import importlib.util

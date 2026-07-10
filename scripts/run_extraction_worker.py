@@ -31,7 +31,7 @@ if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
 from src.store.cache import FeatureCache  # noqa: E402
-from src.store.extractor import drain  # noqa: E402
+from src.store.extractor import another_worker_alive, drain  # noqa: E402
 from src.store.perceptual import PERCEPTUAL_VERSION, rebuild_marts  # noqa: E402
 
 _SPECTROGRAM_DIR = _ROOT / "data" / "spectrograms"
@@ -45,9 +45,21 @@ if __name__ == "__main__":
                         help="poll the queue forever (self-host worker mode)")
     parser.add_argument("--interval", type=int, default=30,
                         help="seconds between polls in --loop mode (default 30)")
+    parser.add_argument("--takeover", action="store_true",
+                        help="start even if another worker's heartbeat looks alive")
     args = parser.parse_args()
 
     cache = FeatureCache()
+
+    # Single-instance lock: two workers double-extract (wasted downloads/DSP)
+    # and can double-write the same spectrogram file. A fresh heartbeat from
+    # another pid means one is already running.
+    hb = cache.heartbeat("extraction-worker")
+    if not args.takeover and another_worker_alive(hb, os.getpid()):
+        print(f"another extraction worker looks ALIVE (pid {hb['pid']}, last beat "
+              f"{hb['beat_at']}) — two workers double-extract. Refusing to start; "
+              f"use --takeover if that worker is actually gone.")
+        sys.exit(1)
 
     def beat() -> None:
         cache.beat("extraction-worker", pid=os.getpid(), interval_seconds=args.interval)

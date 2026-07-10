@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import logging
 import re
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -72,6 +73,28 @@ def make_mel_spectrogram(signal, out_path: Path) -> Path:
     fig.savefig(out_path, bbox_inches="tight", pad_inches=0)
     plt.close(fig)
     return out_path
+
+
+def another_worker_alive(heartbeat: Optional[dict], my_pid: int,
+                         now: Optional[datetime] = None) -> bool:
+    """True when a DIFFERENT worker looks alive — the caller should refuse to
+    start (two workers double-extract tracks and double-write spectrograms).
+
+    "Alive" = its heartbeat is fresher than 3 poll intervals (min 300 s — the
+    same staleness rule app-verify's WORKER_DOWN uses). Stale/absent = a dead
+    worker's leftovers: safe to start. A future-dated beat (clock skew) counts
+    as alive. Same-pid beats are ours (a restart), never a conflict. The
+    simultaneous-cold-start race is accepted: the lock targets the real case —
+    a human starting a second worker while one has been beating for minutes.
+    """
+    if not heartbeat or heartbeat.get("beat_at") is None:
+        return False
+    if heartbeat.get("pid") == my_pid:
+        return False
+    stale_after = max(3 * (heartbeat.get("interval_seconds") or 30), 300)
+    now = now or datetime.now(timezone.utc).replace(tzinfo=None)
+    age = (now - heartbeat["beat_at"]).total_seconds()
+    return age <= stale_after
 
 
 def extract_one(cache: FeatureCache, track_id: str, *, audio_dir: Path,
