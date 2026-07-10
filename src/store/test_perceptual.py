@@ -211,7 +211,8 @@ def _write_marts(tmp_path, corpus, *, drop_stat_row=False, extra_mart_col=False)
 def test_audit_marts_green_on_good_marts(corpus, tmp_path):
     audit = _load_audit_module()
     report, warnings, errors, flags = audit.check_marts(_write_marts(tmp_path, corpus))
-    assert flags == {"CATALOG_MART_DRIFT": False, "STATS_MART_DRIFT": False}
+    assert flags == {"CATALOG_MART_DRIFT": False, "STATS_MART_DRIFT": False,
+                     "FEATURE_DISTRIBUTION": False}
     assert not errors
     assert report["track_perceptual"]["rows"] == 10
 
@@ -235,5 +236,53 @@ def test_audit_marts_catches_stats_drift(corpus, tmp_path):
 def test_audit_marts_absent_is_a_note_not_a_finding(tmp_path):
     audit = _load_audit_module()
     report, warnings, errors, flags = audit.check_marts(tmp_path / "nope")
-    assert flags == {"CATALOG_MART_DRIFT": False, "STATS_MART_DRIFT": False}
+    assert flags == {"CATALOG_MART_DRIFT": False, "STATS_MART_DRIFT": False,
+                     "FEATURE_DISTRIBUTION": False}
     assert not errors and any("not built" in w for w in warnings)
+
+
+# ── distribution sanity (journal #21, operationalized) ──────────────────────
+def test_population_n_stamped(corpus):
+    df = compute_perceptual(corpus)
+    assert (df["population_n"] == 10).all()          # every row knows its calibration n
+    persist_perceptual(corpus, df)
+    got = corpus.get_perceptual(["club0"])["club0"]
+    assert got["population_n"] == 10                 # travels into the cache payload
+
+
+def test_distribution_checks_pass_on_good_corpus(corpus):
+    from .perceptual import compute_feature_stats
+    audit = _load_audit_module()
+    stats = compute_feature_stats(compute_perceptual(corpus))
+    assert audit.check_distributions(stats) == []
+
+
+def test_distribution_checks_catch_implausible_shapes(corpus):
+    from .perceptual import compute_feature_stats
+    audit = _load_audit_module()
+    stats = compute_feature_stats(compute_perceptual(corpus))
+
+    bad = stats.copy()
+    bad.loc[bad["column"] == "tempo", "min"] = 5.0     # octave-error territory
+    assert any("tempo" in w for w in audit.check_distributions(bad))
+
+    bad = stats.copy()
+    bad.loc[bad["column"] == "energy", "max"] = 1.7    # calibrated tier out of 0–1
+    assert any("energy" in w for w in audit.check_distributions(bad))
+
+    bad = stats.copy()
+    bad.loc[bad["column"] == "tempo", ["std", "n"]] = [0.0, 25]  # zero spread at n>=20
+    assert any("zero spread" in w for w in audit.check_distributions(bad))
+
+
+def test_distribution_checks_flag_non_modal_four(corpus):
+    # journal #19's bug, as the audit would have seen it: 2/4 dominating.
+    from .perceptual import compute_feature_stats
+    audit = _load_audit_module()
+    stats = compute_feature_stats(compute_perceptual(corpus))
+    idx = stats.index[stats["column"] == "time_signature"][0]
+    counts = list(stats.at[idx, "bin_counts"])
+    counts[0], counts[2] = 15, 2                      # meter 2 dominates, 4 rare
+    stats.at[idx, "bin_counts"] = counts
+    stats.at[idx, "n"] = int(sum(counts))
+    assert any("modal meter" in w for w in audit.check_distributions(stats))

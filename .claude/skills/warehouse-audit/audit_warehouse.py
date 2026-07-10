@@ -87,7 +87,8 @@ def check_marts(marts_dir: Path):
     report: dict = {}
     warnings: list[str] = []
     errors: list[str] = []
-    flags = {"CATALOG_MART_DRIFT": False, "STATS_MART_DRIFT": False}
+    flags = {"CATALOG_MART_DRIFT": False, "STATS_MART_DRIFT": False,
+             "FEATURE_DISTRIBUTION": False}
 
     if not marts_dir.is_dir() or not any(marts_dir.glob("*.parquet")):
         warnings.append("data/marts/ not built (optional — run scripts/build_feature_marts.py)")
@@ -113,7 +114,8 @@ def check_marts(marts_dir: Path):
 
     if catalog is not None and perceptual is not None:
         cat_cols = set(catalog["column"])
-        mart_cols = set(perceptual.columns) - {BRIDGE, "version"}
+        # population_n is per-row provenance (the calibration population), not a feature.
+        mart_cols = set(perceptual.columns) - {BRIDGE, "version", "population_n"}
         missing = sorted(cat_cols - mart_cols)
         extra = sorted(mart_cols - cat_cols)
         if missing or extra:
@@ -164,7 +166,59 @@ def check_marts(marts_dir: Path):
                     " — STATS_MART_DRIFT")
                 flags["STATS_MART_DRIFT"] = True
 
+    if stats is not None and not (STATS_REQUIRED - set(stats.columns)):
+        dist_warnings = check_distributions(stats)
+        if dist_warnings:
+            warnings.extend(dist_warnings)
+            flags["FEATURE_DISTRIBUTION"] = True
+
     return report, warnings, errors, flags
+
+
+# Plausible physical ranges per measured feature (journal #21: validate an
+# estimator by its DISTRIBUTION against a domain prior — unit tests prove the
+# code does what you wrote; only the corpus shape reveals a wrong definition).
+_PLAUSIBLE = {
+    "tempo": (30.0, 300.0),          # bpm — beat trackers octave-err beyond this
+    "loudness_db": (-80.0, 0.001),   # dBFS can't exceed 0 for normalized audio
+    "duration_sec": (10.0, 3600.0),  # a "track" under 10 s / over 1 h is suspect
+    "key": (0.0, 11.0),              # pitch classes
+    "mode": (0.0, 1.0),
+    "time_signature": (2.0, 7.0),    # the estimator only emits 3..7 (+4 default)
+}
+
+
+def check_distributions(stats: pd.DataFrame) -> list[str]:
+    """Distribution-sanity warnings over feature_stats (FEATURE_DISTRIBUTION).
+
+    Soft by design: these are "a domain expert would squint" checks, not schema
+    violations — bounds per measured feature, 0–1 range for calibrated tiers,
+    degenerate (zero-spread) populations, and the journal-#19/#21 prior that 4/4
+    must be the modal meter in any sizable corpus.
+    """
+    out: list[str] = []
+    for _, r in stats.iterrows():
+        col, n = str(r["column"]), int(r["n"])
+        lo, hi = float(r["min"]), float(r["max"])
+        if r.get("tier") in ("derived", "experimental") and (lo < 0.0 or hi > 1.0):
+            out.append(f"marts/feature_stats: calibrated feature {col} outside 0–1 "
+                       f"[{lo}, {hi}] — FEATURE_DISTRIBUTION")
+        bounds = _PLAUSIBLE.get(col)
+        if bounds and (lo < bounds[0] or hi > bounds[1]):
+            out.append(f"marts/feature_stats: {col} range [{lo}, {hi}] outside "
+                       f"plausible {list(bounds)} — FEATURE_DISTRIBUTION")
+        if n >= 20 and float(r["std"]) == 0.0:
+            out.append(f"marts/feature_stats: {col} has zero spread across {n} "
+                       f"tracks (broken upstream?) — FEATURE_DISTRIBUTION")
+        if col == "time_signature" and n >= 20:
+            edges, counts = list(r["bin_edges"]), list(r["bin_counts"])
+            four = next((i for i in range(len(counts))
+                         if edges[i] <= 4.0 < edges[i + 1]), None)
+            if four is not None and counts[four] != max(counts):
+                out.append("marts/feature_stats: 4/4 is not the modal meter — "
+                           "implausible for a music corpus (journal #19) — "
+                           "FEATURE_DISTRIBUTION")
+    return out
 
 
 def main() -> int:

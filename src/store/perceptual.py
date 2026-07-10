@@ -169,6 +169,10 @@ def compute_perceptual(cache: FeatureCache) -> pd.DataFrame:
                 "brightness", "punch", "dynamics", "valence_proxy"):
         out[col] = out[col].round(4)
     out["version"] = PERCEPTUAL_VERSION
+    # Percentile honesty: a 0–1 value is a rank WITHIN this population — stamp
+    # the population size each row was calibrated against, so a value computed
+    # at n=118 is never mistaken for one from a much larger corpus.
+    out["population_n"] = len(out)
     return out
 
 
