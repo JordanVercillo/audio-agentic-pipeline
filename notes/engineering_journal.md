@@ -537,3 +537,27 @@ the fix set precise: 7 real fixes, zero speculative churn, one clean pass.
 > *Bugs pool where the architecture is thin — so a "where is this fragile?"
 > strategic pass predicts the deep review's findings and tells you where to aim
 > it. Fan the search out; keep the synthesis and the verify-before-fix yourself.*
+
+### 23. The lock's first victim was its own successor (2026-07-10)
+
+The single-instance worker lock (refuse to start when another pid's heartbeat
+is fresh) worked perfectly on its first live test — a second manual worker
+refused with a clear message. Then, planning the deploy, the footgun surfaced:
+`app_control restart` stops the old worker and starts a new one within two
+seconds, and the predecessor's heartbeat stays fresh for up to five minutes.
+The new safety interlock would have blocked the app's own standard deployment
+path — the very restart that ships the lock. The fix wasn't weakening the lock
+but recognizing there are two kinds of caller: the MANAGED lifecycle (which
+just killed the predecessor and has its own double-start guard) passes
+--takeover; the manual path stays fully locked.
+
+**The realization:** an interlock is designed against the adversarial case (a
+human absent-mindedly starting a second worker) and then meets the routine case
+(the system replacing itself). Every guard that says "refuse if X looks alive"
+needs an answer to "who legitimately replaces X, and how do they prove it?" —
+otherwise the first thing it blocks is its own rollout.
+
+> *Test a new safety interlock against the system's own lifecycle, not just
+> the threat it was built for. Supervised restarts are the most common
+> "second instance" — give the supervisor an explicit takeover path instead
+> of teaching operators to bypass the lock.*

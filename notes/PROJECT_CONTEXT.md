@@ -119,6 +119,31 @@
   feature-validity bugs synthetic tests can't), stamp population-`n` on
   perceptual rows (percentile-drift honesty), yt-dlp base62 track-id assertion,
   `www_redirect` host allowlist, `/logout`→POST. Journal #22 (the review method).
+- ✅ **ROOTS REVIEW + BACKLOG CLEARED (2026-07-10, commits →c31f298, 299 tests,
+  all audits green):** pipeline-partner review of plan + build per owner's ask.
+  **Vision confirmed on evidence** (strategies/tools inventory below holds);
+  the post-#22 surface (`/status` + poller) personally re-reviewed CLEAN
+  (auth-gated, session-scoped, cache-only, textContent). **The whole journal-#22
+  hardening backlog is now BUILT:** ① `www_redirect` → allowlist (spoofed Host
+  could mint a 301 to an attacker domain; `WEBAPP_CANONICAL_HOST` config;
+  spoof→200 + real www→301 both verified LIVE through the edge), `/logout` →
+  POST-only (GET 405s; header form; cross-site <img> logout closed), track-id
+  charset guard in `extract_one` (id becomes a filename; base62-only, worker
+  twin of the webapp path strip); ② **single-instance worker lock** via the
+  heartbeat (fresh other-pid beat → refuse; `--takeover` for the managed
+  lifecycle — journal #23: the lock's first victim would have been its own
+  restart; proven live both ways); ③ **FEATURE_DISTRIBUTION audit flag**
+  (journal #21 operationalized: plausible ranges, 0–1 tier bounds, zero-spread,
+  4/4-must-be-modal — the #19 bug would now be CAUGHT by the audit) +
+  **population_n stamped** on perceptual rows (calibration honesty; parity-
+  exempted). **Ops sweep via an Explore agent** (findings verified then fixed):
+  app_control process matching ANCHORED to this repo (bare substring could
+  Stop-Process another checkout/editor — doc claim corrected), cmd-metachar
+  path guard, 5 MB log rotation, CI `permissions: contents: read`, launch.json
+  http.server → 127.0.0.1. Accepted+documented: OAuth code in local gitignored
+  access log (single-use PKCE), mutable action tags, 03:00-backup race (task
+  not registered). Deployed via restart; suite 298→299 (a commit msg says 298 —
+  miscount, this line is the truth).
 - ✅ **INGESTION FLOW VALIDATED + LIVE PROGRESS (2026-07-09, commits 443b→d2ede0d,
   290 green):** pipeline-partner review of the ingestion path. **3 of the owner's
   asks were already satisfied by the existing design** (confirmed with evidence):
@@ -873,3 +898,18 @@ narrative goes to `notes/engineering_journal.md`, plans to
   Memory files written (domain setup, on-demand runtime). **Left off (owner
   PAUSED): remaining = F-v2c instrumentalness (honest source-separation or
   park), owner cost-cleanup (cancel Workspace + GCP zone), A3 Ollama epic.**
+- **2026-07-10 (session 19 — roots review + hardening):** Owner asked for a
+  plan/build review, security-risk hunt, and agents/skills leverage. Recall
+  showed a #22 security review + ingestion-progress feature had landed since
+  my context; re-reviewed the new `/status`+poller surface personally (CLEAN),
+  confirmed the vision, then **cleared the entire #22 hardening backlog** in 5
+  commits (→c31f298): www-allowlist + POST logout + track-id guard; the
+  single-instance worker lock (+`--takeover` for managed restarts — journal
+  #23); FEATURE_DISTRIBUTION audit checks + population_n stamps; and an
+  Explore-agent ops sweep whose verified findings fixed app_control's
+  machine-wide process matching, path guard, log rotation, CI permissions,
+  and the LAN-exposed preview server. Live proof: spoofed-Host 200, GET-logout
+  405, real www→apex 301 via the edge, 2nd-worker refusal, app-verify ALL
+  GREEN. 299 tests; CI pending at wrap. **Left off: hardening backlog EMPTY.
+  Next build unchanged — ② P popularity-context, or jump to ③ F-v3 structure
+  timeline. A3 Ollama queued after the audio work.**
