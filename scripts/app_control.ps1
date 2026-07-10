@@ -40,8 +40,12 @@ $publicUrl = 'https://vercilloanalytics.com'
 $services = @(
     [pscustomobject]@{ Name = 'Webapp'; Match = 'run_webapp.py';
         Script = (Join-Path $repo 'scripts\run_webapp.py'); AppArgs = ''; Log = 'webapp.log' }
+    # --takeover: this script OWNS the lifecycle (start only runs after its own
+    # already-running check; restart just stopped the predecessor, whose
+    # heartbeat may still look fresh for ~5 min). The DB single-instance lock
+    # stays armed against MANUAL second starts.
     [pscustomobject]@{ Name = 'Worker'; Match = 'run_extraction_worker.py';
-        Script = (Join-Path $repo 'scripts\run_extraction_worker.py'); AppArgs = '--loop --interval 30'; Log = 'worker.log' }
+        Script = (Join-Path $repo 'scripts\run_extraction_worker.py'); AppArgs = '--loop --interval 30 --takeover'; Log = 'worker.log' }
 )
 
 function Get-ServiceProcs($svc) {

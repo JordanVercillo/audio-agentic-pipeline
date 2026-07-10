@@ -57,7 +57,7 @@ function Register-AppTask {
 Register-AppTask -Name "VercilloAnalytics Webapp" -Script "scripts\run_webapp.py" `
     -Flags "" -Log "webapp.log" -Trigger $logon -Settings $serviceSettings
 Register-AppTask -Name "VercilloAnalytics Worker" -Script "scripts\run_extraction_worker.py" `
-    -Flags "--loop" -Log "worker.log" -Trigger $logon -Settings $serviceSettings
+    -Flags "--loop --takeover" -Log "worker.log" -Trigger $logon -Settings $serviceSettings
 Register-AppTask -Name "VercilloAnalytics Backup" -Script "scripts\backup_cache.py" `
     -Flags "" -Log "backup.log" -Trigger $nightly -Settings $backupSettings
 
