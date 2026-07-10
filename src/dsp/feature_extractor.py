@@ -28,6 +28,7 @@ Output Formats:
 Reference: 02_audio_dsp_architect.md
 """
 
+import logging
 from dataclasses import dataclass
 from typing import Optional
 
@@ -127,6 +128,174 @@ def _estimate_time_signature(onset_env: np.ndarray, beat_frames: np.ndarray) -> 
     return int(best_lag) if best_corr >= _METER_MIN_CORR else _METER_DEFAULT
 
 
+# ── structural sections (F-v3) ───────────────────────────────────────────────
+# Simplified Laplacian structure segmentation (McFee & Ellis 2014): a
+# path-enhanced recurrence graph on beat-synced CHROMA captures "this part
+# sounds like that part" (harmony repeats); a path graph on local MFCC
+# continuity keeps segments contiguous; the normalized Laplacian's leading
+# eigenvectors embed frames so KMeans groups them into section TYPES. The
+# eigengap picks how many types the song actually supports (2..6).
+_SECTION_K_MAX = 6
+_SECTION_MIN_SEC = 3.0        # merge blips shorter than this into a neighbor
+_SECTION_MIN_FRAMES = 12      # too little structure to segment → one section
+
+
+def _section_labels(rec_feats: np.ndarray, path_feats: np.ndarray,
+                    k_max: int = _SECTION_K_MAX) -> np.ndarray:
+    """Per-frame section-type labels (same label = same-sounding part)."""
+    from scipy.ndimage import median_filter
+    from scipy.sparse import diags
+    from scipy.sparse.csgraph import laplacian
+    from sklearn.cluster import KMeans
+
+    n = rec_feats.shape[1]
+    if n < _SECTION_MIN_FRAMES:
+        return np.zeros(n, dtype=int)
+
+    rec = librosa.segment.recurrence_matrix(
+        rec_feats, width=3, mode="affinity", sym=True)
+    rec = librosa.segment.path_enhance(rec, 7)
+
+    # Local-continuity path graph from timbre distance between adjacent frames.
+    dist = np.sum(np.diff(path_feats, axis=1) ** 2, axis=0)
+    sim = np.exp(-dist / (np.median(dist) + 1e-9))
+    path = diags([sim, sim], [1, -1], shape=(n, n)).toarray()
+
+    # Degree-balanced combination (the paper's mu), then the spectral embedding.
+    deg_path, deg_rec = path.sum(axis=1), rec.sum(axis=1)
+    denom = float(np.sum((deg_path + deg_rec) ** 2)) + 1e-12
+    mu = float(deg_path.dot(deg_path + deg_rec)) / denom
+    lap = laplacian(mu * rec + (1 - mu) * path, normed=True)
+    evals, evecs = np.linalg.eigh(lap)
+
+    ks = np.arange(2, min(k_max, n - 1) + 1)
+    k = int(ks[np.argmax(evals[ks] - evals[ks - 1])])  # eigengap heuristic
+    emb = librosa.util.normalize(evecs[:, :k], norm=2, axis=1)
+    labels = KMeans(n_clusters=k, n_init=10, random_state=42).fit_predict(emb)
+    return median_filter(labels, size=5, mode="nearest")
+
+
+def _assemble_sections(labels: np.ndarray, frame_times: np.ndarray,
+                       chroma_sync: np.ndarray, beat_times: np.ndarray,
+                       duration: float, loudness_curve: Optional[np.ndarray],
+                       ) -> list[dict]:
+    """Contiguous same-label runs → section dicts with honest per-section stats.
+
+    Stats come from data already computed: tempo = beat density inside the
+    section, loudness = the stored curve's points inside it, key/mode = the
+    section's mean chroma through the same Krumhansl-Kessler estimator.
+    """
+    # label runs → (first_frame, end_frame_exclusive) spans
+    spans: list[list[int]] = []
+    for i, lab in enumerate(labels):
+        if spans and labels[spans[-1][0]] == lab:
+            spans[-1][1] = i + 1
+        else:
+            spans.append([i, i + 1])
+
+    # merge sub-minimum blips into the previous span (the first into the next)
+    def _span_dur(s: list[int]) -> float:
+        start = 0.0 if s[0] == 0 else float(frame_times[s[0]])
+        end = duration if s[1] >= len(labels) else float(frame_times[s[1]])
+        return end - start
+
+    merged: list[list[int]] = []
+    for s in spans:
+        if merged and _span_dur(s) < _SECTION_MIN_SEC:
+            merged[-1][1] = s[1]
+        elif not merged and _span_dur(s) < _SECTION_MIN_SEC and len(spans) > 1:
+            s[1] = spans[1][1]          # fold the opening blip into its neighbor
+            merged.append(s)
+            spans[1] = s                # neighbor consumed
+        else:
+            merged.append(s)
+
+    # letters by first appearance — A is the first sound heard, not "verse"
+    relabel: dict[int, int] = {}
+    out: list[dict] = []
+    for s in merged:
+        lab = int(labels[s[0]])
+        relabel.setdefault(lab, len(relabel))
+        start = 0.0 if s is merged[0] else float(frame_times[s[0]])
+        end = duration if s is merged[-1] else float(frame_times[min(s[1], len(frame_times) - 1)])
+        if end <= start:
+            continue
+        n_beats = int(np.sum((beat_times >= start) & (beat_times < end)))
+        tempo = 60.0 * n_beats / (end - start) if end > start else 0.0
+        loud = None
+        if loudness_curve is not None and len(loudness_curve):
+            lo = int(len(loudness_curve) * start / duration)
+            hi = max(lo + 1, int(np.ceil(len(loudness_curve) * end / duration)))
+            loud = float(np.mean(loudness_curve[lo:hi]))
+        key, mode = _estimate_key(
+            chroma_sync[:, s[0]:s[1]].mean(axis=1).astype(np.float32))
+        out.append({
+            "start": round(start, 2), "end": round(end, 2),
+            "label": relabel[lab],
+            "tempo_bpm": round(tempo, 1),
+            "loudness_db": round(loud, 1) if loud is not None else None,
+            "key": int(key), "mode": mode,
+        })
+    return out
+
+
+def _compute_sections(chroma: np.ndarray, mfcc: np.ndarray,
+                      beat_frames: np.ndarray, sr: int, hop: int,
+                      duration: float,
+                      loudness_curve: Optional[np.ndarray]) -> list[dict]:
+    """Beat-sync the matrices, label section types, assemble section dicts.
+
+    Sparse-beat fallback: tracks where beat tracking finds little (ambient,
+    pure tones, synthetic fixtures) sync on fixed ~0.5 s windows instead, so
+    segmentation still works on structure that has no drums.
+    """
+    n_frames = chroma.shape[1]
+    slices = np.asarray(beat_frames, dtype=int)
+    slices = slices[(slices > 0) & (slices < n_frames)]
+    # The beat grid must actually COVER the track to be a segmentation grid —
+    # count alone lies (pure tones/ambient yield a few bunched pseudo-beats,
+    # squeezing whole sections between two sync points). Any gap over ~4 s →
+    # fall back to fixed ~0.5 s windows.
+    slice_times = librosa.frames_to_time(slices, sr=sr, hop_length=hop)
+    gaps = np.diff(np.concatenate([[0.0], slice_times, [duration]])) if len(slices) else [duration]
+    if len(slices) < _SECTION_MIN_FRAMES or float(np.max(gaps)) > 4.0:
+        step = max(1, int(0.5 * sr / hop))
+        slices = np.arange(step, n_frames, step)
+    if len(slices) == 0:
+        return [{"start": 0.0, "end": round(duration, 2), "label": 0,
+                 "tempo_bpm": 0.0, "loudness_db": None, "key": -1, "mode": ""}]
+
+    csync = librosa.util.sync(chroma, slices, aggregate=np.median)
+    msync = librosa.util.sync(mfcc, slices, aggregate=np.mean)
+    msync = (msync - msync.mean(axis=1, keepdims=True)) / (
+        msync.std(axis=1, keepdims=True) + 1e-9)
+
+    labels = _section_labels(csync, msync)
+    frame_times = np.concatenate([[0.0], librosa.frames_to_time(slices, sr=sr, hop_length=hop)])
+    beat_times = librosa.frames_to_time(np.asarray(beat_frames, dtype=int), sr=sr, hop_length=hop)
+    return _assemble_sections(labels, frame_times, csync, beat_times,
+                              duration, loudness_curve)
+
+
+def sections_from_signal(signal: AudioSignal, config: Optional[DSPConfig] = None) -> list[dict]:
+    """Sections straight from a signal — the backfill path for existing local
+    audio (chroma + MFCC + beats + RMS only; no HPSS/spectrogram). Identical
+    core to the in-extractor path, so backfilled sections match fresh ones."""
+    if config is None:
+        config = DSPConfig()
+    y, sr = signal.waveform, signal.sr
+    onset_env = librosa.onset.onset_strength(y=y, sr=sr, hop_length=config.hop_length)
+    _tempo, beat_frames = librosa.beat.beat_track(
+        y=y, sr=sr, hop_length=config.hop_length, onset_envelope=onset_env)
+    chroma = librosa.feature.chroma_cqt(y=y, sr=sr, hop_length=config.hop_length, n_chroma=12)
+    mfcc = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=config.n_mfcc,
+                                n_fft=config.n_fft, hop_length=config.hop_length,
+                                n_mels=config.n_mels)
+    rms = librosa.feature.rms(y=y, frame_length=config.n_fft, hop_length=config.hop_length)[0]
+    return _compute_sections(chroma, mfcc, beat_frames, sr, config.hop_length,
+                             signal.duration_sec, _downsample_loudness_db(rms))
+
+
 def _downsample_loudness_db(rms: np.ndarray, n_points: int = LOUDNESS_CURVE_POINTS) -> np.ndarray:
     """Downsample a per-frame RMS envelope to `n_points` of dBFS.
 
@@ -172,6 +341,12 @@ class TrackFeatures:
     # Detected beat times (seconds) — the beat grid (F-v2c). Display data, like
     # the loudness curve: a cache column, never in the vector/82-col dict.
     beat_times: Optional[np.ndarray] = None
+    # Detected structural sections (F-v3): [{start, end, label, loudness_db,
+    # tempo_bpm, key, mode}, ...] — same label = the same-sounding section
+    # (repeats). HONEST boundaries from self-similarity; we never claim
+    # "chorus"/"verse" (semantic labels aren't reliably inferable). Display
+    # data: a cache column, never in the frozen vector / 82-col dict.
+    sections: Optional[list] = None
 
     # ── Energy Features ──
     rms_mean: float = 0.0
@@ -316,6 +491,10 @@ class TrackFeatures:
             return None
         return [round(float(t), 2) for t in self.beat_times]
 
+    def sections_list(self) -> Optional[list[dict]]:
+        """Detected sections (F-v3) — already JSON-safe dicts, or None."""
+        return self.sections
+
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 #  MAIN EXTRACTION PIPELINE
@@ -376,6 +555,21 @@ def extract_features(
     # provides the harmonic_ratio which is our acousticness replacement.
     if config.should_extract(FeatureGroup.ENERGY):
         _extract_harmonic_ratio(y, sr, features)
+
+    # ── Structural sections (F-v3) ──
+    # Needs the rhythm/tonal/timbre/energy products; a partial config or a
+    # detection failure → no sections, never an error (display data).
+    if (features.chroma_matrix is not None and features.mfcc_matrix is not None
+            and features.beat_times is not None and features.loudness_curve is not None):
+        try:
+            beat_frames = librosa.time_to_frames(
+                features.beat_times, sr=sr, hop_length=config.hop_length)
+            features.sections = _compute_sections(
+                features.chroma_matrix, features.mfcc_matrix, beat_frames, sr,
+                config.hop_length, features.duration_sec, features.loudness_curve)
+        except Exception:  # noqa: BLE001 — sections are display data, never fatal
+            logging.getLogger(__name__).warning(
+                "section detection failed for %s", signal.file_name, exc_info=True)
 
     return features
 
