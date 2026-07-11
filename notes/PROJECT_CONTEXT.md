@@ -1115,4 +1115,14 @@ narrative goes to `notes/engineering_journal.md`, plans to
   invite ("~1–1.5 h, durable queue, come back anytime") → stagger testers →
   post-drain `train_clusters.py` (map dots need a retrain; analytics is
   instant via online assignment) → stop_app (auto-backup). Tester confusions
-  feed H4/H6.
+  feed H4/H6. **Epic M SPECCED (owner ask, 2026-07-11): auto tester lifecycle —
+  detect new songs + ETA (mostly EXISTS via /status), auto-retrain on
+  batch-drain (extend the ONE worker's post-drain hook, not new workers), email
+  tester when done.** Decisions D-23 (email = Brevo relay + DKIM; DEPENDS on the
+  send-as setup since DMARC=quarantine), D-24 (`user-read-email` scope →
+  re-consent + opt-in checkbox + notifications table), D-25 (one worker + hooks,
+  failure-safe). Slices M1 copy (trivial) / M2 auto-retrain (between trials) /
+  M3 email subsystem (needs outbound-email groundwork); sequenced AFTER H. **For
+  the LIVE trial: manual runbook only — do NOT hot-patch a running drain.**
+  Verified live this session: the first pilot user mid-drain, worker healthy, 13 done / 28
+  queued / 0 failed, cache 118→130, ETA ~24 min — the pilot flow works.

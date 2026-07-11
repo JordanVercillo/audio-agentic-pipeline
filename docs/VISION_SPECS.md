@@ -418,6 +418,51 @@ The dbt direction (modeling MPD in dbt + Recce for data-diff review) is noted
 as the likely future transform framework evaluation when J un-parks — strongly
 portfolio-relevant.
 
+## Epic M — Tester lifecycle & notifications (owner ask 2026-07-11)
+
+Automate the good-tester-experience runbook: on login detect new songs + show
+ETA (mostly EXISTS), auto-retrain when a batch finishes, and email the tester
+"your analysis is ready." **Audit finding — this is three very different costs,
+and "another worker per login" is NOT the shape:** detection is already
+login-triggered and one FIFO worker already has a post-drain hook. Build the
+delta, extend the one worker — don't spawn more (journal #23 lock).
+
+**Decisions:**
+- **D-23: outbound email = a transactional relay (Brevo free 300/day) + domain
+  DKIM in Cloudflare.** REQUIRED because DMARC is now `p=quarantine` — an
+  un-aligned send spams the tester. The relay API key lives in the gitignored
+  `.env` (this is NOT a Spotify secret — the PKCE-no-secret ground rule is
+  about Spotify auth and is unaffected). **M3 depends on the send-as-the-domain
+  setup** (`vercilloanalytics-domain-setup` memory) being done first.
+- **D-24: add the `user-read-email` scope → testers RE-CONSENT.** Store an
+  email ONLY with an explicit opt-in ("email me when my analysis is ready"
+  checkbox); one email per batch; a `notifications` table for idempotency
+  (never double-send). /privacy updated. CASL-clean (owner is in Canada).
+- **D-25: one worker, more hooks — not many.** Per-user batch completion is
+  tracked via a session→track-set record; the existing single-instance worker
+  drains and, on settle-to-zero-for-that-set, runs retrain + sends pending
+  notifications. Failure-safe: an email or retrain error logs+continues, never
+  crashes the drain (the journal-#22 poll-loop guard pattern).
+
+**Slices (cheap → expensive):**
+- **M1 — copy only, no email:** dashboard/`/status` says "X new songs detected ·
+  ~Y min left" (enhances the existing poller). Trivial.
+- **M2 — auto-retrain, no email:** extend the worker post-drain hook to retrain
+  clusters when new tracks landed (debounced to queue-settle, idempotent model
+  versioning, guarded). Removes the manual `train_clusters.py` step. Touches the
+  worker → do it when NOT mid-trial.
+- **M3 — the notification subsystem:** Brevo+DKIM (owner DNS, D-23) · new scope +
+  consent checkbox + email storage (D-24) · per-user batch tracking + a
+  `notifications` table (D-25) · an "analysis ready" template · failure-safe
+  send · tests against a MOCK relay (synthetic — code-correctness, never a real
+  send in CI). Evals/tests are the acceptance; a real send to the owner's own
+  address is the live proof.
+
+**Sequence:** slot AFTER Epic H (public showcase is the sharing priority). M1 can
+land anytime (trivial copy). M2 is cheap but worker-touching — between trials.
+M3 waits on the outbound-email groundwork. **For the CURRENT trial: the manual
+runbook stands — do NOT hot-patch a live drain.**
+
 ## Pilot trial — T0 OPENS NOW (2026-07-11, owner decision)
 
 **2/5 Spotify dev-mode seats are filled** (the first pilot user added 07-09, the second pilot user 07-10)
@@ -450,8 +495,10 @@ list becomes H4/H6 input.
 ## The sequence (owner-approved 2026-07-11)
 
 **H (public showcase) → L-lite (case study + README) → I (playlists) → K
-(agentic chat) → L-flip (scrub + public GitHub)** · J parked · **pilot trial
-runs throughout, starting T0 = 2026-07-11/12.** Every slice holds
+(agentic chat) → L-flip (scrub + public GitHub)** · J parked · **M (tester
+lifecycle/notifications) slots after H; M1 copy anytime, M2 between trials, M3
+needs the outbound-email groundwork** · **pilot trial runs throughout, starting
+T0 = 2026-07-11/12.** Every slice holds
 the ground rules: bridge key, Parquet, PKCE-no-secret, synthetic tests
 (code-correctness only — product data stays REAL), $0, evals before LLM
 surfaces, live browser validation to close every build.
