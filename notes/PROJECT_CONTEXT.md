@@ -1070,7 +1070,19 @@ narrative goes to `notes/engineering_journal.md`, plans to
   DOM-verified in the Browser pane (screenshot renderer was flaky — used
   read_page). Then, same session, walked the owner through **tightening DMARC to
   `p=quarantine`** in Cloudflare (verified live on both public resolvers) and
-  scoped the optional **send-as-the-domain** paths (memory updated). **Left off:
-  ⑥ polish effectively COMPLETE — only optional infra tails remain (DMARC
-  quarantine→reject in ~2wk; a send-as relay if/when wanted). NEXT: a fresh
-  direction of the owner's choosing. NEW SESSION: run `/resume`.**
+  scoped the optional **send-as-the-domain** paths (memory updated). Closed with
+  a "ready to share?" discussion: the app is deployed/live but broad *async*
+  sharing is gated by (a) on-demand hosting (the whole domain 502s when the
+  PC/app is off), (b) the Spotify **5-seat allowlist**, and (c) a thin
+  logged-out surface — so it's **demo-ready, not broadcast-ready**. **VISION
+  DECISION LOGGED (owner, 2026-07-11): REAL data only — never fabricate synthetic
+  rows to demo scale/benchmarks** (SCALING.md decision note + project-memory
+  `real-data-only-no-synthetic-benchmarks`; tests keep their synthetic fixtures
+  per ground-rule #5 — that's code-correctness, not product data). **Spark/scale
+  is PARKED** — the P7 parity proof + SCALING.md already bank scale-readiness;
+  revisit only with materially more real data or a need to speed up extraction.
+  **Left off: ⑥ polish effectively COMPLETE; scale parked; recommended next build
+  = the SHARE-READINESS pass (always-up front door so the link is never dead +
+  a README/case-study that tells the engineering story), pending owner go — the
+  first sub-choice there is 24/7 vs on-demand hosting. NEW SESSION: run
+  `/resume`.**

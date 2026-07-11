@@ -6,6 +6,23 @@ This is the honest design narrative for the same medallion warehouse at
 bottleneck actually is. Zero cloud spend: the Spark path is proven for
 correctness locally/in-CI; the cloud design is reasoned, not billed.
 
+> **Vision decision (2026-07-11, owner): REAL data only — no synthetic rows to
+> demo scale, ever.** Every row the product reasons about (warehouse, features,
+> analytics, and any performance *benchmark*) must be real — Jordan's own
+> Spotify + locally-extracted DSP, or real users' libraries. A fabricated
+> 1M-row benchmark would betray the honest-measurement ethos as much as a faked
+> feature would, so we will NOT manufacture volume to show off Spark. (This does
+> not touch ground-rule #5: unit *tests* keep their `generate_test_signal()`
+> synthetic fixtures — synthetic is for proving CODE correctness in tests, and
+> must never stand in for DATA the product measures or reports.) **Consequently
+> Spark/scale is PARKED:** the P7 parity proof below + this design doc already
+> bank the scale-readiness evidence. Revisit only when we genuinely accumulate
+> more real data, or need to speed up real extraction — not before. (Honest
+> ceiling: real-user data growth is capped by the Spotify dev-mode 5-seat
+> allowlist, so the corpus stays small for the foreseeable future — which is
+> exactly why parity-on-real-data + a reasoned design is the right level of
+> proof here.)
+
 ## First, find the real bottleneck
 
 At scale the expensive step is **not** the warehouse transforms — it's
