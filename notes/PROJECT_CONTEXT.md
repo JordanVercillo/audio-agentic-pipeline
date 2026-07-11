@@ -138,10 +138,25 @@
   LIVE BROWSER validation** — Browser pane on vercilloanalytics.com verified
   the landing (incl. CF email-obfuscation decoding), /recommend auth-gating,
   and www→apex through the real edge (authed pages = route tests + owner
-  click-path, credentials never handled). **THE ROADMAP'S AUDIO WORK IS
-  COMPLETE (①②③④). ➡️ NEXT: ⑤ A3 Ollama local-LLM** (plan in VISION_SPECS
-  §A3: gemma4:12b, num_ctx 8192, JSON contracts, guarded by the F0 golden
-  evals) **or ⑥ polish** (DMARC tighten, loudness curve on /analytics).
+  click-path, credentials never handled).
+  ✅ **⑤ A3 — OLLAMA LOCAL-LLM DONE (2026-07-11, commits →<A3.2/3>, 330 tests,
+  deployed):** `/ask` + `/classify` now answer via a LOCAL model at $0, no key.
+  `rag.py` unified both providers behind one `_chat()` dispatching on
+  `WEBAPP_LLM_MODEL=ollama:<m>` (REST /api/chat, format=json, num_ctx 8192 —
+  gemma4's 262K default KV spilled 29% to CPU on the 12GB card; temp 0,
+  keep_alive 10m); deterministic fallback unchanged as the automatic safety
+  net; `run_webapp` warms the model on startup (no ~90s cold first-ask; live
+  Ollama confirmed gemma4 resident after deploy). **The F0 evals paid off
+  (journal #25):** gemma4 first scored **5/15** vs the template's 15/15 →
+  tightened the grounding contract (name real artists; reuse labels verbatim)
+  → **9/15** (no_invention 15/15, archetype 5/5 — zero hallucination; misses
+  are paraphrases). **Owner chose gemma4 as the live default** (set via
+  gitignored .env; code default stays hosted so CI never hits a server); /ask
+  credits "local gemma4:12b ($0)". **THE ENTIRE ROADMAP ①–⑤ IS COMPLETE — both
+  retired Spotify endpoints rebuilt + a reco engine + real $0 local LLM, all
+  evals-guarded. ➡️ ONLY ⑥ POLISH REMAINS** (DMARC p=none→quarantine, loudness
+  curve on /analytics) — or new direction. Owner click-path to see gemma4 live:
+  log in → dashboard → ask box → a real question.
 - ✅ **SECURITY + ROBUSTNESS REVIEW (2026-07-09, commits 26891b1←): whole-app
   audit via 2 review subagents + a strategic pass; 7 real fixes, all tested,
   deployed, 286 green.** **Security surface came back STRONG** — auth, session

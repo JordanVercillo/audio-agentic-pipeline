@@ -587,3 +587,29 @@ regression suite for meaning.
 > distributions for statistical sanity, and a handful of NAMED examples whose
 > ground truth you personally know for meaning. Each catches a class of bug
 > the others structurally cannot.*
+
+### 25. The eval we built in F0 stopped a vibes-based ship (2026-07-11)
+
+A3 wired /ask + /classify to a local $0 model (gemma4:12b). The direct smoke
+looked great — warm, grounded, well-cited prose — and it would have been easy
+to ship on that impression. But the golden eval set from F0, built long before
+any local model existed, graded it **5/15** against the deterministic template's
+15/15: gemma4 was paraphrasing labels ("moderate drift" → "moderate shift") and
+describing the vibe without NAMING the artist. Neither is a hallucination
+(no_invention stayed 15/15) — they're grounding-precision gaps a single
+impressive sample hides but 15 graded cases expose. Tightening the contract
+(name real artists; reuse labelled results verbatim) recovered it to 9/15, and
+the residual gap became an explicit, owner-made ship decision instead of a
+silent default.
+
+**The realization:** the value of an eval harness isn't the number, it's the
+moment it contradicts your gut. The smoke said "ship it"; the eval said "it's
+measurably looser than what you have." Both were true — the model IS nicer to
+read AND does cite less precisely — and only the eval surfaced the second half,
+turning a vibes call into a documented tradeoff the owner could actually weigh.
+An eval you wrote before you had the thing under test is worth ten written to
+rationalize it afterward.
+
+> *Build the eval before the thing it judges, and believe it when it fights your
+> first impression. A single good sample is an existence proof, not a
+> distribution — the harness measures the distribution, which is what ships.*

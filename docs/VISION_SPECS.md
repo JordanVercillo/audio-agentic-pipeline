@@ -41,10 +41,19 @@ prose. Move both to a JSON schema (`thoughts` field ordered FIRST, then
 citations and killing a whole class of parse flakiness. Include the card's
 gotchas: fence-stripping, never-swallow-parse-errors-silently.
 
-### A3 — Ollama local-LLM path (DEFERRED — plan validated 2026-07-08, owner decision)
+### A3 — Ollama local-LLM path (✅ DONE 2026-07-11)
 
-**Status: parked as a future addition; hardware + model inventory validated
-live so a future session starts warm.**
+**Status: SHIPPED. `WEBAPP_LLM_MODEL=ollama:gemma4:12b` routes /ask + /classify
+to the local model ($0, no key); the deterministic fallback is the automatic
+safety net; the model warms on webapp startup (avoids the ~90s cold load).**
+The F0 golden evals ran exactly as intended: gemma4 first scored **5/15** (vs
+the deterministic template's 15/15), failing `must_cite` by paraphrasing labels
+and not naming artists — so the grounding contract was tightened (name real
+artists/tracks; reuse labelled results VERBATIM), recovering to **9/15**
+(must_cite 4→8, classify 1→3; no_invention 15/15, archetype 5/5 throughout —
+zero hallucination). **Owner decision (measured, not vibes): ship gemma4 as
+the live default** — the misses are paraphrases not fabrications, and the warm
+prose beats the template. Journal #25. Original validated plan below.
 
 - **Hardware:** RTX 4070 Ti, 12,282 MiB VRAM (≈3.9 GB resident desktop use).
   Ollama 0.31.1 installed and serving.
