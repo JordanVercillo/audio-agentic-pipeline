@@ -418,7 +418,17 @@ The dbt direction (modeling MPD in dbt + Recce for data-diff review) is noted
 as the likely future transform framework evaluation when J un-parks — strongly
 portfolio-relevant.
 
-## Epic M — Tester lifecycle & notifications (owner ask 2026-07-11)
+## Epic M — Tester lifecycle & notifications (PARKED 2026-07-11)
+
+> **PARKED by owner the same day it was specced** — revisit ONLY if we get
+> *materially* more users AND a paid email/Exchange account. Rationale: the
+> value (auto-email "your analysis is ready") scales with user count, but the
+> Spotify dev-mode **5-seat cap** blocks user growth (extended quota needs a
+> registered business ≥250K MAU — off the table), so M would be a notification
+> system for an audience that can't grow. The manual runbook (owner runs
+> `train_clusters.py` + texts the tester) fully covers ≤5 testers. Spec kept
+> below for when the triggers flip. **The one durable takeaway:** M3's email
+> dependency (Brevo + DKIM, D-23) is recorded so a future build starts there.
 
 Automate the good-tester-experience runbook: on login detect new songs + show
 ETA (mostly EXISTS), auto-retrain when a batch finishes, and email the tester
@@ -495,10 +505,9 @@ list becomes H4/H6 input.
 ## The sequence (owner-approved 2026-07-11)
 
 **H (public showcase) → L-lite (case study + README) → I (playlists) → K
-(agentic chat) → L-flip (scrub + public GitHub)** · J parked · **M (tester
-lifecycle/notifications) slots after H; M1 copy anytime, M2 between trials, M3
-needs the outbound-email groundwork** · **pilot trial runs throughout, starting
-T0 = 2026-07-11/12.** Every slice holds
+(agentic chat) → L-flip (scrub + public GitHub)** · J parked · **M parked**
+(revisit only with materially more users + paid email) · **pilot trial runs
+throughout, starting T0 = 2026-07-11/12.** Every slice holds
 the ground rules: bridge key, Parquet, PKCE-no-secret, synthetic tests
 (code-correctness only — product data stays REAL), $0, evals before LLM
 surfaces, live browser validation to close every build.

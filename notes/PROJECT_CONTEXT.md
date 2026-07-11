@@ -1122,7 +1122,11 @@ narrative goes to `notes/engineering_journal.md`, plans to
   send-as setup since DMARC=quarantine), D-24 (`user-read-email` scope →
   re-consent + opt-in checkbox + notifications table), D-25 (one worker + hooks,
   failure-safe). Slices M1 copy (trivial) / M2 auto-retrain (between trials) /
-  M3 email subsystem (needs outbound-email groundwork); sequenced AFTER H. **For
-  the LIVE trial: manual runbook only — do NOT hot-patch a running drain.**
+  M3 email subsystem (needs outbound-email groundwork). **→ Epic M PARKED by
+  owner same-day (2026-07-11): revisit ONLY with materially more users + a paid
+  email/Exchange account — the 5-seat Spotify cap blocks user growth, so the
+  manual runbook covers ≤5 testers; D-23's email dependency is recorded for
+  when it un-parks.** **For the LIVE trial: manual runbook only — do NOT
+  hot-patch a running drain.**
   Verified live this session: the first pilot user mid-drain, worker healthy, 13 done / 28
   queued / 0 failed, cache 118→130, ETA ~24 min — the pilot flow works.
