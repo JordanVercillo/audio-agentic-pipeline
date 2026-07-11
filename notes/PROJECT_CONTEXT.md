@@ -1128,5 +1128,11 @@ narrative goes to `notes/engineering_journal.md`, plans to
   manual runbook covers ≤5 testers; D-23's email dependency is recorded for
   when it un-parks.** **For the LIVE trial: manual runbook only — do NOT
   hot-patch a running drain.**
-  Verified live this session: the first pilot user mid-drain, worker healthy, 13 done / 28
-  queued / 0 failed, cache 118→130, ETA ~24 min — the pilot flow works.
+  **✅ TRIAL RESULT — the first pilot user's run COMPLETED CLEAN (2026-07-11):** queue
+  drained to 0 (42 done, **0 failed**), cache **118→159** (+41 of her real
+  tracks, every one with a spectrogram); marts auto-rebuilt to 159 via the
+  worker post-drain hook; `train_clusters.py` retrained songs (k=2, silhouette
+  **0.115→0.146** — more real data, cleaner structure) + artists (64, k=2); app
+  + warehouse audits ALL-GREEN. First real external user ingested end-to-end —
+  the pilot flow is proven on a stranger's library, not just the owner's. Seat 2
+  (the second pilot user) not yet run.
