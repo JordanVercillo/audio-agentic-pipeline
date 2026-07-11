@@ -92,9 +92,12 @@ failed taught which summary I meant).
 
 ## What remains (2026-07-11)
 
-**The whole audio-features roadmap ①–⑤ is COMPLETE and live**, and the loudness
-arc closed the bigger half of ⑥. The only open ⑥ item is **DMARC tightening**
-(optional): `p=none` → `quarantine` → `reject` now that mail flows clean.
-Parked by deliberate decision: **instrumentalness** (needs source separation —
-a fake proxy would cost the tier system its credibility). Otherwise: a fresh
-direction of the owner's choosing.
+**The whole audio-features roadmap ①–⑤ is COMPLETE and live**, the loudness arc
+closed the bigger half of ⑥, and **DMARC was tightened to `p=quarantine`
+(2026-07-11)** — so **⑥ polish is effectively done.** Only optional infra tails
+remain: the `quarantine`→`reject` bump (~2 weeks after reports show clean) and a
+**send-as-the-domain** path if wanted (free Gmail+relay+DKIM, or a cheap mailbox
+in Outlook — see the `vercilloanalytics-domain-setup` memory). Parked by
+deliberate decision: **instrumentalness** (needs source separation — a fake
+proxy would cost the tier system its credibility). Otherwise: a fresh direction
+of the owner's choosing.

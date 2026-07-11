@@ -171,10 +171,16 @@
   very end (median .00) — that aggregate fade-out corroborates F-v2c (fade-outs
   34% > fade-ins 19%). Deployed via `app_control restart` (cache backed up on
   stop); app-verify ALL-GREEN, live edge 200/303, arc DOM-verified in the Browser
-  pane (117 tracks, band + axis labels + caption). **➡️ ONLY DMARC TIGHTEN
-  REMAINS of ⑥** (p=none→quarantine now that mail flows clean) — or a new
-  direction. Owner click-path to see the arc live: log in → /analytics → scroll
-  to "Your typical track's loudness arc".
+  pane (117 tracks, band + axis labels + caption). ✅ **DMARC TIGHTENED to
+  `p=quarantine` (2026-07-11, verified live on 8.8.8.8 + 1.1.1.1)** — **⑥ POLISH
+  IS NOW EFFECTIVELY COMPLETE.** Only two *optional* tails remain, both infra not
+  code: the `quarantine`→`reject` bump (~2 weeks after DMARC reports show clean)
+  and the never-set-up **send-as-the-domain** path (free = Gmail "send mail as"
+  via a Brevo free SMTP relay + that provider's DKIM in Cloudflare; paid-tidy = a
+  cheap Purelymail/Migadu mailbox in the Outlook app) — email details live in the
+  `vercilloanalytics-domain-setup` memory. **➡️ NEXT: a fresh direction of the
+  owner's choosing.** Owner click-path to see the arc live: log in → /analytics →
+  scroll to "Your typical track's loudness arc".
 - ✅ **SECURITY + ROBUSTNESS REVIEW (2026-07-09, commits 26891b1←): whole-app
   audit via 2 review subagents + a strategic pass; 7 real fixes, all tested,
   deployed, 286 green.** **Security surface came back STRONG** — auth, session
@@ -1062,5 +1068,9 @@ narrative goes to `notes/engineering_journal.md`, plans to
   `-ExecutionPolicy Bypass` — CurrentUser is RemoteSigned; the classifier blocks
   the bypass flag); app-verify ALL-GREEN post-deploy, live edge 200/303, arc
   DOM-verified in the Browser pane (screenshot renderer was flaky — used
-  read_page). **Left off: ⑥ down to just DMARC tighten (p=none→quarantine), or a
-  new direction. NEW SESSION: run `/resume`.**
+  read_page). Then, same session, walked the owner through **tightening DMARC to
+  `p=quarantine`** in Cloudflare (verified live on both public resolvers) and
+  scoped the optional **send-as-the-domain** paths (memory updated). **Left off:
+  ⑥ polish effectively COMPLETE — only optional infra tails remain (DMARC
+  quarantine→reject in ~2wk; a send-as relay if/when wanted). NEXT: a fresh
+  direction of the owner's choosing. NEW SESSION: run `/resume`.**
