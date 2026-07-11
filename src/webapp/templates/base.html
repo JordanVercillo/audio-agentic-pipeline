@@ -11,10 +11,15 @@
   <header class="site">
     <a class="brand" href="/">Vercillo Analytics</a>
     <nav>
-      {% if authed %}<a href="/dashboard">Dashboard</a><a href="/analytics">Analytics</a><a href="/explore">Explore</a><a href="/recommend">Recommend</a><form class="logout" method="post" action="/logout"><button type="submit">Log out</button></form>
+      {% if authed or guest %}{% if authed %}<a href="/dashboard">Dashboard</a>{% endif %}<a href="/analytics">Analytics</a><a href="/explore">Explore</a><a href="/recommend">Recommend</a>{% endif %}
+      {% if authed %}<form class="logout" method="post" action="/logout"><button type="submit">Log out</button></form>
       {% else %}<a href="/login" class="cta">Log in with Spotify</a>{% endif %}
     </nav>
   </header>
+  {% if guest %}
+  <div class="demo-banner">👋 <b>Demo view</b> — you're exploring Jordan's own Spotify taste, read-only.
+    <a href="/login">Log in with Spotify</a> to analyze your own library.</div>
+  {% endif %}
   <main>{% block content %}{% endblock %}</main>
   <footer class="site">
     <span>PKCE auth · no client secret · session-ephemeral · <a href="/privacy">privacy</a></span>

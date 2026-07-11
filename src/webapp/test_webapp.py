@@ -667,6 +667,52 @@ def test_analytics_renders_loudness_arc(client, monkeypatch, tmp_path):
     assert "middle 50%" in r.text                           # the honest variability caption
 
 
+# ── guest demo persona (H7 / D-30) ─────────────────────────────────────────
+def test_guest_mode_loads_demo_and_renders_analytics(client, monkeypatch, tmp_path):
+    from ..store.cache import FeatureCache
+    from ..store.clusters import train_song_clusters
+    from ..store.test_clusters import _blob_a, _blob_b
+
+    tc = FeatureCache(url=f"sqlite:///{tmp_path / 'guest.db'}")
+    ids = []
+    for i in range(6):
+        tc.upsert(f"a{i}", _blob_a(i))
+        tc.upsert(f"b{i}", _blob_b(i))
+        ids += [f"a{i}", f"b{i}"]
+    tc.remember_meta([{"spotify_track_id": t, "track_name": f"Song {t}",
+                       "artist_names": "DemoArtist"} for t in ids])
+    assert train_song_clusters(tc, coords="pca") is not None
+    monkeypatch.setattr("src.webapp.app._feature_cache", lambda: tc)
+    taste = {"range_ids": {"short_term": ["a0", "a1", "b0"], "long_term": ["a0", "b1", "b2"]},
+             "artists": [{"name": "DemoArtist", "genres": ""}]}
+    monkeypatch.setattr("src.webapp.app.load_demo_profile",
+                        lambda: {"range_ids": taste["range_ids"], "artists": taste["artists"]})
+
+    # /guest builds the demo taste from the snapshot + cache and redirects into analytics
+    r = client.get("/guest", follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "/analytics"
+
+    # the guest analytics render (seeded directly — the house pattern for sessions)
+    client.cookies.set(config.SESSION_COOKIE, _seed_guest_session(taste))
+    r2 = client.get("/analytics", follow_redirects=False)
+    assert r2.status_code == 200
+    assert "Demo view" in r2.text                            # the guest banner
+    assert 'action="/classify"' not in r2.text               # auth-only action hidden
+    assert "acoustic signature" in r2.text.lower()
+
+
+def test_guest_without_profile_redirects_home(client, monkeypatch):
+    monkeypatch.setattr("src.webapp.app.load_demo_profile", lambda: None)
+    r = client.get("/guest", follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "/"
+
+
+def test_landing_shows_guest_button_when_demo_present(client, monkeypatch):
+    monkeypatch.setattr("src.webapp.app.load_demo_profile",
+                        lambda: {"range_ids": {"long_term": ["x"]}})
+    assert 'href="/guest"' in client.get("/").text
+
+
 # ── dashboard context: reads the cache, flags analyzed, queues misses ───────
 def test_build_dashboard_context(monkeypatch, tmp_path):
     from ..store.cache import FeatureCache
@@ -944,6 +990,16 @@ def _seed_session(taste=None):
     sess["token"] = {"access_token": "x"}  # authenticated
     if taste is not None:
         sess["taste"] = taste
+    return _signer.sign(sid)
+
+
+def _seed_guest_session(taste):
+    """A read-only guest/demo session (H7) — is_guest, no token."""
+    from .app import _signer, _store
+    sid = _store.new()
+    sess = _store.get(sid)
+    sess["is_guest"] = True
+    sess["taste"] = taste
     return _signer.sign(sid)
 
 

@@ -11,6 +11,8 @@
     <a class="btn" href="/dashboard">Open your dashboard →</a>
   {% else %}
     <a class="btn" href="/login">Log in with Spotify</a>
+    {% if has_demo %}<a class="btn ghost" href="/guest">or explore a live demo →</a>
+    <p class="cap" style="margin:.4rem 0 0">No account needed — the demo loads Jordan's own taste, read-only.</p>{% endif %}
     <div class="insight invite">
       <span class="insight-badge">Private demo — invite only</span>
       <p>

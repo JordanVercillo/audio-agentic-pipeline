@@ -12,9 +12,11 @@
         <h2 class="arch-name">{{ archetype.name }}</h2>
         <p class="muted">at home in “{{ archetype.home }}”</p>
       </div>
+      {% if not guest %}
       <form method="post" action="/classify">
         <button type="submit" class="btn arch-btn">Write my profile →</button>
       </form>
+      {% endif %}
     </div>
     <ul class="arch-evidence">
       {% for e in archetype.evidence %}<li>{{ e }}</li>{% endfor %}

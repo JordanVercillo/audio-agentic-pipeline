@@ -16,6 +16,7 @@ No Spotify secret anywhere (D-8).
 
 from __future__ import annotations
 
+import json
 import logging
 from functools import lru_cache
 from pathlib import Path
@@ -79,6 +80,22 @@ _SPECTROGRAM_DIR = _BASE.parent.parent / "data" / "spectrograms"
 
 def _spectrogram_path(track_id: str) -> Path:
     return _SPECTROGRAM_DIR / f"{Path(track_id).name}.png"  # .name strips path traversal
+
+
+_DEMO_PROFILE_PATH = _BASE.parent.parent / "data" / "demo_profile.json"
+
+
+def load_demo_profile() -> Optional[dict[str, Any]]:
+    """The owner's saved taste snapshot for guest/demo mode (H7, D-30), or None.
+
+    Written by `scripts/snapshot_demo_profile.py` from the gold warehouse; lets
+    "View as guest" render the full personalized analytics with no live token.
+    """
+    try:
+        prof = json.loads(_DEMO_PROFILE_PATH.read_text())
+    except (OSError, ValueError):
+        return None
+    return prof if isinstance(prof, dict) and prof.get("range_ids") else None
 
 _store = SessionStore(ttl_seconds=config.SESSION_TTL_SECONDS)
 _signer = CookieSigner(config.get_session_secret())
@@ -265,15 +282,54 @@ def create_app() -> FastAPI:
                 status_code=301)
         return await call_next(request)
 
+    def _is_viewer(session: dict[str, Any]) -> bool:
+        """A viewer may read the corpus/analytics surfaces: a logged-in user OR a
+        read-only guest (H7 demo). Actions that need a token or write (login,
+        dashboard fetch, /ask, /classify) still require real auth."""
+        return auth_web.is_authenticated(session) or bool(session.get("is_guest"))
+
+    def _viewer_flags(session: dict[str, Any]) -> dict[str, Any]:
+        """Template flags: `authed` = real login (Log out, personal actions),
+        `guest` = demo persona (banner), `viewer` = either (nav + read surfaces)."""
+        authed = auth_web.is_authenticated(session)
+        guest = bool(session.get("is_guest"))
+        return {"authed": authed, "guest": guest, "viewer": authed or guest}
+
     @app.get("/", response_class=HTMLResponse)
     def index(request: Request):
         authed = auth_web.is_authenticated(request.state.session)
-        return templates.TemplateResponse(request, "index.html", {"authed": authed})
+        return templates.TemplateResponse(request, "index.html",
+                                          {"authed": authed, "has_demo": load_demo_profile() is not None})
 
     @app.get("/login")
     def login(request: Request):
         url = auth_web.build_authorize_url(request.state.session)
         return RedirectResponse(url, status_code=307)
+
+    @app.get("/guest")
+    def guest(request: Request):
+        """Enter read-only DEMO mode (H7, D-30): load the owner's saved taste
+        snapshot into the session and show the full analytics — no login, no
+        5-seat gate. The interview showpiece. Guests never fetch Spotify or
+        enqueue (all snapshot tracks are already cached)."""
+        session = request.state.session
+        prof = load_demo_profile()
+        if prof is None:
+            return RedirectResponse("/", status_code=303)
+        cache = _feature_cache()
+        range_ids = {w: list(ids) for w, ids in (prof.get("range_ids") or {}).items()}
+        all_ids = [t for ids in range_ids.values() for t in ids]
+        cached = cache.get(all_ids)
+        per_range_rows = {w: [cached[i] for i in ids if i in cached]
+                          for w, ids in range_ids.items()}
+        session["is_guest"] = True
+        session["taste"] = {
+            "range_ids": range_ids,
+            "artists": prof.get("artists", []),
+            "drift": drift_over_rows(per_range_rows),
+            "coverage": {"analyzed": len(cached), "total": len(set(all_ids)), "analyzing": 0},
+        }
+        return RedirectResponse("/analytics", status_code=303)
 
     @app.get("/callback", response_class=HTMLResponse)
     def callback(request: Request, code: Optional[str] = None,
@@ -434,12 +490,14 @@ def create_app() -> FastAPI:
     @app.get("/analytics", response_class=HTMLResponse)
     def analytics(request: Request):
         session = request.state.session
-        if not auth_web.is_authenticated(session):
+        if not _is_viewer(session):
             return RedirectResponse("/", status_code=303)
         ctx = _analytics_context(session)
         if ctx is None:
-            return RedirectResponse("/dashboard", status_code=303)
-        return templates.TemplateResponse(request, "analytics.html", ctx)
+            return RedirectResponse(
+                "/dashboard" if auth_web.is_authenticated(session) else "/", status_code=303)
+        return templates.TemplateResponse(request, "analytics.html",
+                                          {**ctx, **_viewer_flags(session)})
 
     @app.post("/classify", response_class=HTMLResponse)
     def classify(request: Request):
@@ -594,33 +652,38 @@ def create_app() -> FastAPI:
     @app.get("/recommend", response_class=HTMLResponse)
     def recommend_view(request: Request):
         session = request.state.session
-        if not auth_web.is_authenticated(session):
+        if not _is_viewer(session):
             return RedirectResponse("/", status_code=303)
         ctx = _recommend_context(session, dict(request.query_params))
         if ctx is None:
-            return RedirectResponse("/dashboard", status_code=303)
-        return templates.TemplateResponse(request, "recommend.html", ctx)
+            return RedirectResponse(
+                "/dashboard" if auth_web.is_authenticated(session) else "/", status_code=303)
+        return templates.TemplateResponse(request, "recommend.html",
+                                          {**ctx, **_viewer_flags(session)})
 
     @app.get("/explore", response_class=HTMLResponse)
     def explore(request: Request, f: str = "danceability",
                 x: str = "tempo", y: str = "energy"):
         session = request.state.session
-        if not auth_web.is_authenticated(session):
+        if not _is_viewer(session):
             return RedirectResponse("/", status_code=303)
         ctx = _explore_context(session, f, x, y)
         if ctx is None:
-            return RedirectResponse("/dashboard", status_code=303)
-        return templates.TemplateResponse(request, "explore.html", ctx)
+            return RedirectResponse(
+                "/dashboard" if auth_web.is_authenticated(session) else "/", status_code=303)
+        return templates.TemplateResponse(request, "explore.html",
+                                          {**ctx, **_viewer_flags(session)})
 
     @app.get("/song/{track_id}", response_class=HTMLResponse)
     def song(request: Request, track_id: str):
-        if not auth_web.is_authenticated(request.state.session):
+        session = request.state.session
+        if not _is_viewer(session):
             return RedirectResponse("/", status_code=303)
         cache = _feature_cache()
         features = cache.get([track_id]).get(track_id)
         meta = cache.get_meta(track_id) or {}
         ctx: dict[str, Any] = {
-            "authed": True, "track_id": track_id,
+            **_viewer_flags(session), "track_id": track_id,
             "name": meta.get("track_name") or track_id,
             "artist": meta.get("artist_names") or "",
             "analyzed": features is not None,
@@ -645,10 +708,10 @@ def create_app() -> FastAPI:
 
     @app.get("/spectrogram/{track_id}")
     def spectrogram(request: Request, track_id: str):
-        # Auth-gate BEFORE the existence check so an unauthenticated caller can't
-        # use 200-vs-404 as an analyzed-track enumeration oracle. The <img> on
-        # /song sends the session cookie, so legit rendering is unaffected.
-        if not auth_web.is_authenticated(request.state.session):
+        # Gate BEFORE the existence check so a non-viewer can't use 200-vs-404 as
+        # an analyzed-track enumeration oracle. Guests (demo) may load them — the
+        # <img> on /song sends the session cookie, so legit rendering is fine.
+        if not _is_viewer(request.state.session):
             return RedirectResponse("/", status_code=303)
         path = _spectrogram_path(track_id)
         if not path.exists():

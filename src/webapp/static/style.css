@@ -26,6 +26,9 @@ footer.site a:hover { color: var(--ink); }
 .prose code { background: var(--panel-2); border-radius: 4px; padding: 0 .3rem; }
 .brand { font-weight: 700; letter-spacing: -.01em; }
 .brand span { color: var(--muted); font-weight: 500; }
+.demo-banner { background: rgba(29,185,84,.12); border-bottom: 1px solid var(--line);
+  color: var(--ink); font-size: .85rem; padding: .55rem 1rem; text-align: center; }
+.demo-banner a { color: var(--spotify); font-weight: 600; }
 header nav { display: flex; gap: 1.25rem; align-items: center; }
 header nav form.logout { margin: 0; }
 header nav form.logout button {
