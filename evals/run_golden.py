@@ -31,7 +31,7 @@ from src.webapp.evalset import (  # noqa: E402
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Gold eval set for /ask + /classify.")
     parser.add_argument("--llm", action="store_true",
-                        help="also grade the live LLM path (requires ANTHROPIC_API_KEY)")
+                        help="also grade the live LLM path (WEBAPP_LLM_MODEL=ollama:… or ANTHROPIC_API_KEY)")
     args = parser.parse_args()
 
     cases = load_golden()
@@ -41,12 +41,14 @@ if __name__ == "__main__":
     print(format_report("constant baseline (honesty anchor)", run_baseline(cases)))
 
     if args.llm:
-        import os
-        if not os.environ.get("ANTHROPIC_API_KEY"):
-            print("\n--llm requested but ANTHROPIC_API_KEY is not set; skipping.")
+        from src.webapp.rag import TasteRAG
+        rag = TasteRAG()
+        if not rag._wants_llm():
+            print("\n--llm requested but no model configured "
+                  "(set WEBAPP_LLM_MODEL=ollama:… or ANTHROPIC_API_KEY); skipping.")
         else:
             print()
             llm = run_golden(cases, force_fallback=False)
-            print(format_report("LLM path", llm))
+            print(format_report(f"LLM path ({rag.model})", llm))
 
     sys.exit(0 if fallback["passed"] == fallback["total"] else 1)

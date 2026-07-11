@@ -82,11 +82,18 @@ def get_session_secret() -> str:
 
 
 def anthropic_key() -> str | None:
-    """Optional — enables LLM RAG answers (slice 2). Absent → deterministic fallback."""
+    """Optional — enables Anthropic LLM RAG answers. Absent → local Ollama
+    (if WEBAPP_LLM_MODEL=ollama:…) or the deterministic fallback."""
     return os.environ.get("ANTHROPIC_API_KEY") or None
 
 
-# Default to the most capable model; override to a cheaper one (e.g.
-# claude-haiku-4-5) for the public pilot's cost profile via WEBAPP_LLM_MODEL.
+# The RAG model. `ollama:<name>` routes to the local Ollama server ($0, A3 —
+# no key); anything else is an Anthropic model (needs ANTHROPIC_API_KEY).
+# Default stays a hosted model so tests/CI never reach for a local server.
 def rag_model() -> str:
     return os.environ.get("WEBAPP_LLM_MODEL", "claude-opus-4-8")
+
+
+def ollama_host() -> str:
+    """Base URL of the local Ollama server (A3). Override with OLLAMA_HOST."""
+    return os.environ.get("OLLAMA_HOST", "http://localhost:11434").rstrip("/")

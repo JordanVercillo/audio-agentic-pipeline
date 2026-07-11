@@ -807,6 +807,52 @@ def test_rag_llm_refusal_falls_back(monkeypatch):
     assert res["source"] == "fallback" and "Muse" in res["answer"]
 
 
+def test_rag_ollama_path_no_key(monkeypatch):
+    # A3: a local Ollama model answers with NO api key — the $0 path.
+    import types
+
+    import requests
+
+    from .rag import TasteRAG
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    captured: dict = {}
+
+    def fake_post(url, json=None, timeout=None):
+        captured["url"] = url
+        captured["json"] = json
+        return types.SimpleNamespace(
+            raise_for_status=lambda: None,
+            json=lambda: {"message": {"content": (
+                '{"thoughts": "local reasoning", '
+                '"answer": "Your recent vibe is upbeat indie rock.", '
+                '"cited": ["Muse"]}')}})
+
+    monkeypatch.setattr(requests, "post", fake_post)
+    res = TasteRAG(model="ollama:gemma4:12b").answer("what's my vibe?", _TASTE)
+    assert res["source"] == "llm" and res["model"] == "ollama:gemma4:12b"
+    assert "indie" in res["answer"].lower() and res["cited"] == ["Muse"]
+    # dispatched to the local server, prefix stripped, on-GPU ctx cap + json grammar
+    assert captured["url"].endswith("/api/chat")
+    assert captured["json"]["model"] == "gemma4:12b"
+    assert captured["json"]["format"] == "json"
+    assert captured["json"]["options"] == {"num_ctx": 8192, "temperature": 0}
+    assert "Muse" in captured["json"]["messages"][1]["content"]  # grounded, no key needed
+
+
+def test_rag_ollama_unreachable_falls_back(monkeypatch):
+    import requests
+
+    from .rag import TasteRAG
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+
+    def boom(*a, **k):
+        raise requests.ConnectionError("no ollama server")
+
+    monkeypatch.setattr(requests, "post", boom)
+    res = TasteRAG(model="ollama:gemma4:12b").answer("hi", _TASTE)
+    assert res["source"] == "fallback"                    # never fakes success, never raises
+
+
 def _seed_session(taste=None):
     from .app import _signer, _store
     sid = _store.new()

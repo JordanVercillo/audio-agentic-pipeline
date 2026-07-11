@@ -6,9 +6,10 @@ their own retrieved data: the acoustic overlap insight, taste drift, top
 artists/genres, top tracks, and the gold `column_descriptions` feature glossary
 (the same feature store P5's agent reads — shared retrieval core, D-10/D-5).
 
-    - With ANTHROPIC_API_KEY: Claude writes the answer from the grounding block,
-      instructed to cite only what's in the data and invent nothing.
-    - Without a key: a deterministic template answer from the same facts (D-5).
+    - `WEBAPP_LLM_MODEL=ollama:gemma4:12b`: a LOCAL model writes it, $0, no key
+      (A3) — instructed to cite only what's in the data and invent nothing.
+    - Otherwise with ANTHROPIC_API_KEY: Claude does the same from the grounding.
+    - With neither: a deterministic template answer from the same facts (D-5).
 
 The LLM only ever sees the visitor's retrieved rows — it does not free-associate.
 A SQL-tool variant (letting the model query a per-session WarehouseAgent over the
@@ -71,6 +72,35 @@ _SYSTEM = (
 )
 
 _MAX_TOKENS = 1024  # a taste answer is deliberately short — well under stream/timeout limits
+
+# A3 — the local Ollama path. gemma4:12b's 262K default context inflates the KV
+# cache past a 12 GB card's free VRAM (measured 29% CPU spill); our grounding is
+# ~2K tokens, so cap num_ctx to keep weights + KV fully on-GPU. format="json"
+# grammar-constrains a thinking model's output to one JSON object (reasoning
+# lands in the schema's `thoughts` field, not as loose prose).
+_OLLAMA_NUM_CTX = 8192
+_OLLAMA_TIMEOUT = 120  # seconds — covers a cold model load; warm calls are ~3-8 s
+
+
+def _ollama_chat(model: str, system: str, prompt: str) -> Optional[str]:
+    """Single-shot chat against the local Ollama server (A3, $0). Returns the
+    raw content string, or None on an unexpected shape. HTTP errors propagate —
+    the caller guards and falls back deterministically."""
+    import requests
+
+    resp = requests.post(
+        f"{config.ollama_host()}/api/chat",
+        json={
+            "model": model,
+            "messages": [{"role": "system", "content": system},
+                         {"role": "user", "content": prompt}],
+            "format": "json", "stream": False,
+            "options": {"num_ctx": _OLLAMA_NUM_CTX, "temperature": 0},
+            "keep_alive": "10m",  # keep it resident so back-to-back asks are warm
+        },
+        timeout=_OLLAMA_TIMEOUT)
+    resp.raise_for_status()
+    return (resp.json().get("message") or {}).get("content")
 
 
 def _grounding_text(taste: dict[str, Any], glossary: dict[str, str]) -> str:
@@ -136,14 +166,38 @@ class TasteRAG:
         self.fs = feature_store
         self.model = model or config.rag_model()
 
+    def _wants_llm(self) -> bool:
+        """True when a real model is configured: a local Ollama model (A3, no
+        key) or an Anthropic model with a key. Otherwise the deterministic path."""
+        return self.model.startswith("ollama:") or bool(config.anthropic_key())
+
+    def _chat(self, system: str, prompt: str) -> Optional[str]:
+        """Provider-agnostic single-shot chat → the raw reply text, or None.
+        `ollama:<model>` hits the local server ($0, A3); otherwise Anthropic
+        (needs a key). May raise — callers guard and fall back."""
+        if self.model.startswith("ollama:"):
+            return _ollama_chat(self.model.split(":", 1)[1], system, prompt)
+        key = config.anthropic_key()
+        if not key:
+            return None
+        import anthropic
+        client = anthropic.Anthropic(api_key=key)
+        resp = client.messages.create(
+            model=self.model, max_tokens=_MAX_TOKENS, system=system,
+            messages=[{"role": "user", "content": prompt}])
+        if resp.stop_reason == "refusal":
+            return None
+        return next((b.text for b in resp.content if b.type == "text"), "")
+
     def answer(self, question: str, taste: dict[str, Any]) -> dict[str, Any]:
         """Return {answer, source, model}. Never raises — falls back deterministically."""
         glossary = self.fs.feature_glossary(_GLOSSARY_FEATURES) if self.fs else {}
         grounding = _grounding_text(taste, glossary)
-        key = config.anthropic_key()
-        if key:
+        if self._wants_llm():
             try:
-                parsed = self._llm_answer(question, grounding, key)
+                prompt = ("DATA (the visitor's own listening + local acoustic analysis):\n"
+                          f"{grounding}\n\nQUESTION: {question}")
+                parsed = _parse_llm_json(self._chat(_SYSTEM, prompt) or "")
                 if parsed and parsed.get("answer"):
                     return {"answer": str(parsed["answer"]).strip(), "source": "llm",
                             "model": self.model,
@@ -166,8 +220,7 @@ class TasteRAG:
             return {"name": None, "narrative": "", "source": "none"}
         glossary = self.fs.feature_glossary(_GLOSSARY_FEATURES) if self.fs else {}
         grounding = _grounding_text(taste, glossary)
-        key = config.anthropic_key()
-        if key:
+        if self._wants_llm():
             try:
                 system = (
                     "You write a short second-person music-taste profile for the "
@@ -181,19 +234,12 @@ class TasteRAG:
                     '  "cited": a JSON array of the exact cluster/artist names your '
                     "narrative mentions.\n"
                     "Output only the JSON object.")
-                import anthropic
-                client = anthropic.Anthropic(api_key=key)
-                resp = client.messages.create(
-                    model=self.model, max_tokens=_MAX_TOKENS, system=system,
-                    messages=[{"role": "user", "content": f"DATA:\n{grounding}"}])
-                if resp.stop_reason != "refusal":
-                    text = next((b.text for b in resp.content if b.type == "text"), "")
-                    parsed = _parse_llm_json(text)
-                    if parsed and parsed.get("narrative"):
-                        return {"name": arch["name"],
-                                "narrative": str(parsed["narrative"]).strip(),
-                                "cited": [str(c) for c in parsed.get("cited") or []],
-                                "source": "llm", "model": self.model}
+                parsed = _parse_llm_json(self._chat(system, f"DATA:\n{grounding}") or "")
+                if parsed and parsed.get("narrative"):
+                    return {"name": arch["name"],
+                            "narrative": str(parsed["narrative"]).strip(),
+                            "cited": [str(c) for c in parsed.get("cited") or []],
+                            "source": "llm", "model": self.model}
             except Exception as exc:  # noqa: BLE001 — never fail the page
                 logger.warning("classify LLM failed (%s) — deterministic narrative", exc)
         return {"name": arch["name"], "narrative": self._archetype_narrative(taste),
@@ -213,25 +259,6 @@ class TasteRAG:
         if artists:
             parts.append(f"{artists[0]['name']} anchors it all.")
         return " ".join(parts)
-
-    def _llm_answer(self, question: str, grounding: str, key: str) -> Optional[dict]:
-        """LLM call under the A2 JSON contract → {thoughts, answer, cited} or None."""
-        import anthropic
-
-        client = anthropic.Anthropic(api_key=key)
-        prompt = (
-            "DATA (the visitor's own listening + local acoustic analysis):\n"
-            f"{grounding}\n\nQUESTION: {question}")
-        resp = client.messages.create(
-            model=self.model,
-            max_tokens=_MAX_TOKENS,
-            system=_SYSTEM,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        if resp.stop_reason == "refusal":
-            return None
-        text = next((b.text for b in resp.content if b.type == "text"), "")
-        return _parse_llm_json(text)
 
     def _fallback(self, taste: dict[str, Any]) -> str:
         """Deterministic, visitor-facing answer from the retrieved facts (D-5)."""
