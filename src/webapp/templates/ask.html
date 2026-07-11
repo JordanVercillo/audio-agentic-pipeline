@@ -13,7 +13,8 @@
   <div class="qa">
     <p class="q">{{ question }}</p>
     <div class="a">{{ answer }}</div>
-    <p class="src">{{ 'Grounded in your data · LLM' if source == 'llm' else 'Grounded in your data' }}</p>
+    <p class="src">Grounded in your data{% if source == 'llm' %} ·
+      {% if model and model.startswith('ollama:') %}local {{ model[7:] }} ($0){% else %}{{ model or 'LLM' }}{% endif %}{% endif %}</p>
   </div>
 
   <a class="btn ghost" href="/dashboard">← Back to your dashboard</a>

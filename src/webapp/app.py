@@ -335,6 +335,7 @@ def create_app() -> FastAPI:
         return templates.TemplateResponse(request, "ask.html", {
             "authed": True, "question": question,
             "answer": result["answer"], "source": result["source"],
+            "model": result.get("model"),
         })
 
     def _analytics_context(session: dict[str, Any]) -> Optional[dict[str, Any]]:

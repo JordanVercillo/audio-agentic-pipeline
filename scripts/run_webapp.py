@@ -30,4 +30,12 @@ if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
 if __name__ == "__main__":
+    # Warm the local LLM in the background (A3) so the first /ask isn't a ~90 s
+    # cold load — a no-op unless WEBAPP_LLM_MODEL=ollama:… ; never blocks startup.
+    import threading
+
+    from src.webapp import config
+    from src.webapp.rag import warm_model
+    threading.Thread(target=warm_model, args=(config.rag_model(),), daemon=True).start()
+
     uvicorn.run("src.webapp.app:app", host="127.0.0.1", port=8000, reload=False)

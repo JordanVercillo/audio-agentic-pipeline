@@ -853,6 +853,43 @@ def test_rag_ollama_unreachable_falls_back(monkeypatch):
     assert res["source"] == "fallback"                    # never fakes success, never raises
 
 
+def test_warm_model_noop_for_non_ollama(monkeypatch):
+    import requests
+
+    from .rag import warm_model
+
+    def boom(*a, **k):  # would fire only if it tried to reach a server
+        raise AssertionError("warm_model must not call out for a hosted model")
+
+    monkeypatch.setattr(requests, "post", boom)
+    warm_model("claude-opus-4-8")     # returns immediately, no network
+    warm_model("")
+
+
+def test_warm_model_pings_ollama(monkeypatch):
+    import requests
+
+    from .rag import warm_model
+    hits: dict = {}
+    monkeypatch.setattr(requests, "post", lambda url, **k: hits.setdefault("url", url) or type(
+        "R", (), {"raise_for_status": lambda self: None,
+                  "json": lambda self: {"message": {"content": "{}"}}})())
+    warm_model("ollama:gemma4:12b")   # best-effort preload
+    assert hits["url"].endswith("/api/chat")
+
+
+def test_ask_route_surfaces_local_model(client, monkeypatch, tmp_path):
+    # A3: the /ask page credits the local model when Ollama answered.
+    from .rag import TasteRAG
+    monkeypatch.setattr(TasteRAG, "answer", lambda self, q, t: {
+        "answer": "Your vibe is bright indie.", "source": "llm",
+        "model": "ollama:gemma4:12b", "cited": []})
+    client.cookies.set(config.SESSION_COOKIE, _seed_session(taste={"profile": {}}))
+    r = client.post("/ask", data={"q": "vibe?"})
+    assert r.status_code == 200
+    assert "local gemma4:12b ($0)" in r.text             # honest, credits the $0 local model
+
+
 def _seed_session(taste=None):
     from .app import _signer, _store
     sid = _store.new()

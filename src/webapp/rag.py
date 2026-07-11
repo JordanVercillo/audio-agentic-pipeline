@@ -58,10 +58,13 @@ _GLOSSARY_FEATURES = ["tempo_bpm", "rms_mean", "spectral_centroid_mean"]
 _SYSTEM = (
     "You are a warm, precise music-taste analyst for Vercillo Analytics. Answer "
     "the visitor's question USING ONLY the DATA provided about their own Spotify "
-    "listening and its local acoustic analysis. Cite their real tracks, artists, "
-    "genres, and numbers. NEVER invent tracks, artists, or statistics that are not "
-    "in the DATA. If the DATA cannot answer the question, say what you can see "
-    "instead.\n"
+    "listening and its local acoustic analysis. NEVER invent tracks, artists, or "
+    "statistics that are not in the DATA. If the DATA cannot answer the question, "
+    "say what you can see instead.\n"
+    "GROUND CONCRETELY: name at least one of their actual artists or tracks from "
+    "the DATA, and when the DATA gives a labelled result (a drift label like "
+    "\"Moderate drift\", a sound-bucket name, an archetype), reuse that label "
+    "VERBATIM — copy its exact words, never paraphrase it into a synonym.\n"
     "Reply as a single JSON object with EXACTLY these fields, in this order:\n"
     '  "thoughts": your brief reasoning about what the DATA supports (1-2 sentences),\n'
     '  "answer": the reply shown to the visitor — 2-4 sentences, second person '
@@ -80,6 +83,20 @@ _MAX_TOKENS = 1024  # a taste answer is deliberately short — well under stream
 # lands in the schema's `thoughts` field, not as loose prose).
 _OLLAMA_NUM_CTX = 8192
 _OLLAMA_TIMEOUT = 120  # seconds — covers a cold model load; warm calls are ~3-8 s
+
+
+def warm_model(model: str) -> None:
+    """Preload an Ollama model so the first real /ask is fast (a cold 12B load is
+    ~90 s; keep_alive holds it warm after). No-op for non-Ollama models; never
+    raises — a missing server just means the first ask pays the load."""
+    if not model.startswith("ollama:"):
+        return
+    try:
+        _ollama_chat(model.split(":", 1)[1], "warm-up",
+                     "Reply with an empty JSON object: {}")
+        logger.info("ollama model %s warmed", model)
+    except Exception as exc:  # noqa: BLE001 — warm-up is best-effort
+        logger.info("ollama warm-up skipped (%s)", exc)
 
 
 def _ollama_chat(model: str, system: str, prompt: str) -> Optional[str]:
@@ -224,8 +241,10 @@ class TasteRAG:
             try:
                 system = (
                     "You write a short second-person music-taste profile for the "
-                    f"archetype \"{arch['name']}\". Use ONLY the DATA: cite the real "
-                    "cluster names, artists, and numbers it contains; invent nothing.\n"
+                    f"archetype \"{arch['name']}\". Use ONLY the DATA: name the real "
+                    "cluster/sound-bucket names and artists it contains, reusing those "
+                    "labels VERBATIM (copy their exact words, don't paraphrase); "
+                    "invent nothing.\n"
                     "Reply as a single JSON object with EXACTLY these fields, in this order:\n"
                     '  "thoughts": brief reasoning about what the DATA supports,\n'
                     '  "narrative": the profile shown to the visitor — 3-5 sentences, warm '
