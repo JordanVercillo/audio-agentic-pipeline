@@ -511,3 +511,145 @@ throughout, starting T0 = 2026-07-11/12.** Every slice holds
 the ground rules: bridge key, Parquet, PKCE-no-secret, synthetic tests
 (code-correctness only — product data stays REAL), $0, evals before LLM
 surfaces, live browser validation to close every build.
+
+---
+
+# Vision D — feature roadmap batch 2 (owner list 2026-07-11, post-pilot)
+
+The owner's 16-item list, audited. **Most of it is already specced** — this
+section adds the genuinely new work (2 epics + 1 bug), reshapes MPD/Spark from
+PARKED to ACTIVE (as **metadata-only**, un-parking Spark), and sets an
+interleaved sequence.
+
+## Where each of the 16 items lives
+
+| # | Item | Home | Status |
+|---|---|---|---|
+| 1 | Filter all songs vs your features / public access | **Epic H** | specced |
+| 2 | Brainstorm reliable audio source | **D-22 + Epic O** | decided: harden yt-dlp, no source switch |
+| 3 | What are all the taste archetypes | **Epic N** (new) | NEW |
+| 4 | Popularity on hover | **H3** | specced (Phase 1) |
+| 5 | All songs with audio features | **H1** (`/songs`) | specced |
+| 6 | All your engineered/ingested songs | **H1** "mine" filter | specced |
+| 7 | Playlists + ingested/engineered status | **Epic I** | specced |
+| 8 | MPD for constant training data | **Epic J** (reshaped) | metadata-only, un-parked |
+| 9 | Ollama talk-to-songs + bucketing | **Epic K** | specced |
+| 10 | Ingestion progress / when to come back | **exists** (`/status`) + Epic I | enrich |
+| 11 | UI polish, fields cut off | **H4** | specced (Phase 1) |
+| 12 | Cleanup + how-to + portfolio case study | **Epic L-lite** | specced |
+| 13 | Push to public GitHub | **Epic L-flip** | specced |
+| 14 | Explain σ-shift / std dev to users | **Epic N** (new) | NEW |
+| 15 | Remove duplicate songs + methodology | **Epic O** (new) | NEW |
+| 16 | Recommend-seed targets don't update on new seed | **Bug B1** (new) | NEW |
+
+## Decisions (continue numbering)
+
+- **D-26: MPD is METADATA-ONLY (owner, 2026-07-11) — affirms D-19, does NOT
+  reverse it.** No YouTube audio acquisition off MPD, ever. MPD gives real
+  *behavioral* signal (playlist co-occurrence, embeddings); our *acoustic*
+  features stay bounded to user-brought tracks (159+). Honest limitation
+  documented in the UI: hybrid acoustic×co-occurrence reco is strongest on the
+  **overlap** (MPD tracks we also have audio for); pure co-occurrence spans all
+  MPD tracks, pure acoustic spans ours.
+- **D-27: Spark UN-PARKS for the MPD metadata layer — the real-data trigger has
+  fired.** Spark is the right tool for 66M playlist-track rows (co-occurrence,
+  track2vec, dedup, aggregation). It is the **WRONG** tool for audio extraction
+  (I/O-bound download = the existing queue+workers); **Spark never touches the
+  download path.** This split IS the portfolio point (right tool per stage).
+  No synthetic volume — Spark runs on REAL 66M MPD rows (honors the real-data
+  vision; [[real-data-only-no-synthetic-benchmarks]]).
+- **D-28: dedup is a FLAG + an acquisition guard, never a second ID.** Ground
+  rule #1 holds — `spotify_track_id` stays THE bridge key. Dedup detects
+  near-duplicates (same name+artist+~duration, or audio-feature near-identity)
+  and (a) flags them for display/analysis, (b) skips re-downloading audio for a
+  track whose twin is already cached (efficiency), (c) adds a warehouse-audit
+  `DUPLICATE_TRACKS` check. It does NOT mint a canonical-id join key.
+- **D-29: sequence = INTERLEAVE (owner):** Phase 1 bugs + quick wins → Phase 2
+  MPD/Spark (data-platform depth) → Phase 3 public showcase + GitHub publish.
+
+## Epic N — Explainability & legibility (NEW, Phase 1)
+
+Make the analytics legible to non-experts — a genuine product/DS-communication
+portfolio signal.
+- **N1 — stats explainer** (item 14): plain-language glossary + inline "how to
+  read this" for **σ / standard deviation / RMS σ-shift / percentile** wherever
+  they appear (/analytics signature, drift, /explore chips). E.g. "σ = standard
+  deviation — how far from typical; ±1σ ≈ more unusual than ~68% of tracks."
+  Deterministic, no LLM. Tooltips + one expandable methodology note.
+- **N2 — archetype taxonomy** (item 3): a page/section listing all **12
+  archetypes** — "The {motion} {breadth}", motion ∈ {Anchored, Drifting,
+  Roaming, Shape-shifting} (D-9 σ-bands) × breadth ∈ {Loyalist, Dualist,
+  Eclectic} — each with its plain-language definition + the threshold that
+  earns it, and "you are here" highlighted for the logged-in user. Reads
+  straight from `archetype.py` (single source of truth — no drift).
+
+**Accept:** every σ/percentile on the site has a hover/why; the 12-archetype
+map renders with the user's cell marked; deterministic + tested.
+
+## Epic O — Dedup & acquisition quality (NEW, Phase 1)
+
+Items 2 + 15 — data-quality that becomes load-bearing before any scale work.
+- **O1 — dedup** (D-28): a near-duplicate detector (name+artist normalized +
+  duration window, with audio-feature cosine as a tiebreak when both are
+  cached) → a `duplicate_of` FLAG (display/analysis only, NOT a join key) +
+  intake guard (don't re-download a twin) + warehouse-audit `DUPLICATE_TRACKS`.
+- **O2 — acquisition-match hardening** (D-22, brainstorm result): the audio
+  brainstorm's honest answer is *harden matching, don't switch source* —
+  duration check vs Spotify `duration_ms`, official-audio preference, logged
+  **match confidence**; the real risk is wrong-version matches (live/cover),
+  not yt-dlp itself. 30s previews stay REJECTED (feature-comparability). This
+  matters more as the corpus grows via real users.
+
+**Accept:** the DUPLICATE_TRACKS audit flags known dupes; a re-ingest of a twin
+is skipped with a logged reason; match-confidence is recorded per extraction.
+
+## Epic J — MPD (RESHAPED: metadata-only, ACTIVE, Phase 2)
+
+Un-parked as metadata-only (D-26) + Spark un-park (D-27). The owner's
+"systematic local script" = an MPD **metadata** ETL driver (no audio).
+- **J0 — intake:** license + download (~5.4 GB, AIcrowd; NEVER committed —
+  research license, `data/` gitignored) + `scripts/mpd_intake.py` (owner runs
+  locally; stages an MPD slice → validate → merge, repeatable + idempotent).
+- **J1 — Spark metadata ETL:** playlists / tracks / playlist_tracks staged
+  (~66M rows) → **dedup (Epic O)** → **co-occurrence mart** (track-track
+  co-occurrence counts) + **track2vec** (playlists as sequences → skip-gram →
+  track embeddings). Parquet, hash-bucket partitioned on the bridge key.
+- **J2 — hybrid recommender:** acoustic (our z-distance) × co-occurrence (MPD
+  embeddings) combined on the overlap; graceful degradation to whichever
+  single signal a track has (D-26 honesty).
+- **J3 — Spark-at-scale proof:** run J1 on the REAL 66M rows in Spark local
+  mode (partitioned slices if RAM-bound), benchmark throughput + the
+  partitioning story → the honest "at scale on real data" artifact SCALING.md
+  promised. No synthetic rows.
+- The saved dbt/Recce references (§Epic J parked block above) inform J1's
+  modeling; evaluating dbt as the transform framework is a J-stretch.
+
+**Accept:** `mpd_intake.py` loads a slice end-to-end; co-occurrence + embeddings
+marts build via Spark on real rows; hybrid reco returns sensible neighbors on
+the overlap; parity/quality tested on a small REAL fixture slice (never
+synthetic); benchmark documented.
+
+## Bug B1 — recommend-seed targets don't refresh (Phase 1)
+
+Item 16: in `/recommend` seed mode, selecting a NEW seed song doesn't update the
+min/target/max tunables (they keep the previous fill or stay blank). Repro +
+root-cause first (likely: the target inputs retain prior submitted values over
+the new seed's server-side fill, or the seed change doesn't re-trigger
+`seed_targets`). Fix so a new seed re-derives + repopulates every visible target;
+regression test on the seed→targets mapping.
+
+## Sequence — Vision D (owner-approved interleave, D-29)
+
+- **Phase 1 — bugs + quick wins** (fast, mostly frontend, high-value):
+  **B1** (seed bug) · **H3** (popularity hover) · **H4** (UI cut-off sweep) ·
+  **N1** (stats explainer) · **N2** (archetype taxonomy) · **O1** (dedup) .
+- **Phase 2 — MPD + Spark** (data-platform depth): **J0 → J1 → J2 → J3** +
+  **O2** (match hardening folds in as the corpus grows).
+- **Phase 3 — share + publish** (last): **H0/H1/H2/H5/H6** (full public
+  showcase) · **Epic I** (playlists — pairs here, needs re-consent) ·
+  **Epic K** (agentic chat/bucketing — benefits from the richer post-MPD data) ·
+  **L-lite → L-flip** (case study, then public GitHub).
+
+Same ground rules throughout: bridge key, Parquet, PKCE-no-secret, REAL data
+only (synthetic = test fixtures for code-correctness only), $0, evals before LLM
+surfaces, live browser validation to close every build.

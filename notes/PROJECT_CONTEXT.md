@@ -186,12 +186,16 @@
   D-20 (filter-repo history scrub before public flip), D-21 (llm_knowledge_base
   EXCLUDED from public repo — course material), D-22 (yt-dlp stays, harden
   matching — duration check, official-audio preference; iTunes 30s previews
-  REJECTED on feature-comparability honesty). **➡️ NEXT ACTION — build Epic H
-  (public showcase mode): H0 guest rendering core → H1 /songs catalog (+authed
-  "mine" filter) → H2 guest deep-dives+recommend → H3 popularity-on-hover →
-  H4 UI cut-off sweep → H5 Cloudflare Worker always-up fallback → H6 landing
-  copy.** Sequence after H: L-lite (case study + README) → I (playlists) → K
-  (agentic chat, evals first) → L-flip (scrub + public GitHub); J parked.
+  REJECTED on feature-comparability honesty). **➡️ NEXT ACTION — Vision D Phase 1 — bugs + quick wins: B1 recommend-seed refresh, H3
+  popularity-on-hover, H4 UI cut-off sweep, N1 stats/σ explainer, N2 the
+  12-archetype taxonomy, O1 dedup-as-flag.** Then Phase 2 = MPD/Spark
+  METADATA-ONLY (D-26…D-29: J0 local intake script → J1 Spark co-occurrence +
+  track2vec on real 66M rows → J2 hybrid acoustic×co-occurrence reco → J3
+  real-66M-row Spark benchmark; Spark NEVER on the download path). Phase 3 =
+  public showcase (H full) + I (playlists) + K (agentic chat) + L publish.
+  Vision D also added Epic N (explainability), Epic O (dedup + yt-dlp
+  match-hardening), Bug B1 — full spec in VISION_SPECS §"Vision D". Start Phase
+  1 with the app running (`start_app`); J-audio + M-notifications stay parked.
 - ✅ **SECURITY + ROBUSTNESS REVIEW (2026-07-09, commits 26891b1←): whole-app
   audit via 2 review subagents + a strategic pass; 7 real fixes, all tested,
   deployed, 286 green.** **Security surface came back STRONG** — auth, session
@@ -1135,4 +1139,11 @@ narrative goes to `notes/engineering_journal.md`, plans to
   **0.115→0.146** — more real data, cleaner structure) + artists (64, k=2); app
   + warehouse audits ALL-GREEN. First real external user ingested end-to-end —
   the pilot flow is proven on a stranger's library, not just the owner's. Seat 2
-  (the second pilot user) not yet run.
+  (the second pilot user) not yet run. **✅ VISION D SPECCED post-pilot (owner's 16-item list):
+  most already covered (H/I/K/L); NEW = Epic N (explainability: σ/stats
+  explainer + 12-archetype taxonomy), Epic O (dedup-as-flag + yt-dlp match
+  hardening), Bug B1 (recommend-seed refresh). MPD+Spark UN-PARKED METADATA-ONLY
+  (D-26 affirms D-19 / D-27 Spark for 66M-row metadata not the download path /
+  D-28 dedup = flag not a 2nd ID / D-29 interleave). App STOPPED + cache backed
+  up (159 tracks) at session close. Left off: Vision D Phase 1 is the next build
+  (start with B1 or the quick UI wins); NEW SESSION: run `/resume`.**
