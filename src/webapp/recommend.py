@@ -73,6 +73,29 @@ def seed_targets(seed_row: dict[str, Any], allowed: set[str],
     return out
 
 
+def apply_seed_targets(seed: str, prev_seed: str, constraints: list[Constraint],
+                       seed_row: Optional[dict[str, Any]], allowed: set[str],
+                       popularity: Optional[int] = None) -> list[Constraint]:
+    """Resolve the seed → target fill for the /recommend form (Epic G) — the B1 fix.
+
+    (Re)fill VISIBLE targets from the seed when the seed just CHANGED from what
+    the form was last filled from (`prev_seed`), OR when no targets exist yet.
+    A seed change drops the previous seed's auto-filled targets first, so picking
+    a new seed actually overrides the old one's values (the B1 bug: it used to
+    only fill when zero targets were present, so a new seed submitted alongside
+    the previous seed's targets was ignored). An unchanged seed preserves targets
+    the user hand-tuned; min/max constraints are never touched.
+    """
+    if not seed or seed_row is None:
+        return constraints
+    seed_changed = seed != prev_seed
+    if not (seed_changed or not any(c.kind == "target" for c in constraints)):
+        return constraints
+    if seed_changed:
+        constraints = [c for c in constraints if c.kind != "target"]
+    return constraints + seed_targets(seed_row, allowed, popularity)
+
+
 def _zscale(stats: dict[str, tuple[float, float]], col: str, diff: float) -> float:
     mean_std = stats.get(col)
     std = mean_std[1] if mean_std else 0.0

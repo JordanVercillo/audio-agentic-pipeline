@@ -15,6 +15,7 @@ from . import config
 from .app import create_app
 from .recommend import (
     Constraint,
+    apply_seed_targets,
     parse_constraints,
     popularity_stats,
     recommend,
@@ -86,6 +87,31 @@ def test_seed_targets_are_visible_constraints():
     got = recommend(_ROWS, cons, _STATS, exclude={"fast_loud"})
     assert got[0]["id"] == "mid"                        # nearer to fast_loud than slow_quiet
     assert got[-1]["id"] == "slow_quiet"
+
+
+def test_apply_seed_targets_refills_when_seed_changes():
+    # B1: picking a NEW seed must override the previous seed's still-in-the-form
+    # targets — not silently keep them (the old bug only filled when 0 targets).
+    rowA = {"energy": 0.2, "tempo": 90.0}
+    rowB = {"energy": 0.9, "tempo": 175.0}
+    # first seed, empty form → fills from A
+    c1 = apply_seed_targets("A", "", [], rowA, _ALLOWED)
+    assert {c.column: c.value for c in c1 if c.kind == "target"} == {"energy": 0.2, "tempo": 90.0}
+    # switch to B while A's targets are still in the form (prev_seed="A") → refill from B
+    stale = [Constraint("energy", "target", 0.2), Constraint("tempo", "target", 90.0)]
+    c2 = apply_seed_targets("B", "A", stale, rowB, _ALLOWED)
+    assert {c.column: c.value for c in c2 if c.kind == "target"} == {"energy": 0.9, "tempo": 175.0}
+    # same seed unchanged → preserve a hand-tuned target, don't clobber it
+    tuned = [Constraint("energy", "target", 0.55)]
+    c3 = apply_seed_targets("B", "B", tuned, rowB, _ALLOWED)
+    assert {c.column: c.value for c in c3 if c.kind == "target"} == {"energy": 0.55}
+    # a seed change keeps min/max the user set (only targets are re-derived)
+    mixed = [Constraint("tempo", "min", 100.0), Constraint("energy", "target", 0.2)]
+    c4 = apply_seed_targets("B", "A", mixed, rowB, _ALLOWED)
+    assert Constraint("tempo", "min", 100.0) in c4
+    assert {c.column: c.value for c in c4 if c.kind == "target"} == {"energy": 0.9, "tempo": 175.0}
+    # no seed → untouched
+    assert apply_seed_targets("", "A", stale, None, _ALLOWED) == stale
 
 
 def test_zero_spread_axis_cannot_rank():

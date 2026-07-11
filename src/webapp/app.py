@@ -52,10 +52,10 @@ from .explore import (
 from .featurestore import FeatureStore
 from .rag import TasteRAG
 from .recommend import (
+    apply_seed_targets,
     parse_constraints,
     popularity_stats,
     recommend,
-    seed_targets,
     stats_from_frame,
 )
 from .sessions import CookieSigner, SessionStore
@@ -548,10 +548,13 @@ def create_app() -> FastAPI:
         if seed not in perceptual:
             seed = ""
         constraints = parse_constraints(params, allowed)
-        if seed and not any(c.kind == "target" for c in constraints):
-            # "more like this": the seed's own values become VISIBLE targets
-            constraints = constraints + seed_targets(
-                perceptual[seed], allowed, pops.get(seed))
+        # "more like this": the seed's own values become VISIBLE targets. B1 —
+        # re-fill when the seed CHANGED (vs the hidden prev_seed the form was last
+        # filled from), not only when targets are empty, else a new seed's values
+        # never override the previous seed's still-in-the-form targets.
+        constraints = apply_seed_targets(
+            seed, params.get("prev_seed") or "", constraints,
+            perceptual.get(seed) if seed else None, allowed, pops.get(seed))
 
         stats = stats_from_frame(stats_df)
         pstats = popularity_stats(pops)

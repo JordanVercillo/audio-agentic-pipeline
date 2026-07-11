@@ -16,6 +16,7 @@
   {% else %}
 
   <form method="get" action="/recommend" class="reco-form">
+    <input type="hidden" name="prev_seed" value="{{ seed }}">
     <div class="reco-seed">
       <label for="seed"><b>Seed</b> — fill the targets from a song you like</label>
       <select name="seed" id="seed">
