@@ -119,10 +119,29 @@
   harmony → z-balanced chroma+MFCC stack. Final corpus: mode 3–4
   sections/track, max 14, min dur 7.1s, 549 sections; spot-checks: Prayer
   A-B-A-B-A, Hexagons 9 secs/4 letters, KoC 3 coarse-but-honest.
-  **➡️ NEXT BUILD: ④ Epic G — the recommendation explorer** (the capstone:
-  tunable min/max/target filters over our features + meter + popularity,
-  seed-track mode, z-distance + cluster-aware ranking — all ingredients live)
-  — then ⑤ A3 Ollama, ⑥ polish.
+  ✅ **④ EPIC G — RECOMMENDATION EXPLORER DONE (2026-07-10/11, commits
+  →bcd0fb3+, 325 tests, deployed, browser-validated):** the capstone —
+  Spotify's retired `/recommendations` rebuilt TRANSPARENTLY over our
+  features: `src/webapp/recommend.py` (pure engine: whitelisted min_/max_/
+  target_ tunables; hard filters prune; targets rank by z-distance against
+  feature_stats — a tempo miss and an energy miss compare in σ; tracks
+  missing a constrained value sit out; deterministic (score,id));
+  **seed mode fills VISIBLE targets** from the seed's own values ("more like
+  this" with no hidden model — every knob shows in the form); popularity
+  rides as a constraint axis (fetched context; analysis use only). `/recommend`
+  route + tunables-table UI + ranked results (value chips, cluster colors,
+  Δσ, /song links), nav entry, song-page "More like this — tune it" seeding.
+  **Real-data proof:** obscure-mover hunt works (all results < pop 50);
+  "more like The Groove" neighbors at 0.81–0.95σ; meter hunt min=max=3
+  returns EXACTLY the 17 tracks F-v2b recorded as 3/4 (cross-feature
+  consistency). **NEW STANDING PRACTICE (owner ask): every build ends with a
+  LIVE BROWSER validation** — Browser pane on vercilloanalytics.com verified
+  the landing (incl. CF email-obfuscation decoding), /recommend auth-gating,
+  and www→apex through the real edge (authed pages = route tests + owner
+  click-path, credentials never handled). **THE ROADMAP'S AUDIO WORK IS
+  COMPLETE (①②③④). ➡️ NEXT: ⑤ A3 Ollama local-LLM** (plan in VISION_SPECS
+  §A3: gemma4:12b, num_ctx 8192, JSON contracts, guarded by the F0 golden
+  evals) **or ⑥ polish** (DMARC tighten, loudness curve on /analytics).
 - ✅ **SECURITY + ROBUSTNESS REVIEW (2026-07-09, commits 26891b1←): whole-app
   audit via 2 review subagents + a strategic pass; 7 real fixes, all tested,
   deployed, 286 green.** **Security surface came back STRONG** — auth, session
@@ -967,3 +986,17 @@ narrative goes to `notes/engineering_journal.md`, plans to
   DONE — the within-track story is complete (spectrogram + loudness curve +
   fades + bar grid + section ribbon). Next: ④ Epic G recommendation explorer
   (capstone), then ⑤ A3 Ollama, ⑥ polish.**
+- **2026-07-10/11 (session 22 — Epic G, the recommendation explorer):** The
+  capstone in 2 commits (pure engine → surface, →bcd0fb3). The retired
+  /recommendations rebuilt transparently: whitelisted tunables, z-distance
+  ranking on the stats mart, visible seed targets, popularity as a
+  constraint axis, missing-value exclusion, deterministic ordering. Real-data
+  proof incl. the cross-feature consistency check (meter hunt = exactly
+  F-v2b's 17 3/4-tracks). Owner asked for live browser validation at the end
+  of builds → done for this deploy (landing + auth gates + www redirect
+  through the real edge) and saved as a standing practice (memory +
+  conventions). 325 tests, all audits green, deployed. **Left off: the
+  audio-features roadmap (①–④) is COMPLETE — the app now rebuilds BOTH
+  retired Spotify endpoints end-to-end. Next fork: ⑤ A3 Ollama (real $0 LLM
+  for /ask+/classify, evals-guarded) or ⑥ polish. Jordan should log in and
+  click through /recommend — seed a song and tune.**
