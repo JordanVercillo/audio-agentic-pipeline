@@ -1151,3 +1151,24 @@ narrative goes to `notes/engineering_journal.md`, plans to
   D-28 dedup = flag not a 2nd ID / D-29 interleave). App STOPPED + cache backed
   up (159 tracks) at session close. Left off: Vision D Phase 1 is the next build
   (start with B1 or the quick UI wins); NEW SESSION: run `/resume`.**
+- **2026-07-11 (session 26 — Vision D Phase 1 build, Fable 5): 3 slices shipped,
+  browser-validated, 337 tests green, CI green.** ✅ **D-31 rename** (dropped
+  "Taste Pilot" → top-left is just "Vercillo Analytics"; nav/title/FastAPI +
+  test, commit 3cb0d31). ✅ **B1** (commit 7c34084): `/recommend` seed targets
+  now REFRESH when you pick a new seed — extracted a pure `apply_seed_targets`
+  that re-fills on seed-change (tracked via a hidden `prev_seed` field), drops
+  the prior seed's auto-targets, preserves hand-tuned ones; 5-assert regression
+  test. ✅ **H7 / D-30 guest demo persona** (commit 57c2397 — the interview
+  showpiece): `scripts/snapshot_demo_profile.py` (gold warehouse → gitignored
+  `data/demo_profile.json`, 117 cached tracks); `GET /guest` → read-only session
+  preloaded with the owner's taste → the FULL personalized analytics with NO
+  login/5-seat gate; `_is_viewer` opens the cache-only read surfaces (/analytics
+  /explore /recommend /song /spectrogram) to guests while token/write actions
+  stay auth-only; landing "View as guest" CTA + demo banner + guest nav +
+  /classify hidden for guests; 3 tests. **Live browser-validated on 127.0.0.1:8000:**
+  rename shows, guest → /analytics renders archetype "The Anchored Loyalist" +
+  signature + drift + map + loudness arc + Muse bucket, banner + guest nav
+  present, /classify hidden. App REDEPLOYED (restart, cache backed up), all-green.
+  **Left off: Phase 1 REMAINING = H3 popularity-on-hover, H4 UI cut-off sweep,
+  N1 stats/σ explainer, N2 12-archetype taxonomy, O1 dedup-as-flag. NEW SESSION:
+  run `/resume`.**
