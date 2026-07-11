@@ -154,9 +154,27 @@
   gitignored .env; code default stays hosted so CI never hits a server); /ask
   credits "local gemma4:12b ($0)". **THE ENTIRE ROADMAP ①–⑤ IS COMPLETE — both
   retired Spotify endpoints rebuilt + a reco engine + real $0 local LLM, all
-  evals-guarded. ➡️ ONLY ⑥ POLISH REMAINS** (DMARC p=none→quarantine, loudness
-  curve on /analytics) — or new direction. Owner click-path to see gemma4 live:
-  log in → dashboard → ask box → a real question.
+  evals-guarded. ✅ **⑥ POLISH — LOUDNESS-ON-/ANALYTICS DONE (2026-07-11, commit
+  c7ffe95, 333 tests, deployed, all audits green):** "Your typical track's
+  loudness arc" on `/analytics` — the MEDIAN within-track loudness *shape* across
+  the visitor's analyzed tracks (each stored dBFS curve normalized to its own
+  dynamic range + resampled onto a common 0→1 timeline) with a middle-50%
+  (p25–p75) IQR band. Pure `average_loudness_arc` + `loudness_arc_svg` in
+  analytics.py; `cache.loudness_curves(ids)` bulk getter (all_popularity
+  pattern); wired in `_analytics_context` BEFORE the model block (needs no
+  trained clusters); template section + honest caption; `.loud-band` CSS.
+  **Deliberately distinct from the absolute "Loudness" signature dim** (shape,
+  not level — no duplication). Central line is the median + IQR band = quantiles,
+  so the band brackets the line by construction (a mean can fall outside a skewed
+  IQR — caught by a test, journal #26). Real corpus: varied intro (median .61,
+  band .31–.77) → sustained loud body (~.95, tight) → collapse to silence at the
+  very end (median .00) — that aggregate fade-out corroborates F-v2c (fade-outs
+  34% > fade-ins 19%). Deployed via `app_control restart` (cache backed up on
+  stop); app-verify ALL-GREEN, live edge 200/303, arc DOM-verified in the Browser
+  pane (117 tracks, band + axis labels + caption). **➡️ ONLY DMARC TIGHTEN
+  REMAINS of ⑥** (p=none→quarantine now that mail flows clean) — or a new
+  direction. Owner click-path to see the arc live: log in → /analytics → scroll
+  to "Your typical track's loudness arc".
 - ✅ **SECURITY + ROBUSTNESS REVIEW (2026-07-09, commits 26891b1←): whole-app
   audit via 2 review subagents + a strategic pass; 7 real fixes, all tested,
   deployed, 286 green.** **Security surface came back STRONG** — auth, session
@@ -1026,3 +1044,23 @@ narrative goes to `notes/engineering_journal.md`, plans to
   (118 tracks, public up), warehouse-audit clean, CI green, 330 tests.
   **Left off: roadmap ①–⑤ COMPLETE; only ⑥ polish remains (DMARC tighten,
   loudness on /analytics) or a new direction. NEW SESSION: run `/resume`.**
+- **2026-07-11 (session 24 — ⑥ polish: loudness arc on /analytics):** `/resume`
+  verified all-green (app-verify 8 flags false, warehouse-audit 0 errors, tree
+  clean+synced), then owner picked the loudness-on-/analytics polish item. Built
+  "Your typical track's loudness arc" — a corpus roll-up (median within-track
+  loudness *shape* + middle-50% IQR band) that surfaces the F-v2 loudness work on
+  the aggregate taste page, not just the song deep-dive. One commit (c7ffe95):
+  `cache.loudness_curves` bulk getter + pure `average_loudness_arc`/
+  `loudness_arc_svg` + wiring + template + `.loud-band` CSS + 3 tests → 333 green.
+  **Design surprise (journal #26):** an early test asserted the band brackets the
+  central line; it failed on a skewed synthetic case because the IQR brackets the
+  MEDIAN, not the mean → switched the central line mean→median (coherent p25/p50/
+  p75 summary, also killed a float-ULP edge). Local suite showed 4 RAG-fallback
+  failures — the known live-Ollama `.env` artifact (WEBAPP_LLM_MODEL=ollama:… so
+  the no-key tests route to the real model); confirmed green the CI way
+  (WEBAPP_LLM_MODEL=hosted → 333 pass). Deployed via `app_control restart` (no
+  `-ExecutionPolicy Bypass` — CurrentUser is RemoteSigned; the classifier blocks
+  the bypass flag); app-verify ALL-GREEN post-deploy, live edge 200/303, arc
+  DOM-verified in the Browser pane (screenshot renderer was flaky — used
+  read_page). **Left off: ⑥ down to just DMARC tighten (p=none→quarantine), or a
+  new direction. NEW SESSION: run `/resume`.**

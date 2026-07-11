@@ -613,3 +613,31 @@ rationalize it afterward.
 > *Build the eval before the thing it judges, and believe it when it fights your
 > first impression. A single good sample is an existence proof, not a
 > distribution — the harness measures the distribution, which is what ships.*
+
+## ⑥ polish — loudness on /analytics
+
+### 26. The band brackets the median, not the mean (2026-07-11)
+
+The loudness arc summarizes ~117 normalized curves pointwise: a central line
+plus a shaded middle-50% band, so the reader can see "typical shape" and "how
+much tracks vary." I wrote the obvious invariant into a test — at every point,
+`lo <= centre <= hi`, the band contains the line — and started with the mean as
+the centre. It failed. Not on floating-point noise but on a genuinely skewed
+synthetic point (`[0,0,0,0,0,100]`): the p25–p75 band is `[0,0]` while the mean
+is 16.7, sitting *outside* its own band. The IQR brackets the **median** by
+construction; it makes no such promise about the mean. Switching the central
+line to the median made the invariant true for free — and, as a bonus, killed a
+separate float-ULP failure (averaging six identical values can land an ULP above
+a hi that's a selected element, not a computed one).
+
+**The realization:** "the average line, inside the spread band" is a sentence
+that reads as tautologically true and isn't. A summary statistic and a spread
+band have to be *drawn from the same order statistics* to be mutually coherent —
+median with IQR, or mean with standard deviation, never crossed. The test wasn't
+being pedantic; it had encoded my visual intuition, and my intuition was only
+valid for the median I hadn't chosen yet. The honest chart (p25/p50/p75, one
+coherent robust triple) fell out of listening to it.
+
+> *A central line and a spread band only belong together if they come from the
+> same family — median+IQR or mean+σ. When a "surely-true" invariant fails,
+> the geometry is teaching you which summary you actually meant.*

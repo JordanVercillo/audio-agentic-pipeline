@@ -30,6 +30,7 @@ current); this file is the story + index. New session? Run **`/resume`**.
 | **F-v3 — structure timeline** (2026-07-10) | Rebuilt get-audio-analysis' sections[] via simplified Laplacian segmentation (recurrence on chroma+MFCC + path graph, eigengap k); section ribbon on the song page (same letter/color = repeat; NO chorus/verse claims); 117/117 backfilled locally | 311 tests; validate-on-3-levels (journal #24: KoC read as 1 section under chroma-only → +MFCC) |
 | **Epic G — recommendation explorer** (2026-07-10/11) | Rebuilt the retired /recommendations transparently: min/max/target tunables over our 14 features + popularity, seed-track "more like this" (visible targets), z-distance ranking, cluster chips; `/recommend` + nav + song-page seed link | 325 tests; browser-validated live |
 | **A3 — Ollama local LLM** (2026-07-11) | `/ask`+`/classify` answer via a LOCAL model ($0, no key): `WEBAPP_LLM_MODEL=ollama:gemma4:12b`, format=json, num_ctx 8192, startup warm-up. The F0 evals graded gemma4 5→9/15 (paraphrases, not hallucinations) → owner shipped it as default with the deterministic path as safety net | 330 tests; journal #25 (evals over vibes) |
+| **⑥ loudness arc on /analytics** (2026-07-11) | Corpus roll-up of the F-v2 within-track loudness: "Your typical track's loudness arc" — the MEDIAN normalized loudness *shape* + middle-50% IQR band across the visitor's tracks (distinct from the absolute "Loudness" signature dim). `cache.loudness_curves` bulk getter + pure `average_loudness_arc`/`loudness_arc_svg`, wired before the model block (no clusters needed) | 333 tests; journal #26 (the band brackets the median, not the mean) |
 
 ## Hard-won lessons (full text: `notes/engineering_journal.md`)
 #12 test the frozen env, not your PATH · #13 select columns by coverage, one ghost
@@ -45,7 +46,9 @@ code bugs are · #23 test a safety interlock against the system's own lifecycle
 (the lock's first victim is its own restart) · #24 validate on three levels —
 synthetic fixtures (logic), corpus distributions (stats), named examples you know
 (meaning) · #25 build the eval before the thing it judges, and believe it when it
-fights your gut.
+fights your gut · #26 a central line and its spread band must be drawn from the
+same order statistics — median+IQR, not mean+IQR (a "surely-true" invariant that
+failed taught which summary I meant).
 
 ## The system today (2026-07-11)
 - **Serving:** `vercilloanalytics.com` → Cloudflare tunnel (Windows service
@@ -57,7 +60,8 @@ fights your gut.
   worker-refreshed after each drain.
 - **The app rebuilds BOTH retired Spotify endpoints + more:** audio-features
   (14-feature `/explore` catalog) · audio-analysis (spectrogram + loudness curve
-  + fades + bar grid + **section ribbon** on the song deep-dive) · a transparent
+  + fades + bar grid + **section ribbon** on the song deep-dive; a **loudness
+  arc** — median shape + IQR band — rolled up on `/analytics`) · a transparent
   **recommendation explorer** (`/recommend`: tunables + seed) · **taste-vs-
   popularity** on `/analytics` · **local $0 LLM** `/ask`+`/classify` (Ollama
   gemma4:12b, deterministic fallback as safety net) — all evals/audit-guarded.
@@ -73,7 +77,7 @@ fights your gut.
   52 s queued→done. Front gate: Spotify dev-mode allowlist — **5 seats**
   (Feb-2026 policy), manual dashboard adds ONLY (no API); the landing page
   carries an invite-request notice (jordan@vercilloanalytics.com).
-- **Quality:** **330 pytest** (synthetic; golden evals guard the LLM surfaces),
+- **Quality:** **333 pytest** (synthetic; golden evals guard the LLM surfaces),
   warehouse-audit (marts drift + FEATURE_DISTRIBUTION), app-verify (worker
   liveness), ruff, 2-job CI on main — all green. Run mode: ON-DEMAND via the
   click scripts (owner's choice, not 24/7). Email: $0 Cloudflare Email Routing.
@@ -88,9 +92,9 @@ fights your gut.
 
 ## What remains (2026-07-11)
 
-**The whole audio-features roadmap ①–⑤ is COMPLETE and live.** The only open
-item is **⑥ polish** (optional): tighten DMARC `p=none` → `quarantine` → `reject`
-now that mail flows clean; surface the loudness curve on `/analytics` too.
+**The whole audio-features roadmap ①–⑤ is COMPLETE and live**, and the loudness
+arc closed the bigger half of ⑥. The only open ⑥ item is **DMARC tightening**
+(optional): `p=none` → `quarantine` → `reject` now that mail flows clean.
 Parked by deliberate decision: **instrumentalness** (needs source separation —
 a fake proxy would cost the tier system its credibility). Otherwise: a fresh
 direction of the owner's choosing.
