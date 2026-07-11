@@ -357,6 +357,11 @@ gating only *personalization*.
   Respects the on-demand decision; the shared link is never dead.
 - **H6 — landing copy.** Explain the split: browse the corpus freely; login
   (pilot, 5 seats) personalizes.
+- **H7 — guest demo persona (D-30, PULLED to Phase 1).** "View as guest" button
+  → read-only session pre-loaded with the owner's taste snapshot
+  (`snapshot_demo_profile.py`) → the full personalized experience without login.
+  Read-only guard (no enqueue/downloads/Spotify calls); demo banner. The
+  interview showpiece.
 
 **Accept:** a logged-out browser can explore catalog → deep-dive → recommend on
 the live domain; personal routes still redirect; guest paths tested; H5 page
@@ -566,6 +571,23 @@ interleaved sequence.
   `DUPLICATE_TRACKS` check. It does NOT mint a canonical-id join key.
 - **D-29: sequence = INTERLEAVE (owner):** Phase 1 bugs + quick wins → Phase 2
   MPD/Spark (data-platform depth) → Phase 3 public showcase + GitHub publish.
+- **D-30: guest demo persona (owner, 2026-07-11) — the interview showpiece.** A
+  "View as guest" button loads a READ-ONLY session pre-populated with the
+  OWNER's taste snapshot, so anyone (interviewer) sees the FULL personalized
+  experience — dashboard, archetype, drift, acoustic map — with no login and no
+  5-seat gate. Snapshot captured by `scripts/snapshot_demo_profile.py` (owner
+  runs it while logged in — his `range_ids` + top artists → a stored demo
+  profile; refreshable), so guests need no live Spotify token (his tracks are
+  cached). Guest session is strictly read-only: no enqueue, no downloads, no
+  Spotify calls; a banner reads "Demo view — Jordan's account; log in for your
+  own." Intentionally exposes the owner's personal profile publicly (his
+  explicit ask, consistent with D-18). Depends on H0 (guest rendering core) →
+  pulls a slice of Epic H forward into Phase 1.
+- **D-31: drop the "Taste Pilot" sub-label (owner) — top-left = "Vercillo
+  Analytics" only.** The owner read the intentional "taste/test pilot" pun as a
+  typo; a *perceived* typo hurts a portfolio more than a lost pun helps, and the
+  bare brand is cleanest for an interview audience. Trivial Phase 1 edit (nav +
+  `<title>` templates).
 
 ## Epic N — Explainability & legibility (NEW, Phase 1)
 
@@ -641,8 +663,12 @@ regression test on the seed→targets mapping.
 ## Sequence — Vision D (owner-approved interleave, D-29)
 
 - **Phase 1 — bugs + quick wins** (fast, mostly frontend, high-value):
+  **D-31 rename** (drop "Taste Pilot" → "Vercillo Analytics", trivial) ·
   **B1** (seed bug) · **H3** (popularity hover) · **H4** (UI cut-off sweep) ·
-  **N1** (stats explainer) · **N2** (archetype taxonomy) · **O1** (dedup) .
+  **N1** (stats explainer) · **N2** (archetype taxonomy) · **O1** (dedup) ·
+  **H0 + H7 guest demo persona** (D-30 — the interview showpiece: guest
+  rendering core + owner-data snapshot + "View as guest" button; pulled forward
+  from Epic H because its interview value is highest-leverage now).
 - **Phase 2 — MPD + Spark** (data-platform depth): **J0 → J1 → J2 → J3** +
   **O2** (match hardening folds in as the corpus grows).
 - **Phase 3 — share + publish** (last): **H0/H1/H2/H5/H6** (full public

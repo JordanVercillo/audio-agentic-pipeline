@@ -186,9 +186,13 @@
   D-20 (filter-repo history scrub before public flip), D-21 (llm_knowledge_base
   EXCLUDED from public repo — course material), D-22 (yt-dlp stays, harden
   matching — duration check, official-audio preference; iTunes 30s previews
-  REJECTED on feature-comparability honesty). **➡️ NEXT ACTION — Vision D Phase 1 — bugs + quick wins: B1 recommend-seed refresh, H3
-  popularity-on-hover, H4 UI cut-off sweep, N1 stats/σ explainer, N2 the
-  12-archetype taxonomy, O1 dedup-as-flag.** Then Phase 2 = MPD/Spark
+  REJECTED on feature-comparability honesty). **➡️ NEXT ACTION — Vision D Phase 1 — bugs + quick wins: D-31 rename (drop "Taste Pilot" →
+  "Vercillo Analytics"), B1 recommend-seed refresh, H3 popularity-on-hover, H4
+  UI cut-off sweep, N1 stats/σ explainer, N2 the 12-archetype taxonomy, O1
+  dedup-as-flag, and **H0+H7 guest demo persona (D-30 — the INTERVIEW
+  showpiece: "View as guest" → read-only session preloaded with the owner's
+  taste snapshot via `snapshot_demo_profile.py`; full personalized experience,
+  no login, pulled forward from Epic H).** Then Phase 2 = MPD/Spark
   METADATA-ONLY (D-26…D-29: J0 local intake script → J1 Spark co-occurrence +
   track2vec on real 66M rows → J2 hybrid acoustic×co-occurrence reco → J3
   real-66M-row Spark benchmark; Spark NEVER on the download path). Phase 3 =
