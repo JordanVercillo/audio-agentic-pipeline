@@ -164,6 +164,41 @@ ol.tracks li:hover .feat-pop { display: flex; }
 .sec-rect { stroke: var(--panel); stroke-width: 1.5; rx: 3; opacity: .85; }
 .sec-rect:hover { opacity: 1; }
 .sec-letter { fill: #0a0d10; font-size: 11px; font-weight: 700; pointer-events: none; }
+
+/* ── the recommendation explorer (Epic G) ── */
+.reco-form { background: var(--panel); border: 1px solid var(--line);
+  border-radius: 12px; padding: 1.1rem 1.25rem; margin: 1rem 0 1.5rem; }
+.reco-seed { display: flex; flex-direction: column; gap: .4rem; margin-bottom: .9rem; }
+.reco-seed select {
+  background: var(--panel-2); border: 1px solid var(--line); color: var(--ink);
+  border-radius: 8px; padding: .55rem .8rem; font-size: .95rem; max-width: 28rem;
+}
+.reco-tunables { margin: .4rem 0 1rem; }
+.reco-tunables summary { color: var(--muted); cursor: pointer; }
+.reco-tunables table { border-collapse: collapse; margin-top: .6rem; }
+.reco-tunables th { color: var(--muted); font-size: .75rem; text-transform: uppercase;
+  letter-spacing: .04em; text-align: left; padding: .25rem .5rem; }
+.reco-tunables td { padding: .2rem .5rem; }
+.reco-tunables input {
+  width: 6.2rem; background: var(--panel-2); border: 1px solid var(--line);
+  color: var(--ink); border-radius: 6px; padding: .3rem .5rem;
+}
+.reco-form .btn { margin: 0; border: 0; cursor: pointer; }
+.reco-results { list-style: none; counter-reset: reco; padding: 0; display: grid; gap: .55rem; }
+.reco-results li {
+  counter-increment: reco; display: flex; justify-content: space-between;
+  gap: 1rem; align-items: baseline; flex-wrap: wrap;
+  background: var(--panel); border: 1px solid var(--line);
+  border-radius: 10px; padding: .6rem .9rem;
+}
+.reco-results li::before { content: counter(reco); color: var(--muted);
+  font-size: .8rem; min-width: 1.2rem; }
+.reco-track { display: inline-flex; gap: .5rem; align-items: baseline; flex: 1; }
+.reco-track:hover b { color: var(--spotify); }
+.reco-meta { display: inline-flex; gap: .4rem; align-items: baseline; flex-wrap: wrap;
+  font-size: .78rem; }
+.reco-meta .chip { background: var(--panel-2); border: 1px solid var(--line);
+  border-radius: 999px; padding: .08rem .55rem; color: var(--muted); }
 .summary-row { display: flex; gap: 1.5rem; margin-top: .9rem; }
 .summary-row span, .summary-row a { display: flex; flex-direction: column; color: var(--ink); text-decoration: none; }
 .summary-row a:hover b { color: var(--spotify); }

@@ -49,6 +49,13 @@ from .explore import (
 )
 from .featurestore import FeatureStore
 from .rag import TasteRAG
+from .recommend import (
+    parse_constraints,
+    popularity_stats,
+    recommend,
+    seed_targets,
+    stats_from_frame,
+)
 from .sessions import CookieSigner, SessionStore
 from .taste import (
     absolute_profile,
@@ -505,6 +512,82 @@ def create_app() -> FastAPI:
             "columns": [{"column": c["column"], "friendly": c["friendly"]}
                         for c in catalog.to_dict("records")],
         }
+
+    def _recommend_context(session: dict[str, Any],
+                           params: dict[str, str]) -> Optional[dict[str, Any]]:
+        """The /recommend view (Epic G): the retired API's tunables over OUR
+        features. None = no dashboard yet; built=False = marts not built."""
+        taste = session.get("taste") or {}
+        if not (taste.get("range_ids") or {}):
+            return None
+        catalog = load_catalog()
+        stats_df = load_stats()
+        if catalog is None or stats_df is None:
+            return {"authed": True, "built": False}
+
+        cache = _feature_cache()
+        perceptual = cache.all_perceptual()
+        pops = cache.all_popularity()
+        meta = cache.all_meta()
+        allowed = set(catalog["column"]) | {"popularity"}
+
+        # popularity joins each row as a constraint axis (fetched context)
+        rows = {tid: ({**p, "popularity": float(pops[tid])} if tid in pops else dict(p))
+                for tid, p in perceptual.items()}
+
+        seed = params.get("seed") or ""
+        if seed not in perceptual:
+            seed = ""
+        constraints = parse_constraints(params, allowed)
+        if seed and not any(c.kind == "target" for c in constraints):
+            # "more like this": the seed's own values become VISIBLE targets
+            constraints = constraints + seed_targets(
+                perceptual[seed], allowed, pops.get(seed))
+
+        stats = stats_from_frame(stats_df)
+        pstats = popularity_stats(pops)
+        if pstats:
+            stats["popularity"] = pstats
+
+        ranked = recommend(rows, constraints, stats,
+                           exclude={seed} if seed else set(), limit=20)
+
+        model = cl.latest_model(cache, "song")
+        assigned = cl.track_assignments(cache, model.id) if model else {}
+        results = []
+        for r in ranked:
+            m = meta.get(r["id"]) or {}
+            cid = (assigned.get(r["id"]) or {}).get("cluster_id")
+            results.append({
+                **r, "name": m.get("track_name") or r["id"],
+                "artist": m.get("artist_names") or "",
+                "color": cluster_color(int(cid)) if cid is not None else None,
+                "chips": [(c, round(r["values"][c], 2)) for c in sorted(r["values"])],
+            })
+
+        form = {f"{c.kind}_{c.column}": c.value for c in constraints}
+        seed_options = sorted(
+            ({"id": t, "name": (meta.get(t) or {}).get("track_name") or t}
+             for t in perceptual),
+            key=lambda o: o["name"].lower())
+        feature_rows = catalog[["column", "friendly", "tier", "unit"]].to_dict("records")
+        feature_rows.append({"column": "popularity", "friendly": "Popularity",
+                             "tier": "fetched", "unit": "0–100"})
+        return {"authed": True, "built": True, "seed": seed,
+                "seed_name": (meta.get(seed) or {}).get("track_name") if seed else None,
+                "form": form, "features": feature_rows,
+                "seed_options": seed_options, "results": results,
+                "active": bool(constraints)}
+
+    @app.get("/recommend", response_class=HTMLResponse)
+    def recommend_view(request: Request):
+        session = request.state.session
+        if not auth_web.is_authenticated(session):
+            return RedirectResponse("/", status_code=303)
+        ctx = _recommend_context(session, dict(request.query_params))
+        if ctx is None:
+            return RedirectResponse("/dashboard", status_code=303)
+        return templates.TemplateResponse(request, "recommend.html", ctx)
 
     @app.get("/explore", response_class=HTMLResponse)
     def explore(request: Request, f: str = "danceability",

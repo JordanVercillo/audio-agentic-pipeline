@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}Recommend — Vercillo Analytics{% endblock %}
+{% block content %}
+<section class="dash">
+  <h1>The recommendation explorer</h1>
+  <p class="lede">Spotify retired its <code>/recommendations</code> API — this rebuilds it
+    over our own extracted features, transparently: every knob is visible, every
+    match is explainable. Seed a song or set the tunables yourself.</p>
+
+  {% if not built %}
+  <div class="insight empty" style="margin-top:1rem">
+    <div class="insight-badge">Feature marts not built yet</div>
+    <p class="muted">Run <code>uv run python scripts/build_feature_marts.py</code> —
+      the tunables and rankings come from the perceptual marts.</p>
+  </div>
+  {% else %}
+
+  <form method="get" action="/recommend" class="reco-form">
+    <div class="reco-seed">
+      <label for="seed"><b>Seed</b> — fill the targets from a song you like</label>
+      <select name="seed" id="seed">
+        <option value="">(no seed — set tunables by hand)</option>
+        {% for o in seed_options %}
+        <option value="{{ o.id }}" {{ 'selected' if o.id == seed else '' }}>{{ o.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <details class="reco-tunables" {{ 'open' if active and not seed else '' }}>
+      <summary>Tunables — min / target / max per feature (blank = unused)</summary>
+      <table>
+        <thead><tr><th>Feature</th><th>min</th><th>target</th><th>max</th></tr></thead>
+        <tbody>
+          {% for f in features %}
+          <tr>
+            <td>{{ f.friendly }} <small class="muted">{{ f.unit }} · {{ f.tier }}</small></td>
+            {% for kind in ('min', 'target', 'max') %}
+            <td><input type="number" step="any" name="{{ kind }}_{{ f.column }}"
+                       value="{{ form.get(kind ~ '_' ~ f.column, '') }}"></td>
+            {% endfor %}
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </details>
+    <button type="submit" class="btn">Recommend</button>
+  </form>
+
+  {% if active %}
+  <h2 class="section">{% if seed_name %}More like “{{ seed_name }}”{% else %}Matches{% endif %}</h2>
+  {% if results %}
+  <ol class="reco-results">
+    {% for r in results %}
+    <li>
+      <a href="/song/{{ r.id }}" class="reco-track">
+        {% if r.color %}<span class="dot" style="background: {{ r.color }}"></span>{% endif %}
+        <b>{{ r.name }}</b> <span class="muted">— {{ r.artist }}</span>
+      </a>
+      <span class="reco-meta">
+        {% for col, v in r.chips %}<span class="chip">{{ col }} {{ v }}</span>{% endfor %}
+        {% if r.score %}<span class="muted">Δ {{ r.score }}σ</span>{% endif %}
+      </span>
+    </li>
+    {% endfor %}
+  </ol>
+  <p class="cap">Ranked by z-normalized distance to your targets across the cached
+    corpus — a tempo miss and an energy miss compare in the same σ units. Colors
+    are the acoustic sound-clusters. Tracks missing a constrained value sit out.</p>
+  {% else %}
+  <p class="muted">No cached track satisfies those constraints — loosen a min/max.</p>
+  {% endif %}
+  {% else %}
+  <p class="muted">Pick a seed or open the tunables to start.</p>
+  {% endif %}
+  {% endif %}
+</section>
+{% endblock %}

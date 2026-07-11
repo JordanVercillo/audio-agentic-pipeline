@@ -11,7 +11,7 @@
   <header class="site">
     <a class="brand" href="/">Vercillo Analytics <span>· Taste Pilot</span></a>
     <nav>
-      {% if authed %}<a href="/dashboard">Dashboard</a><a href="/analytics">Analytics</a><a href="/explore">Explore</a><form class="logout" method="post" action="/logout"><button type="submit">Log out</button></form>
+      {% if authed %}<a href="/dashboard">Dashboard</a><a href="/analytics">Analytics</a><a href="/explore">Explore</a><a href="/recommend">Recommend</a><form class="logout" method="post" action="/logout"><button type="submit">Log out</button></form>
       {% else %}<a href="/login" class="cta">Log in with Spotify</a>{% endif %}
     </nav>
   </header>
