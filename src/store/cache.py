@@ -248,6 +248,18 @@ class FeatureCache:
             row = s.get(TrackFeatures, track_id)
             return row.loudness_curve if row is not None else None
 
+    def loudness_curves(self, track_ids: list[str]) -> dict[str, list]:
+        """Stored loudness curves for the given ids (only rows that have one) —
+        the corpus-roll-up input for the /analytics average loudness arc."""
+        if not track_ids:
+            return {}
+        with self._Session() as s:
+            rows = s.execute(
+                select(TrackFeatures.spotify_track_id, TrackFeatures.loudness_curve)
+                .where(TrackFeatures.spotify_track_id.in_(track_ids))
+                .where(TrackFeatures.loudness_curve.isnot(None))).all()
+        return {tid: curve for tid, curve in rows if curve}
+
     def set_beat_times(self, track_id: str, beat_times: list) -> bool:
         """Update ONLY a cached track's beat grid (F-v2c backfill). No-op if absent."""
         with self._Session() as s:

@@ -383,6 +383,33 @@ def test_scatter_svg_layers_user_over_population():
     assert scatter_svg(population[:2], []) is None  # too few points
 
 
+def test_average_loudness_arc_shape_and_thresholds():
+    from .analytics import average_loudness_arc
+    # a rising ramp repeated → the normalized mean arc rises start→end
+    rising = [[float(v) for v in range(20)] for _ in range(6)]
+    arc = average_loudness_arc(rising, grid=32)
+    assert arc and arc["n"] == 6 and arc["grid"] == 32
+    assert arc["mid"][0] == 0.0 and abs(arc["mid"][-1] - 1.0) < 1e-9
+    assert arc["mid"][0] < arc["mid"][15] < arc["mid"][-1]         # monotone shape
+    assert all(lo <= m <= hi                                       # IQR band brackets median
+               for lo, m, hi in zip(arc["lo"], arc["mid"], arc["hi"], strict=True))
+    # under the min-tracks floor → nothing (the section stays hidden)
+    assert average_loudness_arc(rising[:4], grid=32) is None
+    # flat or too-short curves have no dynamics → they don't count toward the arc
+    assert average_loudness_arc([[5.0] * 20] * 6) is None
+    assert average_loudness_arc([[1, 2, 3]] * 6) is None
+
+
+def test_loudness_arc_svg_layers_band_area_line():
+    from .analytics import average_loudness_arc, loudness_arc_svg
+    v = [[float(abs(i - 10)) for i in range(21)] for _ in range(5)]  # V-shaped
+    svg = loudness_arc_svg(average_loudness_arc(v, grid=24))
+    assert svg.startswith("<svg") and 'class="loud-band"' in svg   # spread band
+    assert 'class="loud-area"' in svg and 'class="loud-line"' in svg
+    assert ">louder<" in svg and ">start<" in svg and ">end<" in svg
+    assert loudness_arc_svg(None) == ""                            # absent-safe
+
+
 # ── taste archetype (Epic D) ───────────────────────────────────────────────
 def test_derive_archetype_matrix():
     from .archetype import derive_archetype
@@ -618,6 +645,26 @@ def test_analytics_renders_clusters_signature_and_map(client, monkeypatch, tmp_p
     assert "popularity scale" in r.text and "not an acoustic measure" in r.text
     assert "Artists who sound alike" in r.text and "LoudArtist0" in r.text
     assert 'class="comp-bar"' in r.text                # composition bars
+
+
+def test_analytics_renders_loudness_arc(client, monkeypatch, tmp_path):
+    from ..store.cache import FeatureCache
+    from ..store.test_clusters import _blob_a
+
+    tc = FeatureCache(url=f"sqlite:///{tmp_path / 'la.db'}")
+    ids = [f"a{i}" for i in range(6)]
+    for i, tid in enumerate(ids):  # each track gets a rising dBFS curve
+        tc.upsert(tid, _blob_a(i), loudness_curve=[-30.0 + v + i for v in range(24)])
+    monkeypatch.setattr("src.webapp.app._feature_cache", lambda: tc)
+
+    taste = {"range_ids": {"short_term": ids[:3], "long_term": ids[3:]}}
+    client.cookies.set(config.SESSION_COOKIE, _seed_session(taste=taste))
+    r = client.get("/analytics")
+    assert r.status_code == 200
+    assert "loudness arc" in r.text.lower()                 # the new section heading
+    assert 'class="loud-band"' in r.text                    # spread band rendered
+    assert 'aria-label="average loudness' in r.text
+    assert "middle 50%" in r.text                           # the honest variability caption
 
 
 # ── dashboard context: reads the cache, flags analyzed, queues misses ───────

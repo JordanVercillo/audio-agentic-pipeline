@@ -105,6 +105,18 @@
   </div>
   {% endif %}
 
+  {% if loudness_arc %}
+  <h2 class="section">Your typical track's loudness arc</h2>
+  <div class="map-card">
+    {{ loudness_arc.svg|safe }}
+    <p class="cap">The median loudness <em>shape</em> across your {{ loudness_arc.n }}
+      analyzed tracks — each song normalized to its own dynamic range, so this reads
+      build-ups, drops and fades, <b>not</b> absolute level (that's the “Loudness”
+      signature above). The shaded band is the middle 50% of your tracks — how much
+      they vary point to point.</p>
+  </div>
+  {% endif %}
+
   {% if artist_buckets %}
   <h2 class="section">Artists who sound alike</h2>
   <div class="abuckets">

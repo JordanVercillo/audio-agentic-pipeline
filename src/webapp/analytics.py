@@ -180,3 +180,94 @@ def popularity_context(user_pops: list, corpus_pops: list) -> Optional[dict[str,
         out["line"] = (f"Your rotation averages {out['mean']}/100 on Spotify's "
                        f"popularity scale — {band}.")
     return out
+
+
+# ── average loudness arc (roll-up of the F-v2 within-track curves) ───────────
+def _resample_unit(curve: Optional[list], grid: int) -> Optional[list[float]]:
+    """One stored dBFS curve → a `grid`-point series over track-fraction 0→1,
+    min-max normalized to its OWN dynamic range (0 = the track's quietest point,
+    1 = its loudest). None if the curve is too short or has no dynamics — so a
+    silent/constant track can't drag the average toward a flat line.
+    """
+    pts = [float(v) for v in (curve or [])
+           if v is not None and math.isfinite(float(v))]
+    if len(pts) < 8:
+        return None
+    lo, hi = min(pts), max(pts)
+    span = hi - lo
+    if span <= 0:
+        return None
+    norm = [(v - lo) / span for v in pts]
+    n = len(norm)
+    out: list[float] = []
+    for g in range(grid):
+        pos = g / (grid - 1) * (n - 1)  # fraction-aligned source position
+        i = int(pos)
+        if i >= n - 1:
+            out.append(norm[-1])
+        else:
+            frac = pos - i
+            out.append(norm[i] * (1 - frac) + norm[i + 1] * frac)
+    return out
+
+
+def average_loudness_arc(curves: Optional[list], grid: int = 96,
+                         min_tracks: int = 5) -> Optional[dict[str, Any]]:
+    """The average loudness *shape* across the user's analyzed tracks (F-v2 roll-up).
+
+    Each track's stored dBFS curve is normalized to its own dynamic range and
+    resampled onto a common 0→1 timeline, then summarized pointwise by three
+    quantiles — so this reads the shape of a typical song (build-ups, drops,
+    fades), independent of how loudly any one track was mastered (absolute level
+    lives in the signature's "Loudness" dim, so this doesn't duplicate it). The
+    central line is the median (p50); the band is the middle 50% (p25–p75), an
+    honest read on how much the tracks vary at each point — and, being quantiles,
+    the band brackets the line by construction. None under `min_tracks` curves.
+    """
+    arcs = [a for a in (_resample_unit(c, grid) for c in (curves or [])) if a]
+    if len(arcs) < min_tracks:
+        return None
+    mid, lo, hi = [], [], []
+    for g in range(grid):
+        col = sorted(a[g] for a in arcs)
+        m = len(col)
+        lo.append(col[int(0.25 * (m - 1))])
+        mid.append(col[int(0.50 * (m - 1))])
+        hi.append(col[int(0.75 * (m - 1))])
+    return {"n": len(arcs), "grid": grid, "mid": mid, "lo": lo, "hi": hi}
+
+
+def loudness_arc_svg(arc: Optional[dict], width: int = 560, height: int = 150) -> str:
+    """Area chart of the average loudness arc + a middle-50% spread band. Reuses
+    the deep-dive loudness styling; the y-axis is relative (louder/quieter)
+    because each track was normalized to its own range. "" when arc is None."""
+    if not arc:
+        return ""
+    mid, lo, hi, grid = arc["mid"], arc["lo"], arc["hi"], arc["grid"]
+    pad_l, pad_r, pad_t, pad_b = 8, 8, 12, 18
+    plot_w, plot_h = width - pad_l - pad_r, height - pad_t - pad_b
+    base = pad_t + plot_h
+
+    def x_of(i: int) -> float:
+        return pad_l + (i / (grid - 1)) * plot_w
+
+    def y_of(v: float) -> float:
+        return pad_t + (1 - v) * plot_h  # louder (1) = higher on the chart
+
+    band_top = " ".join(f"{x_of(i):.1f},{y_of(v):.1f}" for i, v in enumerate(hi))
+    band_bot = " ".join(f"{x_of(i):.1f},{y_of(v):.1f}"
+                        for i, v in reversed(list(enumerate(lo))))
+    mid_line = " ".join(f"{x_of(i):.1f},{y_of(v):.1f}" for i, v in enumerate(mid))
+    area = f"{pad_l:.1f},{base:.1f} {mid_line} {pad_l + plot_w:.1f},{base:.1f}"
+
+    return (
+        f'<svg viewBox="0 0 {width} {height}" class="loudness" role="img" '
+        f'aria-label="average loudness shape across your tracks, start to end">'
+        f'<polygon class="loud-band" points="{band_top} {band_bot}"/>'
+        f'<polygon class="loud-area" points="{area}"/>'
+        f'<polyline class="loud-line" points="{mid_line}" fill="none"/>'
+        f'<text class="loud-ax" x="{pad_l}" y="{pad_t + 8}">louder</text>'
+        f'<text class="loud-ax" x="{pad_l}" y="{base - 2}">quieter</text>'
+        f'<text class="loud-ax" x="{pad_l}" y="{base + 13}">start</text>'
+        f'<text class="loud-ax" x="{pad_l + plot_w:.1f}" y="{base + 13}" '
+        f'text-anchor="end">end</text></svg>')

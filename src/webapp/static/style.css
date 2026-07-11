@@ -158,6 +158,7 @@ ol.tracks li:hover .feat-pop { display: flex; }
 .loud-fade-line { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 2 2; }
 .loud-fade-t { fill: var(--muted); font-size: 9px; }
 .loud-beat { stroke: var(--muted); stroke-width: 1; opacity: .3; }
+.loud-band { fill: var(--spotify); fill-opacity: .10; }  /* /analytics arc: middle-50% spread */
 .pop-line { margin: .9rem 0 0; }
 .pop-line .cap { display: block; }
 .sections { width: 100%; height: auto; display: block; }

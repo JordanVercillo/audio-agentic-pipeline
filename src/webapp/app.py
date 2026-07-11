@@ -32,8 +32,10 @@ from ..store.cache import FeatureCache
 from . import auth_web, config
 from .analytics import (
     acoustic_signature,
+    average_loudness_arc,
     cluster_color,
     cluster_composition,
+    loudness_arc_svg,
     popularity_context,
     scatter_svg,
 )
@@ -364,6 +366,12 @@ def create_app() -> FastAPI:
         pops = cache.all_popularity()
         ctx["popularity"] = popularity_context(
             [pops[t] for t in set(all_ids) if t in pops], list(pops.values()))
+
+        # Average loudness arc (F-v2 roll-up) — the shape of a typical track in
+        # the user's rotation; needs no trained model, absent-safe under 5 curves.
+        arc = average_loudness_arc(
+            list(cache.loudness_curves(list(set(all_ids))).values()))
+        ctx["loudness_arc"] = {"svg": loudness_arc_svg(arc), "n": arc["n"]} if arc else None
 
         model = cl.latest_model(cache, "song")
         if model is not None:
