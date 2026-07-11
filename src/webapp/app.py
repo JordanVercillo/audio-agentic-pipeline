@@ -230,7 +230,7 @@ def _slim_taste(ctx: dict[str, Any]) -> dict[str, Any]:
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="Vercillo Analytics — Taste Pilot", docs_url=None, redoc_url=None)
+    app = FastAPI(title="Vercillo Analytics", docs_url=None, redoc_url=None)
     app.mount("/static", StaticFiles(directory=str(_BASE / "static")), name="static")
 
     @app.middleware("http")

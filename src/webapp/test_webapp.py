@@ -575,7 +575,7 @@ def test_header_logout_is_a_form():
 def test_favicon_and_title_present(client):
     r = client.get("/")
     assert 'rel="icon"' in r.text
-    assert "<title>Vercillo Analytics — Taste Pilot</title>" in r.text
+    assert "<title>Vercillo Analytics</title>" in r.text
 
 
 def test_missing_art_and_avatar_get_placeholders():
