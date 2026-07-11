@@ -418,10 +418,40 @@ The dbt direction (modeling MPD in dbt + Recce for data-diff review) is noted
 as the likely future transform framework evaluation when J un-parks — strongly
 portfolio-relevant.
 
+## Pilot trial — T0 OPENS NOW (2026-07-11, owner decision)
+
+**2/5 Spotify dev-mode seats are filled** (the first pilot user added 07-09, the second pilot user 07-10)
+and the trial starts **immediately — first coordinated window the weekend of
+2026-07-11/12**, deliberately BEFORE Epic H: real tester feedback steers H's
+copy/polish, and the pilot flow is already proven live (52 s queued→done,
+2026-07-09). The experience is gated on ONE thing: the app must be RUNNING
+(on-demand hosting — a dark app 502s the whole domain).
+
+**Per-tester window protocol (owner runbook):**
+1. `start_app.bat` → confirm green (`status_app.bat` / app-verify).
+2. Invite the tester NOW: "log in, watch it start, come back in ~an hour."
+3. What they get: instant top-tracks dashboard (metadata + any cache overlap);
+   everything else auto-queues at ~50 s/track with the live progress bar/ETA —
+   **durable queue**, so leaving and returning later is the designed path;
+   typical library ≈ 1–1.5 h to full coverage; later visits instant.
+4. Stagger testers when possible (single FIFO worker: two ~100-track libraries
+   at once ≈ ~3 h combined; ETA stays honest either way).
+5. After their drain: `uv run python scripts/train_clusters.py` once — new
+   tracks reach analytics instantly via online assignment, but only a retrain
+   places them as dots on the acoustic map.
+6. `stop_app.bat` to close the window (auto cache backup — their extraction
+   hours are the asset, D-17).
+
+**Expectation to set with testers:** analysis covers their TOP tracks (3 time
+ranges) — playlists arrive with Epic I; a few obscure tracks may honestly fail
+matching (dead-letter, count shown). Collect their confusions verbatim — that
+list becomes H4/H6 input.
+
 ## The sequence (owner-approved 2026-07-11)
 
 **H (public showcase) → L-lite (case study + README) → I (playlists) → K
-(agentic chat) → L-flip (scrub + public GitHub)** · J parked. Every slice holds
+(agentic chat) → L-flip (scrub + public GitHub)** · J parked · **pilot trial
+runs throughout, starting T0 = 2026-07-11/12.** Every slice holds
 the ground rules: bridge key, Parquet, PKCE-no-secret, synthetic tests
 (code-correctness only — product data stays REAL), $0, evals before LLM
 surfaces, live browser validation to close every build.

@@ -1108,4 +1108,11 @@ narrative goes to `notes/engineering_journal.md`, plans to
   un-park trigger; llm_knowledge_base can't go public (D-21); acquisition
   answer = harden yt-dlp matching, never switch to 30s previews (D-22).
   **Left off: spec + roadmap COMMITTED; nothing built yet. Next: build Epic H
-  slice H0 (guest rendering core). NEW SESSION: run `/resume`.**
+  slice H0 (guest rendering core). NEW SESSION: run `/resume`.** Session close:
+  **PILOT TRIAL T0 SET (owner ask): starts NOW — first window weekend of
+  2026-07-11/12, before Epic H** (2/5 seats filled: the first pilot user 07-09, the second pilot user 07-10).
+  Full per-tester runbook in VISION_SPECS §"Pilot trial — T0": start_app →
+  invite ("~1–1.5 h, durable queue, come back anytime") → stagger testers →
+  post-drain `train_clusters.py` (map dots need a retrain; analytics is
+  instant via online assignment) → stop_app (auto-backup). Tester confusions
+  feed H4/H6.
