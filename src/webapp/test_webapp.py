@@ -730,7 +730,8 @@ def test_build_dashboard_context(monkeypatch, tmp_path):
         return pd.DataFrame({
             "spotify_track_id": ids, "track_name": [f"S {i}" for i in ids],
             "artist_names": ["A"] * len(ids), "rank": list(range(1, len(ids) + 1)),
-            "album_image_url": [f"http://img/{i}.jpg" for i in ids]})
+            "album_image_url": [f"http://img/{i}.jpg" for i in ids],
+            "popularity": [65, 55, 45][:len(ids)]})
 
     def fake_artists(time_range="medium_term", limit=12, sp=None):
         return pd.DataFrame({"artist_name": ["Muse"], "genres": ["rock"], "image_url": [None]})
@@ -742,6 +743,9 @@ def test_build_dashboard_context(monkeypatch, tmp_path):
     assert ctx["ranges"][0]["tracks"][0]["art"] == "http://img/trk0.jpg"  # album art
     flags = {t["id"]: t["analyzed"] for t in ctx["ranges"][0]["tracks"]}
     assert flags == {"trk0": True, "trk1": True, "newmiss": False}  # cache hits vs miss
+    # H3: popularity rides on each track for the hover — even an unanalyzed one
+    pops = {t["id"]: t["popularity"] for t in ctx["ranges"][0]["tracks"]}
+    assert pops == {"trk0": 65, "trk1": 55, "newmiss": 45}
     assert ctx["coverage"] == {"analyzed": 4, "total": 5, "analyzing": 1}
     assert ctx["profile"]["n"] == 4  # absolute profile over the 4 analyzed songs
     assert ctx["drift"] is not None and math.isfinite(ctx["drift"]["score"])

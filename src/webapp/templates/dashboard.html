@@ -115,11 +115,16 @@
             <span class="tartist">{{ t.artist }}</span>
           </span>
           {% if t.analyzed %}<span class="tag" title="acoustic features extracted">✓</span>{% endif %}
-          {% if t.feat %}
+          {% if t.feat or t.popularity is not none %}
           <div class="feat-pop" role="tooltip">
+            {% if t.feat %}
             <span><b>{{ t.feat.tempo }}</b> tempo</span>
             <span><b>{{ t.feat.energy }}</b> energy</span>
             <span><b>{{ t.feat.brightness }}</b> bright</span>
+            {% endif %}
+            {% if t.popularity is not none %}
+            <span title="Spotify popularity — fetched metadata, not an acoustic feature"><b>{{ t.popularity }}</b> popularity</span>
+            {% endif %}
           </div>
           {% endif %}
         </li>

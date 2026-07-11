@@ -13,7 +13,9 @@ a { color: inherit; text-decoration: none; }
 header.site, footer.site {
   display: flex; justify-content: space-between; align-items: center;
   gap: 1rem; padding: 1rem 1.5rem; border-bottom: 1px solid var(--line);
+  flex-wrap: wrap;  /* nav wraps under the brand instead of overflowing narrow screens */
 }
+header nav { flex-wrap: wrap; row-gap: .4rem; }
 footer.site { border-bottom: 0; border-top: 1px solid var(--line);
   color: var(--muted); font-size: .8rem; flex-wrap: wrap; }
 footer.site a { color: var(--muted); text-decoration: underline; }
@@ -177,7 +179,7 @@ ol.tracks li:hover .feat-pop { display: flex; }
   background: var(--panel-2); border: 1px solid var(--line); color: var(--ink);
   border-radius: 8px; padding: .55rem .8rem; font-size: .95rem; max-width: 28rem;
 }
-.reco-tunables { margin: .4rem 0 1rem; }
+.reco-tunables { margin: .4rem 0 1rem; overflow-x: auto; }  /* wide table scrolls in its own box, never clips */
 .reco-tunables summary { color: var(--muted); cursor: pointer; }
 .reco-tunables table { border-collapse: collapse; margin-top: .6rem; }
 .reco-tunables th { color: var(--muted); font-size: .75rem; text-transform: uppercase;
@@ -300,4 +302,6 @@ a.artist:hover { border-color: var(--spotify); }
   .hero h1 { font-size: 1.7rem; }
   .sig-row { grid-template-columns: 6rem 1fr; }
   .sig-word { grid-column: 1 / -1; }
+  header.site, footer.site { padding: .8rem 1rem; }
+  header nav { gap: 1rem; }
 }
