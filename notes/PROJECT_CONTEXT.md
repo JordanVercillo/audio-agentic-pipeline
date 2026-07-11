@@ -1169,6 +1169,13 @@ narrative goes to `notes/engineering_journal.md`, plans to
   rename shows, guest → /analytics renders archetype "The Anchored Loyalist" +
   signature + drift + map + loudness arc + Muse bucket, banner + guest nav
   present, /classify hidden. App REDEPLOYED (restart, cache backed up), all-green.
-  **Left off: Phase 1 REMAINING = H3 popularity-on-hover, H4 UI cut-off sweep,
-  N1 stats/σ explainer, N2 12-archetype taxonomy, O1 dedup-as-flag. NEW SESSION:
-  run `/resume`.**
+  ✅ **Then H3 + H4 shipped (commit 3186796, 337 green, browser-validated):**
+  **H3** popularity now rides each dashboard track into the hover tooltip
+  (shown even pre-analysis; labelled fetched-not-acoustic). **H4** mobile
+  cut-off sweep via a live 375px overflow probe — fixed the header nav
+  overflowing (Log-in CTA off-screen → header/nav flex-wrap, page 460→375px) and
+  the /recommend tunables table clipping its max column (→ overflow-x:auto scroll
+  box); /analytics /explore /recommend /song all verified docScrollW==viewport at
+  375/299px, desktop unaffected. **Left off: Phase 1 REMAINING = N1 stats/σ
+  explainer, N2 12-archetype taxonomy, O1 dedup-as-flag. NEW SESSION: run
+  `/resume`.**
