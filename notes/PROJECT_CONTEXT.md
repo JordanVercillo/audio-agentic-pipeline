@@ -1015,3 +1015,14 @@ narrative goes to `notes/engineering_journal.md`, plans to
   retired Spotify endpoints end-to-end. Next fork: ⑤ A3 Ollama (real $0 LLM
   for /ask+/classify, evals-guarded) or ⑥ polish. Jordan should log in and
   click through /recommend — seed a song and tune.**
+- **2026-07-11 (session 23 — A3 Ollama + handoff):** Shipped A3: `/ask`+
+  `/classify` answer via local gemma4:12b at $0 (unified provider `_chat`,
+  format=json, num_ctx 8192, startup warm-up; deterministic fallback intact).
+  The F0 golden evals earned their keep (journal #25): graded gemma4 5→9/15
+  (paraphrases not hallucinations) despite a great smoke → owner chose gemma4
+  as default with the eval score documented. Then refreshed the handoff
+  harness (this file + SESSION_CHRONICLE brought current through A3; lessons
+  #20–25). Verified live at handoff: tree clean+pushed, app-verify ALL GREEN
+  (118 tracks, public up), warehouse-audit clean, CI green, 330 tests.
+  **Left off: roadmap ①–⑤ COMPLETE; only ⑥ polish remains (DMARC tighten,
+  loudness on /analytics) or a new direction. NEW SESSION: run `/resume`.**
