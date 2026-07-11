@@ -178,9 +178,20 @@
   and the never-set-up **send-as-the-domain** path (free = Gmail "send mail as"
   via a Brevo free SMTP relay + that provider's DKIM in Cloudflare; paid-tidy = a
   cheap Purelymail/Migadu mailbox in the Outlook app) — email details live in the
-  `vercilloanalytics-domain-setup` memory. **➡️ NEXT: a fresh direction of the
-  owner's choosing.** Owner click-path to see the arc live: log in → /analytics →
-  scroll to "Your typical track's loudness arc".
+  `vercilloanalytics-domain-setup` memory. ✅ **VISION C SPECCED (2026-07-11,
+  owner's 12-idea list → `docs/VISION_SPECS.md` §"Vision C — the public era"):**
+  decisions D-18 (corpus goes PUBLIC — full 118-track corpus, owner's explicit
+  privacy choice; deliberately reverses the /spectrogram gate), D-19 (MPD
+  PARKED w/ saved dbt/Recce references — see `mpd-future-references` memory),
+  D-20 (filter-repo history scrub before public flip), D-21 (llm_knowledge_base
+  EXCLUDED from public repo — course material), D-22 (yt-dlp stays, harden
+  matching — duration check, official-audio preference; iTunes 30s previews
+  REJECTED on feature-comparability honesty). **➡️ NEXT ACTION — build Epic H
+  (public showcase mode): H0 guest rendering core → H1 /songs catalog (+authed
+  "mine" filter) → H2 guest deep-dives+recommend → H3 popularity-on-hover →
+  H4 UI cut-off sweep → H5 Cloudflare Worker always-up fallback → H6 landing
+  copy.** Sequence after H: L-lite (case study + README) → I (playlists) → K
+  (agentic chat, evals first) → L-flip (scrub + public GitHub); J parked.
 - ✅ **SECURITY + ROBUSTNESS REVIEW (2026-07-09, commits 26891b1←): whole-app
   audit via 2 review subagents + a strategic pass; 7 real fixes, all tested,
   deployed, 286 green.** **Security surface came back STRONG** — auth, session
@@ -1086,3 +1097,15 @@ narrative goes to `notes/engineering_journal.md`, plans to
   a README/case-study that tells the engineering story), pending owner go — the
   first sub-choice there is 24/7 vs on-demand hosting. NEW SESSION: run
   `/resume`.**
+- **2026-07-11 (session 25 — Vision C design session, Fable 5):** Owner brought
+  a 12-idea list ("filter for all songs so anyone gets value without the pilot",
+  playlists, MPD, talk-to-your-songs, ingestion UX, UI cut-offs, case study,
+  public GitHub) → audited + organized into Epics H–L, four forks decided by
+  owner (D-18 public corpus / D-19 MPD parked w/ 4 saved dbt+Recce references /
+  D-20 filter-repo scrub / sequence H→L-lite→I→K→L-flip), spec written to
+  VISION_SPECS §Vision C. Flagged en route: #9 progress UX partially EXISTS
+  (/status + poller, enrich not rebuild); MPD = the legitimate real-data Spark
+  un-park trigger; llm_knowledge_base can't go public (D-21); acquisition
+  answer = harden yt-dlp matching, never switch to 30s previews (D-22).
+  **Left off: spec + roadmap COMMITTED; nothing built yet. Next: build Epic H
+  slice H0 (guest rendering core). NEW SESSION: run `/resume`.**

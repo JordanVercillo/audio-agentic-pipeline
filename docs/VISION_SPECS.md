@@ -285,3 +285,143 @@ surface the loudness curve on `/analytics` too.
 ① ②, so it can jump the queue if you want the visual payoff first. Every slice
 holds the ground rules: bridge key, Parquet marts, synthetic tests, $0,
 online-first + local backfill (no re-download).
+
+---
+
+# Vision C — the public era (specced 2026-07-11, owner's idea list)
+
+**Context:** roadmap ①–⑥ is COMPLETE and live. The owner brought a 12-idea list
+(public access, playlists, MPD, agentic chat, publication…); this section is
+the audited spec + sequence. Two ideas were *already built* and become
+enrich-not-build: ingestion progress UX (`GET /status` + dashboard poller with
+bar/ETA/current-song, 2026-07-09) and the A3 local LLM (gemma4 live). Standing
+constraint from 2026-07-11: **REAL data only** — no synthetic rows anywhere the
+product measures or reports (SCALING.md decision note).
+
+## Decisions (continue APP_SPEC numbering)
+
+- **D-18 (owner, 2026-07-11): the corpus goes PUBLIC.** All corpus-level
+  surfaces render without login: `/explore`, `/song/{id}` (incl. spectrogram,
+  loudness curve, sections), `/recommend`, a new `/songs` catalog. Personal
+  surfaces stay auth-gated (dashboard, /analytics personal overlays, archetype,
+  /ask, /classify, /status). This **deliberately reverses** the 2026-07-09
+  `/spectrogram` auth-gate: that gate closed an *enumeration oracle* on a
+  private surface; a public catalog makes enumeration a feature. The corpus is
+  the owner's own listening data, exposed by his explicit choice.
+- **D-19 (owner): MPD is PARKED** — revisit after H/I/K ship. When un-parked,
+  Epic J's shape is metadata-first (co-occurrence, embeddings, dbt-style
+  modeling — see the saved references in §Epic J), **never** bulk audio
+  acquisition. MPD is real data, so it is the legitimate future trigger for
+  un-parking Spark (SCALING.md).
+- **D-20 (owner): git history gets SCRUBBED (`git filter-repo`)** before the
+  public flip — the dead rotated secret (2026-07-03) comes out of history.
+  Cost accepted: commit hashes change; docs note the scrub date.
+- **D-21: `llm_knowledge_base/` is EXCLUDED from the public repo** (synced
+  course material — not ours to republish; provenance doc already says the
+  canonical lives elsewhere). Replace with a pointer README at flip time.
+- **D-22: audio acquisition stays yt-dlp, hardened — no source switch.**
+  Residential IP + politeness limits + transient audio (D-15) + features-only
+  retention is the defensible posture, bounded to tracks users actually bring.
+  The quality work is **match hardening** (duration check vs Spotify
+  `duration_ms`, official-audio preference, logged match confidence) — the real
+  risk is wrong-version matches (live cuts, covers), not the source. Audited
+  alternatives: iTunes 30s previews REJECTED (30s features are not comparable
+  to full-track features — sections/arc/fades all break; a provenance-tier
+  honesty problem); paid audio fails $0; user uploads legal but niche.
+
+## Epic H — Public showcase mode ⭐ (build first)
+
+The highest-leverage share-readiness item: converts the app from "5-seat gated
+demo" into a public interactive showcase. The 5-seat Spotify allowlist keeps
+gating only *personalization*.
+
+- **H0 — guest rendering core.** Corpus routes stop redirecting anonymous
+  visitors; view logic already takes population + optional user rows, so guests
+  pass `user_rows=None` (no personal chips/dots/seeds). Auth-gate list stays
+  explicit + tested.
+- **H1 — `/songs` catalog.** Every cached track: name, artist, **popularity**,
+  key features; server-side sort/filter (form-GET, no-JS house style); links to
+  deep-dives. Authed extra: a "mine" filter (your ingested songs — the owner's
+  "all your songs we've engineered" ask).
+- **H2 — guest deep-dives + recommend.** `/song/{id}` and `/recommend` public
+  (spectrogram gate reversal per D-18; seeds are corpus tracks so seeding works
+  for guests too).
+- **H3 — popularity on hover** (owner ask): `track_summary` + list-hover
+  templates carry popularity.
+- **H4 — UI cut-off sweep** (owner ask: "fields getting cut off"): Browser-pane
+  audit at 375/768/1280px, fix every truncation found; live browser validation
+  is the acceptance.
+- **H5 — $0 always-up fallback.** A Cloudflare Worker on the zone catches
+  origin-down (app off, on-demand) and serves a static "this demo runs
+  on-demand — here's the case study + contact" page instead of a bare 502.
+  Respects the on-demand decision; the shared link is never dead.
+- **H6 — landing copy.** Explain the split: browse the corpus freely; login
+  (pilot, 5 seats) personalizes.
+
+**Accept:** a logged-out browser can explore catalog → deep-dive → recommend on
+the live domain; personal routes still redirect; guest paths tested; H5 page
+renders when the app is stopped; all-green audits.
+
+## Epic L — Publication (lite early, flip last)
+
+- **L-lite (right after H):** dead-file sweep (verified-unused only) ·
+  `docs/CASE_STUDY.md` — what we built, architecture, DSP/eval/RAG/local-LLM
+  techniques, **and the Claude-harness methodology** (skills, memory,
+  journals — the differentiating meta-story) · README rewritten for a public
+  audience · how-to/quickstart guide.
+- **L-flip (last):** gitleaks scan → KB extraction (D-21) → LICENSE (owner
+  picks; MIT recommended for code) → `git filter-repo` scrub (D-20, fresh
+  mirror clone, force-push, note the date) → flip public → verify clone+run
+  from a clean machine POV.
+
+## Epic I — Your library: playlists
+
+New Spotify scopes (`playlist-read-private`, `playlist-read-collaborative`) →
+re-consent; fetch playlists + tracks paginated; **per-user caps are
+load-bearing** (a 2,000-track playlist at ~50 s/track is days on one worker):
+default cap (e.g. 10 playlists / 500 tracks, config), **explicit per-playlist
+"analyze this" button** (no auto-enqueue-everything), `/playlists` page showing
+per-playlist coverage ("12/40 engineered"), `/status` enriched with a per-song
+queue list + playlist attribution + "come back in ~X min" copy (the rest of the
+owner's UX ask). Queue fairness noted: FIFO with caps first; revisit if
+multi-user contention is real.
+
+## Epic K — Talk to your library (evals first, journal #25)
+
+Extends A3: **K0** eval extension (golden cases for bucketing + tool-use
+traces) → **K1** LLM-assisted cluster naming/bucketing (gemma4 proposes names/
+descriptions grounded on centroid z-features + exemplar tracks; deterministic
+names stay canonical, LLM additive per D-5) → **K2** multi-turn `/chat`
+grounded on taste + glossary + marts (8192-ctx budget management) → **K3**
+tool-use over the **existing P5 read-only DuckDB core** (get_schema /
+query_warehouse; D-10 sandbox; injection evals) — the literal target-JD line:
+"systems that enable AI agents to interact with data infrastructure." Honest
+risk: gemma4 tool-calling may under-perform → K3 is gated on K0 scores;
+hosted-model fallback stays optional.
+
+## Epic J — MPD (PARKED, D-19) — the saved future plan
+
+When revisited: **J0** license + download (~5.4 GB, AIcrowd; NEVER committed —
+research-only license, `data/` gitignored) + a **systematic periodic intake
+script** (owner ask: stage → validate → merge new data on demand) · **J1**
+co-occurrence mart + track2vec playlist-context embeddings (real ML, zero
+audio) · **J2** hybrid recommender (acoustic × co-occurrence) · **J3** Spark
+un-parks on 1M real playlists. **Owner's saved references (emulate/bring in
+at future date):**
+
+- https://medium.com/inthepipeline/from-zero-to-dbt-how-to-analyze-and-build-data-models-from-spotifys-million-playlist-data-241c3d8c9b5d
+- https://medium.com/inthepipeline/from-zero-to-dbt-part-2-modeling-spotifys-million-playlist-dataset-e62e350d9945
+- https://docs.reccehq.com/ (dbt PR data-diff review)
+- https://www.kaggle.com/datasets/himanshuwagh/spotify-million (mirror)
+
+The dbt direction (modeling MPD in dbt + Recce for data-diff review) is noted
+as the likely future transform framework evaluation when J un-parks — strongly
+portfolio-relevant.
+
+## The sequence (owner-approved 2026-07-11)
+
+**H (public showcase) → L-lite (case study + README) → I (playlists) → K
+(agentic chat) → L-flip (scrub + public GitHub)** · J parked. Every slice holds
+the ground rules: bridge key, Parquet, PKCE-no-secret, synthetic tests
+(code-correctness only — product data stays REAL), $0, evals before LLM
+surfaces, live browser validation to close every build.
