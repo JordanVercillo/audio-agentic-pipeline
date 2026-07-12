@@ -75,6 +75,6 @@ The session loop is **`/resume` → work → `/wrap-session`**.
 | Environment broken / imports fail / tests won't run | `/env-verify` |
 
 Skills live in `.claude/skills/`; domain-expert agents (advise by default,
-in-lane, never commit) in `.claude/agents/` (seeded: `data-platform-expert`).
-Design doc: `.claude/README.md`. Journal surprises in
-`notes/engineering_journal.md`.
+in-lane, never commit) in `.claude/agents/` — `data-platform-expert`,
+`webapp-expert`, `dsp-expert`, `llm-rag-expert`. Design doc: `.claude/README.md`.
+Journal surprises in `notes/engineering_journal.md`.

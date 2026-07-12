@@ -50,7 +50,8 @@ one-line next step.
 
 ---
 *Domain experts live in `.claude/agents/*.md` — each advises by default,
-implements scoped in-lane, and NEVER commits. Seeded: `data-platform-expert`.
-Add more by copying that pattern: `dsp-expert` (librosa / the 77-dim contract),
-`webapp-expert` (FastAPI / sessions / auth / templates / the is_viewer split),
-`llm-rag-expert` (Ollama / RAG / the golden evals / grounding contract).*
+implements scoped in-lane, and NEVER commits. Roster: `data-platform-expert`
+(warehouse / bridge key / marts / MPD-Spark scale), `webapp-expert` (FastAPI /
+sessions / auth / templates / the viewer split), `dsp-expert` (librosa / the
+frozen 77-dim contract / estimator honesty), `llm-rag-expert` (Ollama / RAG /
+the golden evals / grounding contract). Add a new domain by copying any of these.*
