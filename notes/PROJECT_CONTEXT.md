@@ -1176,6 +1176,14 @@ narrative goes to `notes/engineering_journal.md`, plans to
   overflowing (Log-in CTA off-screen → header/nav flex-wrap, page 460→375px) and
   the /recommend tunables table clipping its max column (→ overflow-x:auto scroll
   box); /analytics /explore /recommend /song all verified docScrollW==viewport at
-  375/299px, desktop unaffected. **Left off: Phase 1 REMAINING = N1 stats/σ
-  explainer, N2 12-archetype taxonomy, O1 dedup-as-flag. NEW SESSION: run
-  `/resume`.**
+  375/299px, desktop unaffected. ✅ **Harness upgrade (repo-bootstrap audit):**
+  this repo was already ahead of its own templates in every tier; the one real
+  gap was the resume↔wrap loop. Added `/wrap-session` (light session-save,
+  decoupled from pipeline-partner Phase 5), `/orchestrator` (lead + advisory
+  domain-expert agents, complements the generalist flow) + a seeded
+  `.claude/agents/data-platform-expert.md` (advise-by-default, in-lane), and a
+  full routing table in CLAUDE.md (was missing resume + app-verify). Cosmetic
+  drift (engineering_journal vs journal.md, docs/SPEC vs specs/) LEFT ALONE —
+  renaming = churn. All additive, nothing clobbered; both new skills discovered.
+  **Left off: Phase 1 REMAINING = N1 stats/σ explainer, N2 12-archetype
+  taxonomy, O1 dedup-as-flag. NEW SESSION: run `/resume`.**

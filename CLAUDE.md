@@ -62,8 +62,19 @@ MCP registration + demo transcript: [`docs/AGENT_ACCESS.md`](docs/AGENT_ACCESS.m
 
 ## The harness
 
-`.claude/skills/` — `pipeline-partner` (feature/design sessions; reads +
-updates PROJECT_CONTEXT automatically), `warehouse-audit` (deterministic
-data-quality validator — run after any pipeline run or transform change),
-`env-verify` (environment + test triage). Design doc: `.claude/README.md`.
-Journal surprises in `notes/engineering_journal.md`.
+The session loop is **`/resume` → work → `/wrap-session`**.
+
+| Want | Use |
+|---|---|
+| Get back up to speed & continue (start here) | `/resume` |
+| Save this session to memory + push (end here) | `/wrap-session` |
+| Feature / design session (generalist partner) | `/pipeline-partner` |
+| Lead a build spanning ≥2 domains (advisory agents) | `/orchestrator` |
+| Data-quality audit — after any pipeline run / transform change | `/warehouse-audit` |
+| Is the live app up? what state is the system in? | `/app-verify` |
+| Environment broken / imports fail / tests won't run | `/env-verify` |
+
+Skills live in `.claude/skills/`; domain-expert agents (advise by default,
+in-lane, never commit) in `.claude/agents/` (seeded: `data-platform-expert`).
+Design doc: `.claude/README.md`. Journal surprises in
+`notes/engineering_journal.md`.
