@@ -625,6 +625,55 @@ Items 2 + 15 — data-quality that becomes load-bearing before any scale work.
 **Accept:** the DUPLICATE_TRACKS audit flags known dupes; a re-ingest of a twin
 is skipped with a logged reason; match-confidence is recorded per extraction.
 
+### O1 — READY-TO-EXECUTE plan (data-platform-expert, 2026-07-12)
+
+Consulted + validated on the real corpus during the 2026-07-12 orchestrated
+session; **prototyped detector found 10 genuine dupe clusters** in `dim_tracks`
+(Muse pairs, Linkin Park "In the End" 216800 vs 216880 ms, Green Day "Holiday")
+— so `DUPLICATE_TRACKS` will read **true** on today's corpus, correctly (advisory
+WARNING, 0 errors; same severity class as AUDIO_ORPHANS). Deferred from the
+2026-07-12 session (large slice, budget) — execute as ONE focused pass.
+
+- **NEW `src/store/dedup.py`** — pure, **stdlib-only** (so the uv-isolated audit
+  can `exec_module` it): `normalize_title` (strip remaster/live/feat/parenthetical/
+  diacritics via a " - "/"(...)" gate — only qualifiers, never plain words),
+  `normalize_artist` (conservative — no multi-artist split), `DedupRecord`/
+  `DuplicateCluster` dataclasses, `find_duplicate_clusters` (bucket by
+  (title,artist) → union-find within a duration window; cosine as a **reject-only**
+  tiebreak when both cached), `duplicate_of_map`. **Precision-biased** (a false
+  positive wrongly skips a real download). Constants `DEFAULT_DURATION_WINDOW_MS=7000`,
+  `DEFAULT_COSINE_MIN=0.95` — corpus-tunable (journal #19/#24).
+- **`models.py`** — 2 nullable cols on `TrackMeta`: `duration_ms` (fetched
+  context, dedup window) + `duplicate_of` (**soft ref to a spotify_track_id —
+  NOT a PK/FK, nothing joins on it**; D-28 / ground rule #1).
+- **`cache.py`** — `_ADDED_COLUMNS["track_meta"]` += both (forward-only migration
+  #journal-18); `remember_meta` threads `duration_ms` preserve-if-absent (like
+  popularity, never touches `duplicate_of`); methods `find_cached_twin`,
+  `resolve_duplicate`/`_resolve_as_duplicate` (flag + job done, NO re-download),
+  `_guard_cached_twins`, `duplicate_flags`, `refresh_duplicate_flags` (cosine
+  refines the display flag where both cached), `_dedup_vectors` (z-scored like
+  `similar()`). **enqueue intake guard**: drop misses whose twin is already
+  cached, before the (unchanged) queue loop.
+- **`extractor.py`** — post-claim guard in `extract_one`: `find_cached_twin` →
+  `resolve_duplicate` + return (catches the both-new race; best-effort, never raises).
+- **audit** `check_duplicates` (importlib-load dedup.py by path, mirrors
+  `check_marts`) → `DUPLICATE_TRACKS` flag over `dim_tracks`; wire into `main()`.
+- **NEW `scripts/refresh_dedup.py`** (mirror the backfills) + worker post-drain
+  hook (`cache.refresh_duplicate_flags()` next to `rebuild_marts`).
+- **Feeders (cross-domain, small):** `app.py` `meta_items` += `duration_ms`
+  (`fetch_top_tracks` returns it); `seed_cache.py` same; dashboard "N of M
+  analyzed" resolves a guarded twin through its canonical (~6 lines, cosmetic).
+- **Tests (~10–12, synthetic):** `test_dedup.py` (normalization, clustering
+  window/artist gates, canonical preference, cosine reject) + `test_store.py`
+  (enqueue guard idempotent + bridge-key-untouched, extract-time race, no-false-
+  guard, refresh self-heal) + an audit test.
+- **Invariant self-audit (expert-confirmed):** bridge key SAFE (soft ref, no
+  join); idempotency SAFE (guard before queue loop, done never re-selected);
+  stranding SELF-HEALING (twin re-queues if canonical ever vanishes); pre-download
+  guards are **metadata-only by necessity** (can't hear a track before downloading
+  it) — cosine only refines the display flag. **Pruning dupes is a separate,
+  IRREVERSIBLE owner call (D-28 = flag-not-delete) — escalate, never auto-delete.**
+
 ## Epic J — MPD (RESHAPED: metadata-only, ACTIVE, Phase 2)
 
 Un-parked as metadata-only (D-26) + Spark un-park (D-27). The owner's

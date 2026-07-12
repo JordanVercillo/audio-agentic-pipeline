@@ -200,6 +200,10 @@
   Vision D also added Epic N (explainability), Epic O (dedup + yt-dlp
   match-hardening), Bug B1 — full spec in VISION_SPECS §"Vision D". Start Phase
   1 with the app running (`start_app`); J-audio + M-notifications stay parked.
+  **✅ UPDATE 2026-07-12 — Phase 1 is 7/8 DONE** (D-31, B1, H3, H4, H0+H7 guest
+  demo, N1, N2 all shipped + live). **Only O1 (dedup-as-flag) remains** — its
+  full ready-to-execute plan is in VISION_SPECS §"Epic O → O1"; run it in one
+  pass, then Phase 2 = MPD/Spark. See the session-27 log line for the live state.
 - ✅ **SECURITY + ROBUSTNESS REVIEW (2026-07-09, commits 26891b1←): whole-app
   audit via 2 review subagents + a strategic pass; 7 real fixes, all tested,
   deployed, 286 green.** **Security surface came back STRONG** — auth, session
@@ -1187,3 +1191,21 @@ narrative goes to `notes/engineering_journal.md`, plans to
   renaming = churn. All additive, nothing clobbered; both new skills discovered.
   **Left off: Phase 1 REMAINING = N1 stats/σ explainer, N2 12-archetype
   taxonomy, O1 dedup-as-flag. NEW SESSION: run `/resume`.**
+- **2026-07-12 (session 27 — Vision D Phase 1 via `/orchestrator`, Fable 5):**
+  First real orchestrator outing — added the 4-expert roster (data-platform /
+  webapp / dsp / llm-rag), then consulted webapp-expert + data-platform-expert
+  IN PARALLEL for N1/N2 (webapp) and O1 (data-platform), disjoint files.
+  ✅ **N1 + N2 SHIPPED (commit 1607f2d, 339 green, browser-validated 375px):**
+  **N2** the 12-cell archetype taxonomy on /analytics with the user's cell pinned
+  — the key move was lifting derive_archetype's inline breadth thresholds
+  (0.70/0.85) into shared constants + `archetype_name()`, so `archetype_taxonomy()`
+  derives every name/band/rule from the SAME source (journal #27; can't drift);
+  **N1** plain-language σ/std/percentile explainers (accessible `<details>` +
+  `<abbr>` glosses) on /analytics + /explore. ✅ **O1 DEFERRED (owner) — but
+  FULLY PLANNED:** data-platform-expert's ready-to-execute plan is in
+  VISION_SPECS §"Epic O → O1 READY-TO-EXECUTE" (new stdlib-only `dedup.py`,
+  `TrackMeta.duplicate_of`+`duration_ms`, enqueue/extract guards, DUPLICATE_TRACKS
+  audit, ~12 tests; real-corpus probe found **10 genuine dupes** → the flag will
+  read true, advisory). Bridge key stays sacred (flag = soft ref, never a join).
+  **Left off: Phase 1 = only O1 remains (execute the captured plan in one pass);
+  then Phase 2 = MPD/Spark. NEW SESSION: run `/resume`.**

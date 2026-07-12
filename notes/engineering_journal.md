@@ -641,3 +641,32 @@ coherent robust triple) fell out of listening to it.
 > *A central line and a spread band only belong together if they come from the
 > same family — median+IQR or mean+σ. When a "surely-true" invariant fails,
 > the geometry is teaching you which summary you actually meant.*
+
+## Vision D Phase 1 — orchestrated build
+
+### 27. A page that explains a computed value is a second copy of its rules (2026-07-12)
+
+Building the 12-cell archetype taxonomy (N2), the obvious move was to lay out the
+"The {motion} {breadth}" names and the thresholds (70% / 85% / the σ-bands) as a
+static reference grid. The `webapp-expert` (consulted through the new
+`/orchestrator`) caught that `derive_archetype` held those breadth thresholds as
+**inline literals** (`0.70`, `0.85`). A hardcoded grid would match the classifier
+the day it shipped and silently **lie** the day someone retuned one and not the
+other. The fix lifted the literals into shared constants both functions reference,
+derived the grid (names, bands, rules) from those same constants, and added a test
+that probes each σ-band through the *live* `_motion_word` — turning "they happen to
+agree" into "they cannot disagree."
+
+**The realization:** a view that *explains* a computed rule is a second encoding of
+that rule, and two encodings of one rule drift the instant one is edited. The
+reference has to be **computed from the same source of truth** as the thing it
+describes, not transcribed next to it. (Also the orchestrator's first real outing
+earned its keep: each expert caught a load-bearing risk squarely in its lane —
+this drift for webapp, and data-platform's bridge-key-as-flag discipline plus a
+real-corpus probe that found 10 genuine dupes — that a single generalist pass could
+have skated past.)
+
+> *When you build something that explains a computed value, derive it from that
+> value's own constants — never re-type the numbers beside it. Transcribed truth is
+> a lie on a delay; a test that re-derives the explanation through the real logic is
+> what makes the two unable to disagree.*
