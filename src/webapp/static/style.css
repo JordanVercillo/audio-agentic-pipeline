@@ -304,4 +304,31 @@ a.artist:hover { border-color: var(--spotify); }
   .sig-word { grid-column: 1 / -1; }
   header.site, footer.site { padding: .8rem 1rem; }
   header nav { gap: 1rem; }
+  .how-to-read dl { grid-template-columns: 1fr; gap: .05rem; }
+  .how-to-read dd { margin: 0 0 .5rem; }
 }
+
+/* ── stats explainer (N1) ── */
+.how-to-read { margin: .75rem 0 1.25rem; }
+.how-to-read summary { color: var(--muted); cursor: pointer; font-size: .85rem; }
+.how-to-read summary:hover { color: var(--ink); }
+.how-to-read dl { margin: .7rem 0 0; display: grid;
+  grid-template-columns: max-content 1fr; gap: .3rem .9rem; max-width: 46rem; }
+.how-to-read dt { color: var(--ink); font-weight: 600; font-size: .82rem; }
+.how-to-read dd { color: var(--muted); font-size: .82rem; margin: 0; }
+abbr.stat-abbr { text-decoration: underline dotted; text-underline-offset: 2px; cursor: help; }
+
+/* ── the 12-archetype taxonomy (N2) ── */
+.tax-wrap { overflow-x: auto; margin: .25rem 0 1.5rem; }  /* wide grid scrolls in its own box */
+table.tax { border-collapse: separate; border-spacing: 6px; min-width: 40rem; }
+table.tax th, table.tax td { text-align: left; vertical-align: top; }
+table.tax thead th, table.tax tbody th { font-weight: 600; padding: .3rem .5rem; }
+.tax-corner { background: transparent; border: 0; }
+.tax-word { display: block; color: var(--ink); font-size: .9rem; }
+.tax-cell { background: var(--panel); border: 1px solid var(--line);
+  border-radius: 10px; padding: .5rem .6rem; min-width: 10rem; }
+.tax-cell.is-current { border-color: var(--spotify); background: var(--hit); }
+.tax-name { display: block; color: var(--ink); font-weight: 600; font-size: .9rem; }
+.tax-def { display: block; margin-top: .2rem; }
+.tax-you { color: var(--spotify); font-weight: 700; font-size: .72rem;
+  text-transform: uppercase; letter-spacing: .04em; }

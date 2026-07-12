@@ -437,6 +437,46 @@ def test_derive_archetype_matrix():
     assert derive_archetype({"short_term": []}, labels, None, []) is None
 
 
+def test_archetype_taxonomy_grid_and_thresholds():
+    from .archetype import (
+        _BREADTH_DEF,
+        _DUALIST_MIN,
+        _LOYALIST_MIN,
+        _MOTION_DEF,
+        archetype_name,
+        archetype_taxonomy,
+    )
+    tax = archetype_taxonomy()
+    # exactly the 4×3 grid, 12 uniquely-named cells
+    assert len(tax["cells"]) == 12 and len({c["name"] for c in tax["cells"]}) == 12
+    assert len(tax["grid"]) == 4 and all(len(r["cells"]) == 3 for r in tax["grid"])
+    # the thresholds SHOWN are the SAME constants the classifier uses (no drift)
+    rules = " ".join(b["rule"] for b in tax["breadths"])
+    assert f"{round(100 * _LOYALIST_MIN)}%" in rules and f"{round(100 * _DUALIST_MIN)}%" in rules
+    # names are exactly what derive_archetype composes
+    names = {c["name"] for c in tax["cells"]}
+    assert {"The Anchored Loyalist", "The Roaming Eclectic",
+            "The Shape-shifting Dualist"} <= names
+    for c in tax["cells"]:
+        assert c["name"] == archetype_name(c["motion"], c["breadth"])
+        assert c["motion"] in _MOTION_DEF and c["breadth"] in _BREADTH_DEF and c["def"].strip()
+
+
+def test_taxonomy_motion_bands_match_classifier():
+    # every grid σ-band must classify (via the LIVE _motion_word) to its own word,
+    # so the reference grid can't drift from the threshold logic
+    from .archetype import _MOTION_BANDS, _MOTION_MAX, _motion_rows, _motion_word
+    lo = 0.0
+    probes = []
+    for hi, word in _MOTION_BANDS:
+        probes.append(((lo + hi) / 2, word))
+        lo = hi
+    probes.append((lo + 1.0, _MOTION_MAX))
+    for score, word in probes:
+        assert _motion_word(score) == word
+    assert [r["word"] for r in _motion_rows()] == [w for _, w in _MOTION_BANDS] + [_MOTION_MAX]
+
+
 def _taste_d() -> dict:
     # _TASTE is defined later in this module; resolve it at call time.
     return dict(_TASTE, **{
@@ -633,7 +673,8 @@ def test_analytics_renders_clusters_signature_and_map(client, monkeypatch, tmp_p
     taste = {"range_ids": {"short_term": ["b0", "b1", "a0"],
                            "medium_term": ["b1", "b2"],
                            "long_term": ["a0", "a1", "a2"]},
-             "artists": [{"name": "LoudArtist0", "genres": ""}]}
+             "artists": [{"name": "LoudArtist0", "genres": ""}],
+             "drift": {"score": 0.12, "label": "Minimal Drift"}}  # motion → Anchored: a cell pins
     client.cookies.set(config.SESSION_COOKIE, _seed_session(taste=taste))
     r = client.get("/analytics")
     assert r.status_code == 200
@@ -645,6 +686,13 @@ def test_analytics_renders_clusters_signature_and_map(client, monkeypatch, tmp_p
     assert "popularity scale" in r.text and "not an acoustic measure" in r.text
     assert "Artists who sound alike" in r.text and "LoudArtist0" in r.text
     assert 'class="comp-bar"' in r.text                # composition bars
+    # N2: the full 12-cell taxonomy renders from archetype.py, the user's cell pinned
+    from .archetype import archetype_taxonomy
+    assert all(c["name"] in r.text for c in archetype_taxonomy()["cells"])
+    assert "≥70%" in r.text and "≥85%" in r.text       # breadth thresholds shown (from constants)
+    assert r.text.count('aria-current="true"') == 1 and "tax-you" in r.text
+    # N1: the stats explainer + the σ hover affordance
+    assert "How to read these numbers" in r.text and 'class="stat-abbr"' in r.text
 
 
 def test_analytics_renders_loudness_arc(client, monkeypatch, tmp_path):

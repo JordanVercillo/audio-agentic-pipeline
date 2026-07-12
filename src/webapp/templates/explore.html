@@ -40,7 +40,7 @@
       <span class="chip"><span class="dot" style="background:#7aa2ff"></span>everyone ({{ stat.n }} songs)</span>
       <span class="chip"><span class="dot" style="background:#1db954"></span>you{% if chip %} ({{ chip.n }} analyzed){% endif %}</span>
       {% if chip %}
-      <span class="pct-chip">your median {{ spec.friendly|lower }} sits above
+      <span class="pct-chip" title="Percentile — the share of the corpus at or below your median">your median {{ spec.friendly|lower }} sits above
         <b>{{ chip.pct }}%</b> of the corpus</span>
       {% endif %}
     </div>
@@ -48,6 +48,16 @@
     <p class="cap">Population distribution (median {{ stat.p50 }}); your analyzed
       tracks are the green dots along the baseline — hover for values.</p>
   </div>
+
+  {% if chip %}
+  <details class="how-to-read">
+    <summary>How to read the percentile</summary>
+    <dl>
+      <dt>Percentile</dt><dd>“above {{ chip.pct }}%” means {{ chip.pct }} of every 100 analyzed songs sit at or below your median on this feature — a rank from 0–100, not a score.</dd>
+      <dt>Corpus</dt><dd>Every song we've analyzed — the shared yardstick your tracks are compared against.</dd>
+    </dl>
+  </details>
+  {% endif %}
 
   {% if strip %}
   <div class="strip">

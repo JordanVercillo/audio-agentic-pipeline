@@ -177,6 +177,8 @@ def test_explore_happy_path(client, monkeypatch, tmp_path):
     assert "Danceability" in r.text and "tier-badge derived" in r.text
     assert 'class="hist"' in r.text                      # population histogram
     assert "your median" in r.text.lower()               # percentile chip
+    assert 'class="how-to-read"' in r.text and "How to read the percentile" in r.text  # N1
+    assert "at or below" in r.text
     assert 'class="cluster-map"' in r.text               # the scatter rendered
     assert "Last 4 weeks" in r.text                      # window strip
     # unknown feature falls back gracefully

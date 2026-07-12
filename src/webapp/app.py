@@ -40,7 +40,7 @@ from .analytics import (
     popularity_context,
     scatter_svg,
 )
-from .archetype import derive_archetype
+from .archetype import archetype_taxonomy, derive_archetype
 from .explore import (
     catalog_groups,
     histogram_svg,
@@ -413,7 +413,8 @@ def create_app() -> FastAPI:
 
         ctx: dict[str, Any] = {"authed": True, "trained": False, "archetype": None,
                                "coverage": taste.get("coverage"),
-                               "drift": taste.get("drift")}
+                               "drift": taste.get("drift"),
+                               "taxonomy": archetype_taxonomy()}  # N2: static reference grid
         # Signature works even before any model is trained (population stats only).
         population = list(cache.all_features().values())
         ctx["signature"] = acoustic_signature(list(cached.values()), population)

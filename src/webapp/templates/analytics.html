@@ -24,6 +24,41 @@
   </div>
   {% endif %}
 
+  {% if taxonomy %}
+  <h2 class="section">The 12 taste archetypes</h2>
+  <p class="cap">Two axes — how much your sound <b>moves</b> over time (rows, by
+    σ-shift) × how <b>broad</b> your listening is (columns).{% if archetype and archetype.motion %}
+    Yours is highlighted.{% endif %}</p>
+  <div class="tax-wrap">
+    <table class="tax">
+      <thead>
+        <tr>
+          <td class="tax-corner"></td>
+          {% for b in taxonomy.breadths %}
+          <th scope="col"><span class="tax-word">{{ b.word }}</span>
+            <span class="cap">{{ b.rule }}</span></th>
+          {% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in taxonomy.grid %}
+        <tr>
+          <th scope="row"><span class="tax-word">{{ row.motion.word }}</span>
+            <span class="cap">{{ row.motion.band }}</span></th>
+          {% for cell in row.cells %}
+          {% set cur = archetype and archetype.motion == cell.motion and archetype.breadth == cell.breadth %}
+          <td class="tax-cell{{ ' is-current' if cur else '' }}"{% if cur %} aria-current="true"{% endif %}>
+            <span class="tax-name">{{ cell.name }}{% if cur %} <span class="tax-you">● you</span>{% endif %}</span>
+            <span class="cap tax-def">{{ cell.def }}</span>
+          </td>
+          {% endfor %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+
   {% if signature %}
   <h2 class="section">Your acoustic signature</h2>
   <div class="sig">
@@ -32,7 +67,7 @@
       <span class="sig-name">{{ s.feature }}</span>
       <span class="sig-bar"><span class="sig-fill {{ 'neg' if s.z < 0 else '' }}"
             style="width: {{ (s.strength * 100)|round }}%"></span></span>
-      <span class="sig-word">{{ s.word }} than the corpus <b>({{ '%+.1f'|format(s.z) }}σ)</b></span>
+      <span class="sig-word">{{ s.word }} than the corpus <b>({{ '%+.1f'|format(s.z) }}<abbr class="stat-abbr" title="standard deviations from the corpus average — see “How to read these numbers”">σ</abbr>)</b></span>
     </div>
     {% endfor %}
   </div>
@@ -41,14 +76,29 @@
   {% if popularity %}
   <p class="pop-line">{{ popularity.line }}
     <span class="cap">Spotify popularity across {{ popularity.n }} of your tracks —
-      fetched metadata, not an acoustic measure.</span></p>
+      fetched metadata, not an acoustic measure.{% if popularity.basis == 'corpus' %}
+      The percentage is a <b>percentile</b> — the share of the corpus your rotation
+      out-populars.{% endif %}</span></p>
   {% endif %}
 
   {% if drift %}
   <div class="insight drift" style="margin-top:1rem">
     <div class="insight-badge">Taste drift · recent vs all-time</div>
-    <p><strong>{{ drift.label }}</strong> — RMS σ-shift {{ drift.score }}.</p>
+    <p><strong>{{ drift.label }}</strong> — RMS <abbr class="stat-abbr" title="standard-deviation shift: how far your recent sound moved from your all-time average">σ-shift</abbr> {{ drift.score }}.</p>
   </div>
+  {% endif %}
+
+  {% if signature or drift or popularity %}
+  <details class="how-to-read">
+    <summary>How to read these numbers</summary>
+    <dl>
+      <dt>Corpus</dt><dd>Every song we've analyzed — the shared yardstick your taste is compared against.</dd>
+      <dt>Standard deviation (σ)</dt><dd>How spread out the corpus is on a feature. One σ ≈ one typical step from the average.</dd>
+      <dt>A σ chip, e.g. +0.2σ</dt><dd>Your average sits 0.2 of a typical step <em>above</em> the corpus (a minus sign = below). Bigger = more distinctive; past about ±2σ you're in the top or bottom few percent.</dd>
+      <dt>σ-shift (taste drift)</dt><dd>The same σ ruler applied over time: how far your recent sound moved from your all-time average. Near 0 is steady.</dd>
+      <dt>Percentile</dt><dd>“more mainstream than 63%” means 63 of every 100 corpus songs rank below your average — a rank from 0–100, not a score.</dd>
+    </dl>
+  </details>
   {% endif %}
 
   {% if trained %}
