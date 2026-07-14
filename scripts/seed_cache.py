@@ -81,6 +81,7 @@ def main() -> int:
             "spotify_track_id": tid,
             "track_name": _clean(row.get("track_name")),
             "artist_names": _clean(row.get("artist_names") or row.get("primary_artist_name")),
+            "duration_ms": row.get("duration_ms"),  # O1 dedup window (D-28); None-safe
         })
         if features.get("tempo_bpm") is None:  # the DSP never ran on this row
             n_ghost += 1

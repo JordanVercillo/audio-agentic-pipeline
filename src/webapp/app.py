@@ -175,7 +175,7 @@ def build_dashboard_context(client: Any, cache: FeatureCache) -> dict[str, Any]:
                 ids_here.append(tid)
                 meta_items.append(
                     {"spotify_track_id": tid, "track_name": name, "artist_names": artist,
-                     "popularity": r.get("popularity")})
+                     "popularity": r.get("popularity"), "duration_ms": r.get("duration_ms")})
                 pop = r.get("popularity")
                 tracks.append({"rank": int(r.get("rank", 0)), "name": name,
                                "artist": artist, "id": tid, "art": r.get("album_image_url"),

@@ -91,6 +91,13 @@ if __name__ == "__main__":
                               f"{PERCEPTUAL_VERSION}")
                     except Exception as exc:  # noqa: BLE001 — derived layer, never fatal
                         print(f"mart refresh failed (next successful drain retries): {exc}")
+                    try:  # O1 (D-28): keep the near-duplicate display flag current
+                        dup = cache.refresh_duplicate_flags()
+                        if dup["n_duplicates"]:
+                            print(f"dedup: {dup['n_duplicates']} duplicate flag(s) "
+                                  f"across {dup['n_clusters']} cluster(s)")
+                    except Exception as exc:  # noqa: BLE001 — annotation only, never fatal
+                        print(f"dedup refresh failed (next drain retries): {exc}")
             except Exception as exc:  # noqa: BLE001 — one bad poll must not kill the worker
                 print(f"worker poll error (continuing next interval): {exc}")
             if not args.loop:

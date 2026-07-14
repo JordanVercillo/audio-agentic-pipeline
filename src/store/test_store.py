@@ -410,6 +410,18 @@ def test_enqueue_guard_skips_cached_twin(cache):
     assert cache.get_meta("orig2")["spotify_track_id"] == "orig2"
 
 
+def test_find_cached_twin_matches_cached_recording(cache):
+    # the signal the extract-time (both-new race) guard fires on: 'second' was
+    # queued when nothing was cached; once 'first' analyzes, its twin is found.
+    cache.upsert("first", _FEATURES)
+    cache.remember_meta([
+        {"spotify_track_id": "first", "track_name": "Starlight", "artist_names": "Muse", "duration_ms": 240000},
+        {"spotify_track_id": "second", "track_name": "Starlight - Live", "artist_names": "Muse", "duration_ms": 240300}])
+    assert cache.find_cached_twin("second") == "first"       # → extract_one reuses first, skips DSP
+    assert cache.find_cached_twin("first") is None           # canonical has no cached twin
+    assert cache.find_cached_twin("unknown") is None         # unknown id → None, never raises
+
+
 def test_enqueue_guard_does_not_flag_distinct_track(cache):
     cache.upsert("orig", _FEATURES)
     cache.remember_meta([

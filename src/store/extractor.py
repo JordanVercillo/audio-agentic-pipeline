@@ -112,6 +112,16 @@ def extract_one(cache: FeatureCache, track_id: str, *, audio_dir: Path,
         cache.fail(track_id, "no track metadata for the audio search")
         return False
 
+    # O1 (D-28): a near-duplicate was analyzed first (the both-new race) → reuse
+    # it, skip the redundant download+DSP. Resolve as a duplicate (flag + job
+    # done); nothing re-fetched, bridge key untouched. find_cached_twin is
+    # best-effort and never raises.
+    twin = cache.find_cached_twin(track_id)
+    if twin is not None:
+        cache.resolve_duplicate(track_id, twin)
+        logger.info("deduped %s: same recording as cached %s (no download)", track_id, twin)
+        return True
+
     audio_path: Optional[Path] = None
     try:
         audio_path = acquire(track_id, meta["track_name"], meta.get("artist_names") or "",
