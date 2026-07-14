@@ -1239,3 +1239,26 @@ narrative goes to `notes/engineering_journal.md`, plans to
   Vision D Phase 1 COMPLETE; NEXT = Phase 2 (Epic J MPD metadata-only + Spark)
   or Phase 3 (Epic H `/songs`+worker-fallback, I playlists, K chat, L publish).
   NEW SESSION: run `/resume`.**
+- **2026-07-14 (session 29 — Vision E design via `/orchestrator`, Fable 5):**
+  Owner re-scoped the whole arc → specced as **VISION_SPECS §"Vision E — the
+  product era" (D-32…D-39, commit a5298d0)**: Phase 3 = the product surface
+  (P3.0 groundwork → P3.1 artist_meta → P3.2 Artists+genres → P3.3 Library
+  tabs → P3.4 playlists → P3.5 guest dashboard → P3.6 H5/H6/O2 → P3.7
+  case-study + PUBLIC-FLIP exit gate), Phase 4 = Epic K formal (chat +
+  multimodal-upload builds; adapters/RL gated explorations), Phase 5 = MPD,
+  Phase 6 = ML. Built 2 new harness agents (`research-expert`, `agile-coach` —
+  both registered) and ran the first research outing →
+  **`docs/SPOTIFY_API_RESEARCH.md`** (cited availability matrix + derivation
+  map). **Load-bearing find (journal #29): `GET /artists/{id}/top-tracks` was
+  REMOVED (Feb-2026 wave, "no replacement")** → artist pages derive "YOUR top
+  by artist" as the core; live top-10 = absent-safe garnish (borrowed-time
+  doctrine now standing). Also: 5-seat cap = platform ceiling; playlists
+  own+collaborative only @50/page; search capped 10; guardrails file needs
+  correction wave 2 (P3.0 task). webapp-expert delivered the IA (two-group
+  six-item nav; Library holds the only tabs; genres live in Artists; guest
+  lands on /dashboard; artist_meta = the genre serving path). Owner forks:
+  analyze-on-demand · 50/range · flip = Phase-3 exit · K explorations gated.
+  Spec-only session — no product code; suite stands at 353 (session-28 run);
+  app-verify ALL-FALSE, 160 tracks, public up, tree synced. **Left off: Vision
+  E COMMITTED; next build = P3.0 groundwork (fetcher hardening + 20→50 bump +
+  guardrails refresh), then P3.1 artist_meta. NEW SESSION: run `/resume`.**

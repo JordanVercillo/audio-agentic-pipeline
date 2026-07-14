@@ -698,3 +698,34 @@ degeneracy, not the logic.
 > anything — at n=2 every such metric is pinned to a degenerate value (antipodal or
 > zero). Test population-relative code with a population, and never let the relative
 > signal be the load-bearing gate.*
+
+## Vision E — the product-era spec
+
+### 29. The endpoint you're designing around may already be gone (2026-07-14)
+
+The owner's Phase-3 ask included an artist page built on "the artist's overall
+top 10 songs" — a natural `GET /artists/{id}/top-tracks` call, and I'd have
+specced it that way. The research-expert's first outing (built this session)
+came back with a finding that reshaped the design before a line was written:
+that endpoint was **removed in a SECOND deprecation wave (Feb-2026) with "no
+replacement available"** — and, subtler, the wave's "removed" endpoints are
+*still answering on our PKCE user tokens* months past the deadline (our own
+dated live checks prove it) while client-credentials tokens already fail.
+Enforcement is landing token-type-first. The design flipped: the DERIVED view
+("**your** top tracks by this artist," from ranks we already store, zero API
+calls) became the load-bearing core, and the live top-10 became absent-safe
+garnish that may vanish without notice.
+
+**The realization:** a feature spec written against remembered API surface is a
+bet that the surface still exists — and platform surfaces under active
+deprecation lose that bet silently. The research step belongs BEFORE the spec,
+not during the build; and "still works when I try it" is not "still exists" —
+borrowed-time surfaces get used as garnish, never as the load-bearing path.
+(Journal #20 was "audit your guardrails against reality" when reality was more
+generous than the docs; this is its mirror — reality can also be a stay of
+execution, not a pardon.)
+
+> *Research the surface before you spec the feature. When docs say removed but
+> calls still answer, you're on borrowed time: build the derived path as the
+> core and demote the live call to absent-safe garnish — never let a stay of
+> execution become a foundation.*
