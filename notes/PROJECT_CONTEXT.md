@@ -202,11 +202,21 @@
   1 with the app running (`start_app`); J-audio + M-notifications stay parked.
   **✅ UPDATE 2026-07-14 — VISION D PHASE 1 IS 8/8 COMPLETE + LIVE** (D-31, B1,
   H3, H4, H0+H7 guest demo, N1 explainers, N2 taxonomy, O1 dedup — all shipped;
-  353 tests). **➡️ NEXT = Phase 2 (Epic J MPD metadata-only + Spark un-park) or
-  Phase 3 (Epic H `/songs`+$0-worker-fallback, Epic I playlists, Epic K agentic
-  chat, Epic L case-study→public-GitHub).** O2 yt-dlp match-hardening folds into
-  Phase 2. Parked: MPD-audio, Epic M, instrumentalness, dupe-pruning (owner call).
-  See the session-28 log line for the live state.
+  353 tests). **✅ VISION E SPECCED same day (owner's re-scope → VISION_SPECS
+  §"Vision E — the product era", decisions D-32…D-39):** Phase 3 = the product
+  surface (P3.0 fetcher-hardening+50/range → P3.1 artist_meta → P3.2 Artists+
+  genres → P3.3 Library tabs → P3.4 playlists → P3.5 guest dashboard → P3.6
+  H5/H6/O2 → P3.7 case-study+PUBLIC-FLIP exit gate); Phase 4 = Epic K formal
+  (K0 interview design → chat/tool-use/bucketing/multimodal-upload builds;
+  adapters+RL = gated explorations); Phase 5 = MPD; Phase 6 = ML capstone.
+  Research brief: [`docs/SPOTIFY_API_RESEARCH.md`](../docs/SPOTIFY_API_RESEARCH.md)
+  (TWO deprecation waves; artist top-tracks REMOVED no-replacement → derive
+  "YOUR top by artist" as core, live absent-safe garnish; 5-seat cap = platform
+  ceiling; playlists own+collaborative only). New harness agents:
+  `research-expert`, `agile-coach`. **➡️ NEXT ACTION — build Vision E P3.0
+  (groundwork: fetcher hardening + the 20→50 bump + guardrails refresh wave 2),
+  then P3.1 artist_meta.** Parked: MPD-audio, Epic M, instrumentalness,
+  dupe-pruning (owner call). See the session-29 log line for the live state.
 - ✅ **SECURITY + ROBUSTNESS REVIEW (2026-07-09, commits 26891b1←): whole-app
   audit via 2 review subagents + a strategic pass; 7 real fixes, all tested,
   deployed, 286 green.** **Security surface came back STRONG** — auth, session

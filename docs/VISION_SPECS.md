@@ -728,3 +728,169 @@ regression test on the seed→targets mapping.
 Same ground rules throughout: bridge key, Parquet, PKCE-no-secret, REAL data
 only (synthetic = test fixtures for code-correctness only), $0, evals before LLM
 surfaces, live browser validation to close every build.
+
+---
+
+# Vision E — the product era (Phases 3–6, specced 2026-07-14)
+
+**Context:** Vision D Phase 1 is 8/8 COMPLETE. The owner re-scoped the arc in an
+orchestrated design session (consults: `webapp-expert` IA plan + the
+`research-expert`'s first outing → [`docs/SPOTIFY_API_RESEARCH.md`](SPOTIFY_API_RESEARCH.md);
+four owner forks answered). **The mission, in the owner's words:** this website
+is step one toward a **robust, free, legally-obtained audio-feature dataset
+replacing the deprecated Spotify API**, enabling more complicated ML later. The
+research confirmed that framing is not a stopgap — extended quota now needs a
+≥250k-MAU registered business, so **local derivation is the permanent
+architecture**.
+
+**Load-bearing research finds (full brief in SPOTIFY_API_RESEARCH.md):** there
+were TWO deprecation waves (Nov-2024 + Feb-2026); `GET /artists/{id}/top-tracks`
+is removed with **"no replacement"**; batch gets + popularity + genres are
+removed-on-paper but **still answering on our PKCE tokens** (enforcement appears
+token-type-staged — borrowed time, absent-safe, never load-bearing); playlists
+are **own+collaborative only**; the **5-seat cap is the platform ceiling**;
+search is limited to 10; playlist items page at 50; the guardrails file needs a
+second correction wave.
+
+## Decisions (owner, 2026-07-14)
+
+- **D-32 — roadmap re-sequenced (supersedes D-29's phase order):** Phase 3 =
+  the full product surface + publication exit-gate (H remainder + I + NEW Epic P
+  artists/genres + O2 + L). Phase 4 = Epic K formal (agentic chat). Phase 5 =
+  MPD (Epic J shape unchanged; Spark un-parks here). Phase 6 = the ML capstone.
+- **D-33 — artist top-10 doctrine:** the artist page's core is DERIVED — "**your**
+  top tracks by this artist" (ranges/ranks we already store, 0 API calls,
+  always renders). The live official top-10 is attempted **absent-safe, authed
+  only, never load-bearing** (deprecated, no replacement; verify live at build
+  per journal #20) with an honest caption when dark. Acquisition for any
+  rendered artist-track list = the **analyze-on-demand button** (explicit,
+  bounded — the Epic-I pattern).
+- **D-34 — top-tracks fetch depth 20→50 per range** (the "why only 39 songs"
+  root cause: 3×20 with overlap ≈ 39 unique). Extract a `_TOP_LIMIT` constant
+  so the My-Library "why N" explainer derives from it and can't lie. New-user
+  first analysis grows to ~1.5–2.5 h worst case — absorbed by the durable queue
+  + O1 dedup guard; the owner's own corpus grows on his next login.
+- **D-35 — nav IA (webapp-expert):** six items, two visually-grouped clusters —
+  **You:** Dashboard · Analytics · Artists / **Corpus:** Library · Explore ·
+  Recommend. Library holds the ONLY tabs (All songs · My songs · Playlists —
+  "My Library" is a tab, not a 7th item). Genres live INSIDE Artists (the only
+  place the data honestly exists). Deep-dives (`/song/{id}`, `/artist/{id}`)
+  stay out of nav. **Guest lands on /dashboard** (read-only replica).
+- **D-36 — artist metadata serving path:** a new **`artist_meta` cache table**
+  (artist_id PK, name, genres, followers, popularity, image_url), populated
+  FREE at dashboard build (we already fetch genres+images every login and drop
+  them); `dim_artists` is a one-time seed, not a serving path. `artist.genres`
+  is now docs-Deprecated → the stored copy is the system of record; every genre
+  surface carries the coverage-honesty caption (journal #9).
+- **D-37 — playlists (Epic I, research-corrected):** own + collaborative
+  playlists ONLY (platform reality — design the picker around "your playlists",
+  no arbitrary-URL box). Scopes += `playlist-read-private
+  playlist-read-collaborative` → **all 5 seats re-consent**. Items page at 50
+  (`min(limit,100)` must become 50); read `item`/`items.total` with deprecated
+  fallbacks; `snapshot_id` skips unchanged playlists; explicit per-playlist
+  Analyze button + config caps (default 10 playlists / 500 tracks per user);
+  429 → sleep(Retry-After) in the ingest loop.
+- **D-38 — the public-GitHub flip is the Phase-3 EXIT GATE** (case-study/README
+  written mid-phase; flip lands after artists/library/playlists are live, so
+  the repo goes public showing the full dashboard).
+- **D-39 — Phase-4 scope:** K0 = an interview-style design session
+  (llm-rag-expert + the KB) producing K's own phased plan. **Committed builds:**
+  agentic RAG chat (gemma4, tool-use over the P5 read-only DuckDB core) +
+  **multimodal upload** (user uploads their OWN audio → full DSP → their
+  library — legally clean, directly serves the dataset mission). **Gated
+  explorations (design-docs with explicit data-requirement go-gates):** LoRA
+  adapters + RL-updated recommendations — with ≤5 users there is today no
+  adapter-training corpus and no RL reward signal; the go-gate names the data
+  that would unlock each.
+
+## Phase 3 — the product surface (build order)
+
+- **P3.0 — groundwork (fetcher hardening + the 50 bump):** `_TOP_LIMIT=50` +
+  explainer plumbing (D-34) · playlist fetcher fixes (50/page, `items` fallbacks,
+  spotipy URL check) · search limit 10 · batch-`/artists` singles fallback
+  (≥0.5 s throttle) · **guardrails-file refresh wave 2** (per the research
+  brief's flagged conflicts) · capture artist `popularity` in
+  `fetch_top_artists` (absent-safe).
+- **P3.1 — artist_meta foundation (D-36):** table + `remember_artists()`
+  (preserve-if-absent) + `all_artist_meta()` · `track_meta` += `album_image_url`
+  + `primary_artist_id` (both already on fetched rows, currently dropped) ·
+  one-time `seed_artist_meta.py` from `dim_artists` · dashboard build persists
+  what it already fetches.
+- **P3.2 — Epic P: Artists.** `/artists` (viewer): your top artists, hover card
+  (overall popularity · genres · aggregate audio features across OUR analyzed
+  tracks, grouped by primary artist) + ONE form-GET comparison chart (ranked
+  bars per picked perceptual feature) + genre chips/filter + genre comparison
+  (D-35: genres live here). `/artist/{id}` (viewer): your top-5 by this artist
+  (derived core) vs the official top-10 (absent-safe live, authed, D-33) +
+  **"similar in your library"** (artist_profiles acoustic centroids — the
+  honest related-artists replacement: "sounds alike HERE", labelled so) +
+  analyze-on-demand POST (authed, ≤10 tracks).
+- **P3.3 — Epic H remainder: Library.** `/library` public (D-18): the H1
+  catalog over the full cache — search/sort/filter (form-GET), `duplicate_of`
+  "same recording as" annotation, album art · tabs **My songs** (viewer: your
+  analyzed ∩ catalog + the honest "why only N" explainer derived from
+  `_TOP_LIMIT`) and **Playlists** (authed; P3.4). Ships WITH the rest of the
+  D-18 public flip for deep-dive links (guest paths already exist via H7).
+- **P3.4 — Epic I: playlists (D-37):** `/me/playlists` list + per-playlist
+  coverage ("12/40 engineered") + explicit Analyze (capped) → the existing
+  intake path (O1 dedup guard already protects it) → `/status` progress.
+  Re-consent lands FIRST (scope change).
+- **P3.5 — guest dashboard replica (owner ask):** extend
+  `snapshot_demo_profile.py` (per-range track entries: id/rank/name/artist/art/
+  popularity/analyzed + fetched_total + coverage) · pure
+  `guest_dashboard_context()` · `/dashboard` branches authed→live /
+  guest→snapshot / else→/ (authed check FIRST) · `/guest` redirects to
+  /dashboard · ask-form hidden, poller never renders. **Ordering dependency:**
+  art column (P3.1) → owner visits /dashboard once → re-snapshot (the script
+  prints art coverage as its own guard).
+- **P3.6 — H5 + H6 + O2:** the $0 Cloudflare-Worker origin-down fallback page ·
+  landing copy (browse freely / login personalizes / demo) · yt-dlp match
+  hardening (duration vs duration_ms, official-audio preference, logged match
+  confidence — matters MORE now that playlists grow acquisition volume).
+- **P3.7 — Epic L lite → flip (D-38, the exit gate):** dead-file sweep ·
+  `docs/CASE_STUDY.md` (architecture, techniques, the Claude-harness
+  methodology) · README rewrite · how-to → then gitleaks · KB exclusion (D-21)
+  · LICENSE · `git filter-repo` scrub (D-20) · **flip public**.
+
+**Phase-3 accept:** all six nav surfaces live + browser-validated at
+375/768/1280 (anon, guest, authed × the gate matrix); playlist ingest proven on
+a real playlist end-to-end; guest dashboard renders the replica with art; the
+repo is PUBLIC with the case study. Tests green (CI-equiv) + both audits at
+every slice; every genre/borrowed-time surface carries its honesty caption.
+
+## Phase 4 — Epic K formal (agentic chat + the gated frontier)
+
+**K0** interview-style design session (llm-rag-expert + `llm_knowledge_base/`
+cards) → K's own phased plan with evals-first discipline (journal #25). Then:
+**K1** multi-turn `/chat` grounded on taste+marts (gemma4, 8192 ctx budget) →
+**K2** tool-use over the P5 read-only DuckDB core (the target-JD line; injection
+evals; D-10 sandbox) → **K3** LLM-assisted bucketing/labeling → **K4 multimodal
+upload** (user's own audio file → validated → full 77-dim DSP + display
+artifacts → THEIR library; upload caps + format allowlist; the legally-cleanest
+acquisition path we have) → **K5/K6 (gated explorations, D-39):** LoRA-adapter
+personalization + RL-tuned recommendations as design docs, each with a named
+data go-gate (e.g. N real thumbs-up/down events collected via K1's chat).
+
+## Phase 5 — MPD (Epic J, un-changed shape, now sequenced)
+
+The saved plan holds (metadata-only, D-26; Spark un-parks on the real 66M rows,
+D-27; the dbt/Recce references in `mpd-future-references` memory). Entry
+criterion: Phase 3 shipped + public. J0 intake script → J1 Spark co-occurrence
++ track2vec → J2 hybrid reco (acoustic × behavioral — completing the
+related-artists replacement) → J3 the honest at-scale benchmark.
+
+## Phase 6 — the ML capstone
+
+On the dataset the app + MPD built: richer clustering/embedding models over the
+grown REAL corpus, the hybrid recommender productionized, and whatever K5/K6
+gates opened. Scoped properly when Phase 5's data exists — deliberately NOT
+spec-fixed today (the agile-coach agent keeps this honest at each phase
+boundary).
+
+## Sequence (owner-approved 2026-07-14)
+
+**P3.0 → P3.1 → P3.2 → P3.3 → P3.4 → P3.5 → P3.6 → P3.7(flip) → Phase 4 (K0…)
+→ Phase 5 (MPD) → Phase 6 (ML).** Harness additions this session:
+`research-expert` + `agile-coach` agents (both registered). Same ground rules
+throughout — and one more now standing: **borrowed-time API surfaces are
+absent-safe garnish, never load-bearing** (the research brief's doctrine).
