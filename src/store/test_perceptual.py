@@ -241,6 +241,42 @@ def test_audit_marts_absent_is_a_note_not_a_finding(tmp_path):
     assert not errors and any("not built" in w for w in warnings)
 
 
+# ── DUPLICATE_TRACKS (Epic O / D-28) ─────────────────────────────────────────
+def _write_dim_tracks(tmp_path, rows):
+    import pandas as pd
+    modeled = tmp_path / "modeled"
+    modeled.mkdir()
+    pd.DataFrame(rows).to_parquet(modeled / "dim_tracks.parquet", index=False)
+    return modeled
+
+
+def test_audit_flags_duplicate_tracks(tmp_path):
+    audit = _load_audit_module()
+    modeled = _write_dim_tracks(tmp_path, [
+        {"spotify_track_id": "a", "track_name": "Hysteria", "artist_names": "Muse", "duration_ms": 210000},
+        {"spotify_track_id": "b", "track_name": "Hysteria - Remastered 2019", "artist_names": "Muse", "duration_ms": 210500},
+        {"spotify_track_id": "c", "track_name": "Uprising", "artist_names": "Muse", "duration_ms": 300000}])
+    report, warns, flags = audit.check_duplicates(modeled)
+    assert flags["DUPLICATE_TRACKS"] is True                  # advisory flag fires
+    assert report["n_clusters"] == 1 and report["n_duplicate_tracks"] == 1
+    assert any("DUPLICATE_TRACKS" in w for w in warns)
+
+
+def test_audit_duplicate_tracks_clean_when_all_unique(tmp_path):
+    audit = _load_audit_module()
+    modeled = _write_dim_tracks(tmp_path, [
+        {"spotify_track_id": "a", "track_name": "Hysteria", "artist_names": "Muse", "duration_ms": 210000},
+        {"spotify_track_id": "b", "track_name": "Uprising", "artist_names": "Muse", "duration_ms": 300000}])
+    _, warns, flags = audit.check_duplicates(modeled)
+    assert flags["DUPLICATE_TRACKS"] is False and not warns
+
+
+def test_audit_duplicate_tracks_absent_is_a_note(tmp_path):
+    audit = _load_audit_module()
+    report, warns, flags = audit.check_duplicates(tmp_path / "nope")
+    assert flags == {"DUPLICATE_TRACKS": False} and report == {} and not warns
+
+
 # ── distribution sanity (journal #21, operationalized) ──────────────────────
 def test_population_n_stamped(corpus):
     df = compute_perceptual(corpus)

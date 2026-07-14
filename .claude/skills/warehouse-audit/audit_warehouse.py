@@ -18,6 +18,7 @@ Run from the repo root:  uv run .claude/skills/warehouse-audit/audit_warehouse.p
 """
 from __future__ import annotations
 
+import importlib.util
 import json
 import sys
 from pathlib import Path
@@ -221,6 +222,56 @@ def check_distributions(stats: pd.DataFrame) -> list[str]:
     return out
 
 
+def _load_dedup():
+    """Load the stdlib-only src/store/dedup.py BY PATH (the pattern the tests use
+    for verify_app.py) so the audit shares ONE definition of 'duplicate' with the
+    serving cache — no `src` import, no extra deps in the uv-isolated audit."""
+    path = REPO / "src" / "store" / "dedup.py"
+    if not path.exists():
+        return None
+    spec = importlib.util.spec_from_file_location("dedup", path)
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = mod  # @dataclass resolves annotations via sys.modules
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def check_duplicates(modeled_dir: Path):
+    """DUPLICATE_TRACKS (Epic O / D-28): report clusters of likely near-duplicate
+    tracks (same normalized name+artist within a duration window) in dim_tracks.
+    Advisory — dupes are a data-quality SIGNAL, not an invariant break, so this is
+    a WARNING (zero errors), same severity class as AUDIO_ORPHANS. Metadata-only;
+    the acoustic cosine tiebreak lives in the serving layer where vectors exist."""
+    report: dict = {}
+    warns: list[str] = []
+    flags = {"DUPLICATE_TRACKS": False}
+    path = modeled_dir / "dim_tracks.parquet"
+    dedup = _load_dedup()
+    if not path.exists() or dedup is None:
+        return report, warns, flags
+    df = pd.read_parquet(path)
+    if BRIDGE not in df.columns or "track_name" not in df.columns:
+        return report, warns, flags
+    records = [dedup.DedupRecord(
+        track_id=str(r[BRIDGE]), title=r.get("track_name"),
+        artist=r.get("artist_names") or r.get("primary_artist_name"),
+        duration_ms=(int(r["duration_ms"]) if pd.notna(r.get("duration_ms")) else None))
+        for _, r in df.iterrows()]
+    clusters = dedup.find_duplicate_clusters(records)
+    report["n_clusters"] = len(clusters)
+    report["n_duplicate_tracks"] = sum(len(c.duplicate_ids) for c in clusters)
+    if clusters:
+        names = {str(r[BRIDGE]): str(r.get("track_name")) for _, r in df.iterrows()}
+        sample = [f"{names.get(c.canonical_id, c.canonical_id)!r} "
+                  f"({len(c.members)} copies)" for c in clusters[:5]]
+        warns.append(
+            f"dim_tracks: {len(clusters)} near-duplicate cluster(s), "
+            f"{report['n_duplicate_tracks']} redundant track(s) — e.g. {sample} "
+            "— DUPLICATE_TRACKS")
+        flags["DUPLICATE_TRACKS"] = True
+    return report, warns, flags
+
+
 def main() -> int:
     errors: list[str] = []
     warnings: list[str] = []
@@ -353,6 +404,10 @@ def main() -> int:
     warnings.extend(m_warnings)
     errors.extend(m_errors)
 
+    # --- near-duplicate tracks (Epic O / D-28) ------------------------------
+    dup_report, d_warnings, d_flags = check_duplicates(WAREHOUSE / "modeled")
+    warnings.extend(d_warnings)
+
     flags = {
         "NO_WAREHOUSE": False,
         "MISSING_LAYER": missing_layer,
@@ -364,10 +419,11 @@ def main() -> int:
         "AUDIO_ORPHANS": audio_orphans,
         "FEATURE_DRIFT": feature_drift,
         **m_flags,
+        **d_flags,
     }
     print(json.dumps({"layers": layers, "audio": audio, "marts": marts_report,
-                      "errors": errors, "warnings": warnings, "flags": flags},
-                     indent=2))
+                      "duplicates": dup_report, "errors": errors,
+                      "warnings": warnings, "flags": flags}, indent=2))
     return 0
 
 
