@@ -670,3 +670,31 @@ have skated past.)
 > value's own constants — never re-type the numbers beside it. Transcribed truth is
 > a lie on a delay; a test that re-derives the explanation through the real logic is
 > what makes the two unable to disagree.*
+
+## Epic O — dedup
+
+### 28. A z-scored cosine tiebreak is meaningless for exactly two items (2026-07-14)
+
+O1's dedup uses a **reject-only** cosine tiebreak: when two same-name tracks are
+both cached, an acoustically distant pair (a cover) is refused. Writing its test I
+seeded exactly two identical-feature tracks and asserted they'd merge — they
+didn't. Standardizing (z-scoring) over **two** points centres them on their own
+mean, so each feature becomes `+z` for one track and `−z` for the other: the two
+vectors are **antipodal** (cosine −1), and if the features are identical the
+variance is zero so both vectors collapse to the origin (cosine 0). Either way the
+tiebreak rejects. The fix was the test data, not the code: add a third, distinct
+track so the standardization has a real distribution, and the true pair's vectors
+point the same way (cosine ≈ 1) again.
+
+**The realization:** any *relative* similarity — z-scores, percentiles, "distance
+from the mean" — is undefined-to-degenerate at n=2, because the sample's own
+statistics are what it's measured against. The metadata gate (name+artist+duration)
+is what actually carries the pre-download guard; the cosine only *refines* the
+display flag where a real population exists. A test that exercises a
+population-relative metric must supply a population, or it's testing the
+degeneracy, not the logic.
+
+> *A metric measured against a sample's own mean/spread needs ≥3 points to mean
+> anything — at n=2 every such metric is pinned to a degenerate value (antipodal or
+> zero). Test population-relative code with a population, and never let the relative
+> signal be the load-bearing gate.*

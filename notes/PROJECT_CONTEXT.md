@@ -200,10 +200,13 @@
   Vision D also added Epic N (explainability), Epic O (dedup + yt-dlp
   match-hardening), Bug B1 — full spec in VISION_SPECS §"Vision D". Start Phase
   1 with the app running (`start_app`); J-audio + M-notifications stay parked.
-  **✅ UPDATE 2026-07-12 — Phase 1 is 7/8 DONE** (D-31, B1, H3, H4, H0+H7 guest
-  demo, N1, N2 all shipped + live). **Only O1 (dedup-as-flag) remains** — its
-  full ready-to-execute plan is in VISION_SPECS §"Epic O → O1"; run it in one
-  pass, then Phase 2 = MPD/Spark. See the session-27 log line for the live state.
+  **✅ UPDATE 2026-07-14 — VISION D PHASE 1 IS 8/8 COMPLETE + LIVE** (D-31, B1,
+  H3, H4, H0+H7 guest demo, N1 explainers, N2 taxonomy, O1 dedup — all shipped;
+  353 tests). **➡️ NEXT = Phase 2 (Epic J MPD metadata-only + Spark un-park) or
+  Phase 3 (Epic H `/songs`+$0-worker-fallback, Epic I playlists, Epic K agentic
+  chat, Epic L case-study→public-GitHub).** O2 yt-dlp match-hardening folds into
+  Phase 2. Parked: MPD-audio, Epic M, instrumentalness, dupe-pruning (owner call).
+  See the session-28 log line for the live state.
 - ✅ **SECURITY + ROBUSTNESS REVIEW (2026-07-09, commits 26891b1←): whole-app
   audit via 2 review subagents + a strategic pass; 7 real fixes, all tested,
   deployed, 286 green.** **Security surface came back STRONG** — auth, session
@@ -1209,3 +1212,20 @@ narrative goes to `notes/engineering_journal.md`, plans to
   read true, advisory). Bridge key stays sacred (flag = soft ref, never a join).
   **Left off: Phase 1 = only O1 remains (execute the captured plan in one pass);
   then Phase 2 = MPD/Spark. NEW SESSION: run `/resume`.**
+- **2026-07-14 (session 28 — O1 dedup via `/orchestrator`, Fable 5): PHASE 1 IS
+  NOW 8/8 COMPLETE.** Built O1 from the captured data-platform-expert plan in 4
+  committed sub-slices (57e8cb1 pure `dedup.py`+DUPLICATE_TRACKS audit · faa610f
+  cache schema+guards · 2964cbf extractor/worker/script/feeders): stdlib-only
+  `src/store/dedup.py` (normalize+union-find+reject-only cosine tiebreak,
+  precision-biased); `TrackMeta.duplicate_of`(soft ref, never a join)+`duration_ms`
+  (migration); enqueue intake guard + extract-time race guard; `refresh_dedup.py`
+  + worker post-drain hook; feeders (app/seed_cache duration_ms); audit
+  `check_duplicates`. **353 tests green** (+14). Deployed + activated live:
+  `refresh_dedup` flagged **10 real dupe clusters** (Muse/Linkin Park/Green Day),
+  warehouse-audit DUPLICATE_TRACKS=true (0 errors, only that flag), app-verify
+  ALL-GREEN. Journal #28 (a z-scored cosine tiebreak is degenerate at n=2 — test
+  population-relative code with a population). **Pruning the 10 dupes is an
+  IRREVERSIBLE owner call (D-28 flag-not-delete) — not auto-done.** **Left off:
+  Vision D Phase 1 COMPLETE; NEXT = Phase 2 (Epic J MPD metadata-only + Spark)
+  or Phase 3 (Epic H `/songs`+worker-fallback, I playlists, K chat, L publish).
+  NEW SESSION: run `/resume`.**
