@@ -27,6 +27,7 @@ from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import sessionmaker
 
+from .dedup import DedupRecord, duplicate_of_map
 from .models import (
     Base,
     ExtractionJob,
@@ -92,7 +93,9 @@ class FeatureCache:
                                          "time_signature": "INTEGER",
                                          "beat_times": "JSON",
                                          "sections": "JSON"},
-                      "track_meta": {"popularity": "INTEGER"}}
+                      "track_meta": {"popularity": "INTEGER",
+                                     "duration_ms": "INTEGER",
+                                     "duplicate_of": "VARCHAR"}}
 
     def _migrate_added_columns(self) -> None:
         inspector = sa_inspect(self.engine)
@@ -330,13 +333,16 @@ class FeatureCache:
                     continue
                 pop = it.get("popularity")
                 pop = int(pop) if pop is not None else None
+                dur = it.get("duration_ms")
+                dur = int(dur) if dur is not None else None
                 row = s.get(TrackMeta, tid)
                 if row is None:
                     s.add(TrackMeta(
                         spotify_track_id=tid,
                         track_name=it.get("track_name") or it.get("name"),
                         artist_names=it.get("artist_names") or it.get("artist"),
-                        album_name=it.get("album_name"), popularity=pop))
+                        album_name=it.get("album_name"), popularity=pop,
+                        duration_ms=dur))
                     continue
                 row.track_name = it.get("track_name") or it.get("name") or row.track_name
                 row.artist_names = (it.get("artist_names") or it.get("artist")
@@ -344,6 +350,8 @@ class FeatureCache:
                 row.album_name = it.get("album_name") or row.album_name
                 if pop is not None:
                     row.popularity = pop  # last sight wins; absent keeps the old value
+                if dur is not None:
+                    row.duration_ms = dur  # dedup window; preserve-if-absent (never NULLs a twin)
             s.commit()
 
     def all_popularity(self) -> dict[str, int]:
@@ -364,6 +372,124 @@ class FeatureCache:
                     "artist_names": m.artist_names, "album_name": m.album_name,
                     "popularity": m.popularity}
 
+    # ── near-duplicate detection (Epic O / D-28) ─────────────────────────────
+    # duplicate_of is a SOFT reference (a spotify_track_id) written only here and
+    # read for display/analysis + the audit — NOTHING joins on it. The bridge key
+    # stays spotify_track_id; no id is ever merged or minted.
+    def _dedup_vectors(self, s, ids: set) -> dict:
+        """z-scored acoustic vectors for cached ids — the cosine-tiebreak input
+        (only used where both members are cached)."""
+        if not ids:
+            return {}
+        rows = s.execute(select(TrackFeatures).where(
+            TrackFeatures.spotify_track_id.in_(ids))).scalars().all()
+        if len(rows) < 2:
+            return {}
+        cols = [c for c in _SIMILARITY_COLS
+                if any((r.features or {}).get(c) is not None for r in rows)]
+        if not cols:
+            return {}
+        means = {c: statistics.fmean(float((r.features or {}).get(c) or 0.0) for r in rows)
+                 for c in cols}
+        stds = {c: (statistics.pstdev(float((r.features or {}).get(c) or 0.0) for r in rows) or 1.0)
+                for c in cols}
+        return {r.spotify_track_id: tuple(
+            (float((r.features or {}).get(c) or 0.0) - means[c]) / stds[c] for c in cols)
+            for r in rows}
+
+    def _records(self, metas, cached_ids: set, vecs: dict) -> list:
+        return [DedupRecord(m.spotify_track_id, m.track_name or "", m.artist_names or "",
+                            m.duration_ms, vecs.get(m.spotify_track_id),
+                            m.spotify_track_id in cached_ids) for m in metas]
+
+    def _resolve_as_duplicate(self, s, twin_id: str, canonical_id: str) -> None:
+        """Flag twin_id → canonical_id and mark its job done, WITHOUT touching any
+        features or any id (the download/DSP is saved). Caller supplies the session."""
+        meta = s.get(TrackMeta, twin_id)
+        if meta is not None:
+            meta.duplicate_of = canonical_id
+        note = f"deduped: same recording as {canonical_id}"
+        job = s.get(ExtractionJob, twin_id)
+        if job is None:
+            s.add(ExtractionJob(spotify_track_id=twin_id, status=JOB_DONE,
+                                attempts=0, last_error=note))
+        else:
+            job.status = JOB_DONE
+            job.last_error = note
+
+    def resolve_duplicate(self, twin_id: str, canonical_id: str) -> None:
+        """Public wrapper for the extractor's post-claim guard."""
+        with self._Session() as s:
+            self._resolve_as_duplicate(s, twin_id, canonical_id)
+            s.commit()
+
+    def find_cached_twin(self, track_id: str) -> Optional[str]:
+        """The already-CACHED near-duplicate of track_id, or None. Best-effort —
+        a dedup hiccup must never block extraction, so it swallows its own errors."""
+        try:
+            with self._Session() as s:
+                me = s.get(TrackMeta, track_id)
+                if me is None or not me.track_name:
+                    return None
+                cached_ids = set(s.execute(select(TrackFeatures.spotify_track_id)).scalars())
+                cached_ids.discard(track_id)
+                if not cached_ids:
+                    return None
+                metas = s.execute(select(TrackMeta).where(
+                    TrackMeta.spotify_track_id.in_(cached_ids | {track_id}))).scalars().all()
+                canon = duplicate_of_map(self._records(metas, cached_ids, {})).get(track_id)
+                return canon if canon in cached_ids else None
+        except Exception:  # noqa: BLE001 — dedup is additive; never fail extraction
+            return None
+
+    def _guard_cached_twins(self, ids: list) -> dict:
+        """Resolve any incoming miss whose twin is ALREADY cached (flag + job done);
+        returns {twin_id: canonical_id}. Called by enqueue before queueing."""
+        resolved: dict = {}
+        with self._Session() as s:
+            miss = {m.spotify_track_id: m for m in s.execute(
+                select(TrackMeta).where(TrackMeta.spotify_track_id.in_(ids))).scalars()}
+            if not miss:
+                return {}
+            cached_ids = set(s.execute(select(TrackFeatures.spotify_track_id)).scalars())
+            if not cached_ids:
+                return {}
+            cmetas = s.execute(select(TrackMeta).where(
+                TrackMeta.spotify_track_id.in_(cached_ids))).scalars().all()
+            records = self._records(list(miss.values()) + list(cmetas), cached_ids, {})
+            for twin, canon in duplicate_of_map(records).items():
+                if twin in miss and canon in cached_ids and twin not in cached_ids:
+                    self._resolve_as_duplicate(s, twin, canon)
+                    resolved[twin] = canon
+            s.commit()
+        return resolved
+
+    def duplicate_flags(self) -> dict:
+        """{duplicate_id: canonical_id} from the stored flags — display/analysis + audit."""
+        with self._Session() as s:
+            rows = s.execute(select(TrackMeta.spotify_track_id, TrackMeta.duplicate_of)
+                             .where(TrackMeta.duplicate_of.isnot(None))).all()
+        return {tid: canon for tid, canon in rows}
+
+    def refresh_duplicate_flags(self) -> dict:
+        """Recompute duplicate_of over ALL metas (cosine refines pairs where both
+        are cached). Idempotent; annotation-ONLY — never touches features, jobs,
+        or ids."""
+        with self._Session() as s:
+            metas = s.execute(select(TrackMeta)).scalars().all()
+            cached_ids = set(s.execute(select(TrackFeatures.spotify_track_id)).scalars())
+            vecs = self._dedup_vectors(s, cached_ids)
+            dmap = duplicate_of_map(self._records(metas, cached_ids, vecs))
+            updated = 0
+            for m in metas:
+                new_val = dmap.get(m.spotify_track_id)
+                if m.duplicate_of != new_val:
+                    m.duplicate_of = new_val  # set canonical OR clear a stale flag
+                    updated += 1
+            s.commit()
+        return {"n_metas": len(metas), "n_duplicates": len(dmap),
+                "n_clusters": len(set(dmap.values())), "n_updated": updated}
+
     # ── queue ──────────────────────────────────────────────────────────────
     def enqueue(self, track_ids: list[str]) -> list[str]:
         """Queue extraction for uncached ids. Returns the newly-queued ids.
@@ -374,6 +500,12 @@ class FeatureCache:
         failed, never re-queued). Live (queued/running) jobs are left alone.
         """
         ids = self.missing(track_ids)
+        if not ids:
+            return []
+        # O1 intake guard (D-28): a miss whose twin is ALREADY cached must not be
+        # re-downloaded — resolve it (flag + job done) and drop it from the queue
+        # set. Bridge key untouched; only duplicate_of + the job row change.
+        ids = [t for t in ids if t not in self._guard_cached_twins(ids)]
         if not ids:
             return []
         with self._Session() as s:

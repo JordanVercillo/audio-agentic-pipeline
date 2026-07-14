@@ -64,6 +64,14 @@ class TrackMeta(Base):
     # (journal #20). Fetched CONTEXT: display/analysis only, never an ML input;
     # nullable because the field may vanish upstream any day.
     popularity = Column(Integer)
+    # Track length at last sight (fetched context) — the dedup duration window
+    # (Epic O / D-28). Nullable; forward-only migration like popularity.
+    duration_ms = Column(Integer)
+    # Near-duplicate FLAG (D-28): the spotify_track_id of this track's canonical
+    # twin, or NULL. A SOFT reference for display/analysis + the audit — NOT a
+    # primary key, NOT a foreign key, and NOTHING joins on it. The bridge key
+    # stays spotify_track_id; dedup never mints or merges an id.
+    duplicate_of = Column(String)
 
 
 class ExtractionJob(Base):

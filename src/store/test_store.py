@@ -392,3 +392,46 @@ def test_app_verify_worker_flags():
     assert flags(200.0, 30, None)["WORKER_DOWN"] is False          # < 300s floor
     assert flags(10.0, 30, 1200.0)["QUEUE_STUCK"] is True          # old pending job
     assert flags(10.0, 30, 60.0)["QUEUE_STUCK"] is False           # fresh queue
+
+
+# ── O1 dedup guards (Epic O / D-28) ──────────────────────────────────────────
+def test_enqueue_guard_skips_cached_twin(cache):
+    # 'orig' is cached; 'orig2' is the SAME recording arriving as a fresh miss
+    # (same name+artist, 100 ms apart) → it must NOT be re-downloaded.
+    cache.upsert("orig", _FEATURES)
+    cache.remember_meta([
+        {"spotify_track_id": "orig", "track_name": "Hysteria", "artist_names": "Muse", "duration_ms": 200000},
+        {"spotify_track_id": "orig2", "track_name": "Hysteria - Remastered", "artist_names": "Muse", "duration_ms": 200100}])
+    assert cache.enqueue(["orig2"]) == []                    # twin already cached → skipped
+    assert cache.duplicate_flags() == {"orig2": "orig"}      # flagged as a dupe of the canonical
+    assert cache.get(["orig2"]) == {}                        # never downloaded (no features)
+    assert cache.enqueue(["orig2"]) == []                    # idempotent
+    # the bridge key is untouched on both rows — dedup mints/merges no id
+    assert cache.get_meta("orig2")["spotify_track_id"] == "orig2"
+
+
+def test_enqueue_guard_does_not_flag_distinct_track(cache):
+    cache.upsert("orig", _FEATURES)
+    cache.remember_meta([
+        {"spotify_track_id": "orig", "track_name": "Hysteria", "artist_names": "Muse", "duration_ms": 200000},
+        {"spotify_track_id": "other", "track_name": "Uprising", "artist_names": "Muse", "duration_ms": 300000}])
+    assert cache.enqueue(["other"]) == ["other"]             # genuinely new → queued normally
+    assert cache.duplicate_flags() == {}
+
+
+def test_refresh_duplicate_flags_idempotent_and_annotation_only(cache):
+    # 3 cached tracks so the cosine tiebreak isn't degenerate; a/b are the same
+    # recording (near-identical features), c is distinct (anchors the z-scoring).
+    cache.upsert("a", {"tempo_bpm": 128.0, "rms_mean": 0.20, "spectral_centroid_mean": 2100.0})
+    cache.upsert("b", {"tempo_bpm": 129.0, "rms_mean": 0.21, "spectral_centroid_mean": 2110.0})
+    cache.upsert("c", {"tempo_bpm": 80.0, "rms_mean": 0.05, "spectral_centroid_mean": 900.0})
+    cache.remember_meta([
+        {"spotify_track_id": "a", "track_name": "Time", "artist_names": "Muse", "duration_ms": 240000},
+        {"spotify_track_id": "b", "track_name": "Time - 2019 Remaster", "artist_names": "Muse", "duration_ms": 240200},
+        {"spotify_track_id": "c", "track_name": "Sunburn", "artist_names": "Muse", "duration_ms": 200000}])
+    r1 = cache.refresh_duplicate_flags()
+    assert r1["n_duplicates"] == 1                           # a/b are one recording, c stands alone
+    assert cache.refresh_duplicate_flags()["n_updated"] == 0  # idempotent — recompute writes nothing
+    assert set(cache.get(["a", "b", "c"])) == {"a", "b", "c"}  # features untouched (annotation-only)
+    flags = cache.duplicate_flags()
+    assert len(flags) == 1 and set(flags) <= {"a", "b"} and set(flags.values()) <= {"a", "b"}
