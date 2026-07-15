@@ -238,11 +238,19 @@
   → enqueue ≤10, O1 guard applies) + **"Similar in your library"** (acoustic
   centroids — live proof: Muse → Metric Δ1.46σ, Harry Styles Δ1.47σ, Foo
   Fighters Δ1.69σ; the honest related-artists replacement); nav = the D-35
-  two-group IA (`.nav-sep`). **NOW NEXT: build P3.3 (Library tabs) — `/library`
-  public (the H1 catalog over the cache: search/sort/filter, duplicate_of "same
-  recording as" display, album art) + My songs tab (the "why only N analyzed"
-  explainer derived from `_TOP_LIMIT`) + Playlists tab placeholder (Epic I
-  lands P3.4).** Parked: MPD-audio, Epic M, instrumentalness, dupe-pruning.
+  two-group IA (`.nav-sep`). **➡️ NEXT ACTION (SUPERSEDED — P3.3 ✅ SHIPPED
+  2026-07-15, commits 06da10d/758e140, 388 tests, deployed ALL-FALSE, anon
+  browser-validated): the Library surface is live and PUBLIC.** `cache.library_rows()`
+  (meta⟕features projection) + `webapp/library.py` (pure: search/sort—Nones-last/
+  dedup "same recording as"/mine-overlay/`why_n_analyzed` derived from `_TOP_LIMIT`)
+  + `/library` (All songs public · My songs viewer · Playlists authed placeholder)
+  + nav Library for everyone. **Partial D-18 flip (D-40): `/song` + `/spectrogram`
+  flipped PUBLIC (taste-free); `/explore` + `/recommend` stay viewer-gated —
+  their builders hard-require a taste (`return None` w/o range_ids), so their anon
+  flip is a deferred builder-refactor slice (D-40b, folds into the P3.7 exit
+  gate).** **NOW NEXT: P3.4 — Epic I playlists (D-37): `/me/playlists` + per-playlist
+  coverage + capped Analyze → intake path; re-consent (scope change) lands
+  FIRST.** Parked: MPD-audio, Epic M, instrumentalness, dupe-pruning.
 - ✅ **SECURITY + ROBUSTNESS REVIEW (2026-07-09, commits 26891b1←): whole-app
   audit via 2 review subagents + a strategic pass; 7 real fixes, all tested,
   deployed, 286 green.** **Security surface came back STRONG** — auth, session
@@ -582,6 +590,7 @@ narrative goes to `notes/engineering_journal.md`, plans to
 | `scripts/build_report.py` | THE one command: fresh gold layer → regenerate all artifacts → `taste_report.html` (0.99 MB, offline). `--no-rebuild`, `--llm-polish`. |
 | `src/agent/` | SPEC P5: `warehouse_agent.py` (pure DuckDB retrieval core — 2-layer SQL security D-10; reused by P8 RAG) + `mcp_server.py` (FastMCP stdio: get_schema / query_warehouse / get_insights). Test: `test_agent.py` (30). Run: `python -m src.agent.mcp_server`. |
 | `src/webapp/` | **SPEC P8 slice 1: FastAPI pilot.** `auth_web.py` (session-scoped PKCE — token in session, CSRF state gate, D-8 no secret), `sessions.py` (TTL `SessionStore` + signed cookie + rotate), `featurestore.py` (bridge-key overlap-join + acoustic insight), `app.py` (routes: `/ login callback dashboard logout healthz`), `config.py`, `templates/`, `static/`. Test: `test_webapp.py` (15). Run: `uv run python scripts/run_webapp.py` → :8000. |
+| `src/webapp/{artists,library}.py` | **Vision-E product surfaces (pure view logic + fetchers).** `artists.py` (P3.2 — rollup, genre strip, comparison SVG, `your_top_by_artist` D-33, `nearest_artists`). `library.py` (P3.3 — `library_view` search/sort/dedup-annotate/mine-overlay, `why_n_analyzed` from `_TOP_LIMIT`); fed by `cache.library_rows()`. `/library`+`/song`+`/spectrogram` are PUBLIC (D-18/D-40); `/explore`+`/recommend` still viewer-gated (taste-required builders). Tests: `test_artists.py`, `test_library.py`. |
 | `docs/AGENT_ACCESS.md` | P5 artifact: MCP registration config (Claude Desktop/Code) + security model + live demo transcript. |
 | `docs/SCALING.md` | P7 artifact: honest 10K/1M-track scaling design (bottleneck = acquisition+DSP; GCS/BigQuery; Spark-vs-Dataflow; the `spark-parity` CI proof). |
 | `docs/P8_PLAN.md` | P8 build plan (FastAPI + Jinja2; session PKCE; feature-store overlap-join; RAG; 4-slice sequence). Slices 1, 1.5, 2 BUILT. |
@@ -1370,3 +1379,27 @@ narrative goes to `notes/engineering_journal.md`, plans to
   review; orchestrator skill notes the agent-registration-latency fallback.
   **Left off: harness v3 in place. Next build = P3.3 Library tabs — an OPUS
   slice per the routing. NEW SESSION: run `/resume` (on Opus is fine).**
+- **2026-07-15 (session 34 — P3.3 the Library surface via `/orchestrator`,
+  Opus 4.8 per the D-40-era routing; no fan-out):** Built Epic H1 in 2 commits.
+  **P3.3 (06da10d):** `cache.library_rows()` (read-only meta⟕features projection,
+  kept OFF the 2-field `all_meta()` hot path) + `webapp/library.py` pure module
+  (search name/artist · sort with unanalyzed Nones ALWAYS last — split present/
+  missing rather than let `reverse=` flip the None flag · `annotate_dupes` "same
+  recording as" · mine-overlay · `why_n_analyzed` derived from `_TOP_LIMIT`) +
+  `/library` route (All songs PUBLIC · My songs viewer · Playlists authed
+  placeholder) + `library.html` + `.tabs`/`.lib-table` CSS + nav Library for
+  everyone (anon sees Library + Log in only). **Partial D-18 flip:** `/song` +
+  `/spectrogram` flipped PUBLIC (both taste-free; `_TRACK_ID_RE` base62 guard,
+  `_spectrogram_path` still traversal-safe; enumeration-oracle concern moot now
+  the catalog lists analyzed tracks) + song.html back-links route anon→/library.
+  **388 green (+13), deployed app-verify ALL-FALSE; anon browser-validated LIVE**
+  — /library 160-of-161 real w/ dedup rows, /song full deep-dive (spectrogram/
+  loudness/sections/radar/similar) all no-login, curl gate matrix: library/song/
+  spectrogram 200 · /explore still 303. **Scope call → D-40:** the corpus
+  builders (`_explore_context`,`_recommend_context`) `return None` w/o a taste,
+  so blanket anon = a builder refactor, not a gate flip; shipped the taste-free
+  two-thirds, deferred `/explore`+`/recommend` anon to a dedicated slice (D-40b,
+  folds into P3.7). No journal entry (clean specced execution; the one snag was
+  self-caught — the `{8,40}` artist regex rejected short synthetic ids). **Left
+  off: P3.3 COMPLETE — the Library is live and public. Next = P3.4 (Epic I
+  playlists, D-37; re-consent lands first). NEW SESSION: run `/resume`.**
