@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}Artists — Vercillo Analytics{% endblock %}
+{% block content %}
+<section class="dash">
+  <h1>Your artists</h1>
+  <p class="lede">Your top artists with their <b>stored</b> Spotify metadata and the
+    acoustic character of the tracks we've actually analyzed — hover a card for its
+    numbers, click a name for the deep-dive.</p>
+
+  {% if strip.genres %}
+  <div class="genre-strip">
+    {% for g in strip.genres %}
+    <a class="chip{{ ' is-active' if g.genre == genre else '' }}"
+       href="/artists?genre={{ g.genre|urlencode }}">{{ g.genre }} <b>{{ g.count }}</b></a>
+    {% endfor %}
+    {% if genre %}<a class="chip chip-clear" href="/artists">× clear filter</a>{% endif %}
+  </div>
+  <p class="cap">Genres known for <b>{{ strip.covered }} of {{ strip.total }}</b> of your
+    artists — Spotify's genre arrays are sparse and now deprecated (stored copy shown);
+    unlabeled artists carry their acoustic cluster label on Analytics instead.</p>
+  {% endif %}
+
+  {% if chart %}
+  <h2 class="section">Compared by {{ friendly|lower }}</h2>
+  <form method="get" action="/artists" class="cmp-form">
+    {% if genre %}<input type="hidden" name="genre" value="{{ genre }}">{% endif %}
+    <select name="f" onchange="this.form.submit()">
+      {% for feat in features %}
+      <option value="{{ feat.column }}" {{ 'selected' if feat.column == chosen else '' }}>{{ feat.friendly }}</option>
+      {% endfor %}
+    </select>
+    <noscript><button type="submit" class="btn">Compare</button></noscript>
+  </form>
+  <div class="map-card">{{ chart|safe }}
+    <p class="cap">Mean {{ friendly|lower }} across each artist's <b>analyzed</b> tracks
+      (count in parentheses) — our own DSP features, not Spotify metadata.</p>
+  </div>
+  {% endif %}
+
+  <h2 class="section">{{ cards|length }}{% if genre %} of {{ total_cards }}{% endif %} artists</h2>
+  <div class="artist-grid">
+    {% for c in cards %}
+    <div class="acard">
+      {% if c.image %}<img class="art" src="{{ c.image }}" alt="" loading="lazy">
+      {% else %}<span class="art art-ph" title="no artist image">♪</span>{% endif %}
+      <span class="ainfo">
+        {% if c.artist_id %}<a class="tname" href="/artist/{{ c.artist_id }}">{{ c.name }}</a>
+        {% else %}<span class="tname" title="no Spotify id stored yet — log in refreshes this">{{ c.name }}</span>{% endif %}
+        <span class="tartist">{{ c.genres or "no genres on record" }}</span>
+        <span class="cap">{{ c.n_analyzed }} of {{ c.n_tracks }} in your library analyzed{% if c.popularity is not none %} · popularity {{ c.popularity }}{% endif %}</span>
+      </span>
+      <div class="feat-pop" role="tooltip">
+        {% if c.popularity is not none %}<span><b>{{ c.popularity }}</b> popularity</span>{% endif %}
+        {% if c.feat.tempo is not none %}<span><b>{{ c.feat.tempo|round|int }}</b> bpm avg</span>{% endif %}
+        {% if c.feat.energy is not none %}<span><b>{{ '%.2f'|format(c.feat.energy) }}</b> energy</span>{% endif %}
+        {% if c.feat.danceability is not none %}<span><b>{{ '%.2f'|format(c.feat.danceability) }}</b> dance</span>{% endif %}
+        {% if c.feat.tempo is none %}<span>no analyzed tracks yet</span>{% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</section>
+{% endblock %}

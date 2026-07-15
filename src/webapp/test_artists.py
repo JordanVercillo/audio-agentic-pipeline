@@ -6,8 +6,10 @@ Pure view-logic tests + route matrix (anon/guest/authed) with mocked fetchers.
 
 from __future__ import annotations
 
+import pandas as pd
 import pytest
 
+from . import config
 from .artists import (
     artist_rollup,
     comparison_svg,
@@ -112,6 +114,143 @@ def test_nearest_artists_sounds_alike_here():
     assert [g["name"] for g in got] == ["Loud B", "Soft C"]   # acoustically nearest first
     assert got[0]["distance"] < got[1]["distance"]
     assert nearest_artists("Missing", feats, metas) == []
+
+
+# ── route matrix (anon / guest / authed) ─────────────────────────────────────
+@pytest.fixture
+def client():
+    from fastapi.testclient import TestClient
+
+    from .app import create_app
+    return TestClient(create_app())
+
+
+def _seed_session(taste=None, guest=False):
+    from .app import _signer, _store
+    sid = _store.new()
+    sess = _store.get(sid)
+    if guest:
+        sess["is_guest"] = True
+    else:
+        sess["token"] = {"access_token": "x"}
+    if taste is not None:
+        sess["taste"] = taste
+    return _signer.sign(sid)
+
+
+def _seed_cache(tmp_path):
+    """A tiny library: 2 artists with analyzed tracks + artist_meta rows."""
+    from ..store.cache import FeatureCache
+    tc = FeatureCache(url=f"sqlite:///{tmp_path / 'artists.db'}")
+    tc.remember_meta([
+        {"spotify_track_id": "m1", "track_name": "Hysteria", "artist_names": "Muse"},
+        {"spotify_track_id": "m2", "track_name": "Uprising", "artist_names": "Muse"},
+        {"spotify_track_id": "q1", "track_name": "Breathe", "artist_names": "Quiet Band"},
+    ])
+    for tid, tempo, e in (("m1", 140.0, 0.9), ("m2", 150.0, 0.8), ("q1", 80.0, 0.2)):
+        tc.upsert(tid, {"tempo_bpm": tempo, "rms_mean": e,
+                        "spectral_centroid_mean": 3000 * e, "zcr_mean": e / 5})
+        tc.upsert_perceptual(tid, {"tempo": tempo, "energy": e, "danceability": e},
+                             version="perceptual-v1")
+    tc.remember_artists([
+        {"artist_id": "ar1AAAAAA", "artist_name": "Muse", "genres": "rock, prog",
+         "followers": 1000, "popularity": 78},
+        {"artist_id": "ar2BBBBBB", "artist_name": "Quiet Band", "genres": "ambient"},
+    ])
+    return tc
+
+
+_TASTE = {"range_ids": {"short_term": ["m1", "q1"], "long_term": ["m2"]},
+          "artists": [{"name": "Muse", "genres": ""},
+                      {"name": "Quiet Band", "genres": ""}]}
+
+
+def test_artists_anon_redirects(client):
+    r = client.get("/artists", follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "/"
+
+
+def test_artists_guest_renders_readonly(client, monkeypatch, tmp_path):
+    monkeypatch.setattr("src.webapp.app._feature_cache", lambda: _seed_cache(tmp_path))
+    client.cookies.set(config.SESSION_COOKIE, _seed_session(taste=_TASTE, guest=True))
+    r = client.get("/artists")
+    assert r.status_code == 200
+    assert "Muse" in r.text and "rock" in r.text          # card + genre chip (stored copy)
+    assert 'class="artist-cmp"' in r.text                 # the comparison chart
+    assert "Genres known for" in r.text and "2 of 2</b>" in r.text  # coverage honesty
+    assert "Demo view" in r.text and "Analyze these" not in r.text  # read-only
+
+
+def test_artists_genre_filter(client, monkeypatch, tmp_path):
+    monkeypatch.setattr("src.webapp.app._feature_cache", lambda: _seed_cache(tmp_path))
+    client.cookies.set(config.SESSION_COOKIE, _seed_session(taste=_TASTE))
+    r = client.get("/artists?genre=ambient")
+    assert "Quiet Band" in r.text and "Hysteria" not in r.text
+    assert ">Muse<" not in r.text                         # filtered out
+
+
+def test_artist_page_guest_derived_core_no_live(client, monkeypatch, tmp_path):
+    monkeypatch.setattr("src.webapp.app._feature_cache", lambda: _seed_cache(tmp_path))
+    client.cookies.set(config.SESSION_COOKIE, _seed_session(taste=_TASTE, guest=True))
+    r = client.get("/artist/ar1AAAAAA")
+    assert r.status_code == 200
+    assert "Your top tracks by Muse" in r.text
+    assert "Hysteria" in r.text                           # derived core renders
+    assert "read-only" in r.text                          # guest live-caption
+    assert "Analyze these" not in r.text
+
+
+def test_artist_page_authed_live_rows_and_analyze(client, monkeypatch, tmp_path):
+    tc = _seed_cache(tmp_path)
+    monkeypatch.setattr("src.webapp.app._feature_cache", lambda: tc)
+    live = pd.DataFrame([
+        {"spotify_track_id": "m1", "track_name": "Hysteria", "artist_names": "Muse",
+         "popularity": 80, "duration_ms": 200000},                    # already analyzed
+        {"spotify_track_id": "new9", "track_name": "New Cut", "artist_names": "Muse",
+         "popularity": 70, "duration_ms": 180000},                     # not analyzed
+    ])
+    monkeypatch.setattr("src.webapp.app.fetch_artist_top_tracks", lambda aid, sp: live)
+    client.cookies.set(config.SESSION_COOKIE, _seed_session(taste=_TASTE))
+    r = client.get("/artist/ar1AAAAAA")
+    assert r.status_code == 200
+    assert "official top 10" in r.text and "New Cut" in r.text
+    assert "Analyze these" in r.text                      # un-analyzed row → button
+    assert tc.get_meta("new9")["track_name"] == "New Cut"  # live rows persisted to meta
+    # the borrowed-time endpoint going dark → honest caption, page still renders
+    monkeypatch.setattr("src.webapp.app.fetch_artist_top_tracks",
+                        lambda aid, sp: pd.DataFrame())
+    r2 = client.get("/artist/ar1AAAAAA")
+    assert r2.status_code == 200 and "retired" in r2.text
+    assert "Your top tracks by Muse" in r2.text           # the core never depends on it
+
+
+def test_artist_page_unknown_or_bad_id_redirects(client, monkeypatch, tmp_path):
+    monkeypatch.setattr("src.webapp.app._feature_cache", lambda: _seed_cache(tmp_path))
+    client.cookies.set(config.SESSION_COOKIE, _seed_session(taste=_TASTE))
+    r = client.get("/artist/zzUNKNOWNzz", follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "/artists"
+    r2 = client.get("/artist/bad!id", follow_redirects=False)   # charset guard
+    assert r2.status_code == 303 and r2.headers["location"] == "/artists"
+
+
+def test_artist_analyze_gates_and_enqueues(client, monkeypatch, tmp_path):
+    tc = _seed_cache(tmp_path)
+    monkeypatch.setattr("src.webapp.app._feature_cache", lambda: tc)
+    live = pd.DataFrame([{"spotify_track_id": "new9", "track_name": "New Cut",
+                          "artist_names": "Muse", "duration_ms": 180000}])
+    monkeypatch.setattr("src.webapp.app.fetch_artist_top_tracks", lambda aid, sp: live)
+    # anon and guest never enqueue
+    r = client.post("/artist/ar1AAAAAA/analyze", follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "/"
+    client.cookies.set(config.SESSION_COOKIE, _seed_session(taste=_TASTE, guest=True))
+    r = client.post("/artist/ar1AAAAAA/analyze", follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "/"
+    assert tc.job_status(["new9"])["queued"] == 0
+    # authed → server-side re-fetch, remembered + queued (≤10), back to the page
+    client.cookies.set(config.SESSION_COOKIE, _seed_session(taste=_TASTE))
+    r = client.post("/artist/ar1AAAAAA/analyze", follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "/artist/ar1AAAAAA"
+    assert tc.job_status(["new9"])["queued"] == 1
 
 
 def test_fetch_artist_top_tracks_absent_safe():

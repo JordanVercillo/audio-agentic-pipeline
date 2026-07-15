@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Optional
@@ -27,7 +28,11 @@ from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from ..ingestion.fetchers import fetch_top_artists, fetch_top_tracks
+from ..ingestion.fetchers import (
+    fetch_artist_top_tracks,
+    fetch_top_artists,
+    fetch_top_tracks,
+)
 from ..store import clusters as cl
 from ..store.cache import FeatureCache
 from . import auth_web, config
@@ -41,6 +46,14 @@ from .analytics import (
     scatter_svg,
 )
 from .archetype import archetype_taxonomy, derive_archetype
+from .artists import (
+    artist_rollup,
+    comparison_svg,
+    filter_by_genre,
+    genre_strip,
+    nearest_artists,
+    your_top_by_artist,
+)
 from .explore import (
     catalog_groups,
     histogram_svg,
@@ -672,6 +685,115 @@ def create_app() -> FastAPI:
                 "form": form, "features": feature_rows,
                 "seed_options": seed_options, "results": results,
                 "active": bool(constraints)}
+
+    # ── the Artists surface (Epic P / P3.2) ─────────────────────────────────
+    _ARTIST_ID_RE = re.compile(r"[0-9A-Za-z]{8,40}")  # base62 guard (id → URL/queries)
+
+    @app.get("/artists", response_class=HTMLResponse)
+    def artists_view(request: Request, genre: str = "", f: str = "energy"):
+        session = request.state.session
+        if not _is_viewer(session):
+            return RedirectResponse("/", status_code=303)
+        taste = session.get("taste") or {}
+        t_artists = taste.get("artists") or []
+        if not t_artists:
+            return RedirectResponse(
+                "/dashboard" if auth_web.is_authenticated(session) else "/", status_code=303)
+        cache = _feature_cache()
+        cards = artist_rollup(t_artists, cache.all_meta(),
+                              cache.all_perceptual(), cache.all_artist_meta())
+        strip = genre_strip(cards)
+        filtered = filter_by_genre(cards, genre)
+        catalog = load_catalog()
+        features = (catalog[["column", "friendly"]].to_dict("records")
+                    if catalog is not None else
+                    [{"column": c, "friendly": c.title()} for c in ("energy", "tempo", "danceability")])
+        chosen = f if any(r["column"] == f for r in features) else "energy"
+        friendly = next((r["friendly"] for r in features if r["column"] == chosen), chosen)
+        return templates.TemplateResponse(request, "artists.html", {
+            **_viewer_flags(session), "cards": filtered, "total_cards": len(cards),
+            "strip": strip, "genre": (genre or "").strip().lower(),
+            "chart": comparison_svg(filtered, chosen, friendly),
+            "features": features, "chosen": chosen, "friendly": friendly})
+
+    @app.get("/artist/{artist_id}", response_class=HTMLResponse)
+    def artist_page(request: Request, artist_id: str):
+        session = request.state.session
+        if not _is_viewer(session):
+            return RedirectResponse("/", status_code=303)
+        if not _ARTIST_ID_RE.fullmatch(artist_id or ""):
+            return RedirectResponse("/artists", status_code=303)
+        cache = _feature_cache()
+        am = cache.all_artist_meta().get(artist_id)
+        if am is None:
+            return RedirectResponse("/artists", status_code=303)
+        name = am.get("artist_name") or artist_id
+        taste = session.get("taste") or {}
+        metas = cache.all_meta()
+        card = artist_rollup([{"name": name}], metas,
+                             cache.all_perceptual(), {artist_id: am})[0]
+
+        yours = your_top_by_artist(name, taste.get("range_ids") or {}, metas)
+        analyzed_ids = cache.cached_ids([t["id"] for t in yours])
+        for t in yours:
+            t["analyzed"] = t["id"] in analyzed_ids
+
+        # "similar in your library" — acoustic centroids, links where ids known
+        sim = nearest_artists(name, cache.all_features(), metas)
+        name_to_id = {(a.get("artist_name") or "").lower(): a["artist_id"]
+                      for a in cache.all_artist_meta().values()}
+        for s_row in sim:
+            s_row["artist_id"] = name_to_id.get(s_row["name"].lower())
+
+        # The official top-10: BORROWED-TIME live garnish (D-33) — authed only
+        # (PKCE = no app token; a guest call would leak the owner's token).
+        live_rows: Optional[list[dict]] = None
+        live_dark = False
+        can_analyze = False
+        if auth_web.is_authenticated(session):
+            try:
+                df = fetch_artist_top_tracks(artist_id, auth_web.client_from_session(session))
+            except Exception:  # noqa: BLE001 — garnish, never fatal
+                df = None
+            if df is None or df.empty:
+                live_dark = True
+            else:
+                recs = df.to_dict("records")
+                cache.remember_meta(recs)  # names/art/popularity → worker-searchable
+                have = cache.cached_ids([r["spotify_track_id"] for r in recs])
+                live_rows = [{"id": r["spotify_track_id"],
+                              "name": r.get("track_name"),
+                              "popularity": r.get("popularity"),
+                              "analyzed": r["spotify_track_id"] in have}
+                             for r in recs]
+                can_analyze = any(not r["analyzed"] for r in live_rows)
+
+        return templates.TemplateResponse(request, "artist.html", {
+            **_viewer_flags(session), "artist": card, "artist_id": artist_id,
+            "yours": yours, "similar": sim,
+            "live_rows": live_rows, "live_dark": live_dark,
+            "can_analyze": can_analyze})
+
+    @app.post("/artist/{artist_id}/analyze")
+    def artist_analyze(request: Request, artist_id: str):
+        """Analyze-on-demand (owner fork, D-33): queue the artist's top tracks.
+        Authed ONLY (needs a live token + write intent) — guests never enqueue.
+        Server-side re-fetch: the queue set never comes from form data."""
+        session = request.state.session
+        if not auth_web.is_authenticated(session):
+            return RedirectResponse("/", status_code=303)
+        if not _ARTIST_ID_RE.fullmatch(artist_id or ""):
+            return RedirectResponse("/artists", status_code=303)
+        cache = _feature_cache()
+        try:
+            df = fetch_artist_top_tracks(artist_id, auth_web.client_from_session(session))
+        except Exception:  # noqa: BLE001
+            df = None
+        if df is not None and not df.empty:
+            recs = df.to_dict("records")[:10]
+            cache.remember_meta(recs)
+            cache.enqueue([r["spotify_track_id"] for r in recs])  # O1 dedup guard applies
+        return RedirectResponse(f"/artist/{artist_id}", status_code=303)
 
     @app.get("/recommend", response_class=HTMLResponse)
     def recommend_view(request: Request):

@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% block title %}{{ artist.name }} — Vercillo Analytics{% endblock %}
+{% block content %}
+<section class="dash song">
+  <p class="back"><a href="/artists">← your artists</a></p>
+  <div class="acard acard-hero">
+    {% if artist.image %}<img class="art" src="{{ artist.image }}" alt="">
+    {% else %}<span class="art art-ph">♪</span>{% endif %}
+    <span class="ainfo">
+      <h1>{{ artist.name }}</h1>
+      <span class="tartist">{{ artist.genres or "no genres on record" }}</span>
+      <span class="cap">{{ artist.n_analyzed }} of {{ artist.n_tracks }} of their tracks in your
+        library analyzed{% if artist.popularity is not none %} · Spotify popularity {{ artist.popularity }}{% endif %}{% if artist.followers %} · {{ '{:,}'.format(artist.followers) }} followers{% endif %}</span>
+      {% if artist.feat.tempo is not none %}
+      <span class="cap"><b>{{ artist.feat.tempo|round|int }}</b> bpm avg ·
+        <b>{{ '%.2f'|format(artist.feat.energy) }}</b> energy ·
+        <b>{{ '%.2f'|format(artist.feat.danceability) }}</b> danceability — our DSP, their analyzed tracks</span>
+      {% endif %}
+    </span>
+  </div>
+
+  <h2 class="section">Your top tracks by {{ artist.name }}</h2>
+  {% if yours %}
+  <ol class="tracks">
+    {% for t in yours %}
+    <li>
+      <span class="rk">{{ loop.index }}</span>
+      <span class="tinfo">
+        {% if t.analyzed %}<a class="tname" href="/song/{{ t.id }}">{{ t.name }}</a>
+        {% else %}<span class="tname">{{ t.name }}</span>{% endif %}
+        <span class="tartist">{{ {'short_term':'last 4 weeks','medium_term':'last 6 months','long_term':'all time'}.get(t.window, t.window) }}</span>
+      </span>
+      {% if t.analyzed %}<span class="tag" title="acoustic features extracted">✓</span>{% endif %}
+    </li>
+    {% endfor %}
+  </ol>
+  <p class="cap">Derived from the listening ranks we already store — always available,
+    zero API calls (Spotify retired artist top-tracks for apps like this one).</p>
+  {% else %}
+  <p class="muted">None of your ranked tracks lead with {{ artist.name }}.</p>
+  {% endif %}
+
+  <h2 class="section">The artist's official top 10</h2>
+  {% if live_rows %}
+  <ol class="tracks">
+    {% for t in live_rows %}
+    <li>
+      <span class="rk">{{ loop.index }}</span>
+      <span class="tinfo">
+        {% if t.analyzed %}<a class="tname" href="/song/{{ t.id }}">{{ t.name }}</a>
+        {% else %}<span class="tname">{{ t.name }}</span>{% endif %}
+        {% if t.popularity is not none %}<span class="tartist">popularity {{ t.popularity }}</span>{% endif %}
+      </span>
+      {% if t.analyzed %}<span class="tag" title="in the corpus — features extracted">✓</span>{% endif %}
+    </li>
+    {% endfor %}
+  </ol>
+  {% if can_analyze %}
+  <form method="post" action="/artist/{{ artist_id }}/analyze">
+    <button type="submit" class="btn">Analyze these tracks →</button>
+  </form>
+  <p class="cap">Queues the unanalyzed ones for download + local DSP (~50 s each) —
+    they join your library and the corpus permanently.</p>
+  {% endif %}
+  {% elif guest %}
+  <p class="muted">Live Spotify comparisons need a login — the demo is read-only.
+    Your listening-derived list above is the always-on core.</p>
+  {% elif live_dark %}
+  <p class="muted">Spotify retired the artist-top-tracks endpoint for apps like this one
+    (Feb 2026, no replacement) — showing your listening instead. The core view above
+    doesn't depend on it.</p>
+  {% endif %}
+
+  {% if similar %}
+  <h2 class="section">Similar in your library</h2>
+  <ul class="sim-artists">
+    {% for s in similar %}
+    <li>{% if s.artist_id %}<a class="tname" href="/artist/{{ s.artist_id }}">{{ s.name }}</a>
+        {% else %}<span class="tname">{{ s.name }}</span>{% endif %}
+      <small class="muted">Δ {{ s.distance }}σ · {{ s.n_tracks }} track{{ 's' if s.n_tracks != 1 else '' }}</small></li>
+    {% endfor %}
+  </ul>
+  <p class="cap">Acoustic-centroid distance across <b>your analyzed library</b> — who sounds
+    alike <em>here</em>, not Spotify's fan-overlap neighbors (that endpoint is gone; this is
+    the honest local replacement).</p>
+  {% endif %}
+</section>
+{% endblock %}
