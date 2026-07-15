@@ -782,10 +782,13 @@ def test_build_dashboard_context(monkeypatch, tmp_path):
             "spotify_track_id": ids, "track_name": [f"S {i}" for i in ids],
             "artist_names": ["A"] * len(ids), "rank": list(range(1, len(ids) + 1)),
             "album_image_url": [f"http://img/{i}.jpg" for i in ids],
+            "primary_artist_id": ["ar9"] * len(ids),
             "popularity": [65, 55, 45][:len(ids)]})
 
     def fake_artists(time_range="medium_term", limit=12, sp=None):
-        return pd.DataFrame({"artist_name": ["Muse"], "genres": ["rock"], "image_url": [None]})
+        return pd.DataFrame({"artist_id": ["ar9"], "artist_name": ["Muse"],
+                             "genres": ["rock"], "followers": [1000],
+                             "popularity": [77], "image_url": [None]})
 
     monkeypatch.setattr("src.webapp.app.fetch_top_tracks", fake_tracks)
     monkeypatch.setattr("src.webapp.app.fetch_top_artists", fake_artists)
@@ -800,6 +803,16 @@ def test_build_dashboard_context(monkeypatch, tmp_path):
     # D-34: every range fetches at the extracted _TOP_LIMIT depth (50, was 20)
     from .app import _TOP_LIMIT
     assert _TOP_LIMIT == 50 and seen_limits == [_TOP_LIMIT] * 3
+    # P3.1/D-36: the build PERSISTS what it fetches — artist_meta gets the
+    # top-artists frame (genres/popularity servable with zero extra calls)…
+    am = cache.all_artist_meta()
+    assert am["ar9"]["genres"] == "rock" and am["ar9"]["popularity"] == 77
+    # …and track_meta carries art + the primary artist id (was thrown away)
+    with cache._Session() as s:
+        from ..store.models import TrackMeta
+        row = s.get(TrackMeta, "trk0")
+        assert row.album_image_url == "http://img/trk0.jpg"
+        assert row.primary_artist_id == "ar9"
     assert ctx["coverage"] == {"analyzed": 4, "total": 5, "analyzing": 1}
     assert ctx["profile"]["n"] == 4  # absolute profile over the 4 analyzed songs
     assert ctx["drift"] is not None and math.isfinite(ctx["drift"]["score"])

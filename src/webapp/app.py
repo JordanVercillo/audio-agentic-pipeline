@@ -181,7 +181,11 @@ def build_dashboard_context(client: Any, cache: FeatureCache) -> dict[str, Any]:
                 ids_here.append(tid)
                 meta_items.append(
                     {"spotify_track_id": tid, "track_name": name, "artist_names": artist,
-                     "popularity": r.get("popularity"), "duration_ms": r.get("duration_ms")})
+                     "popularity": r.get("popularity"), "duration_ms": r.get("duration_ms"),
+                     # P3.1: display context the fetch already carries (art for
+                     # library/guest-dashboard; artist id hardens the artist join)
+                     "album_image_url": r.get("album_image_url"),
+                     "primary_artist_id": r.get("primary_artist_id")})
                 pop = r.get("popularity")
                 tracks.append({"rank": int(r.get("rank", 0)), "name": name,
                                "artist": artist, "id": tid, "art": r.get("album_image_url"),
@@ -210,21 +214,32 @@ def build_dashboard_context(client: Any, cache: FeatureCache) -> dict[str, Any]:
         "range_ids": per_range_ids,
         "profile": absolute_profile(rows),
         "drift": drift_over_rows(per_range_rows),
-        "artists": _top_artists(client),
+        "artists": _top_artists(client, cache),
         "coverage": {"analyzed": coverage["cached"], "total": coverage["total"],
                      "analyzing": coverage["queued"] + coverage["running"]},
         "track_total": len(set(all_ids)),
     }
 
 
-def _top_artists(client: Any, limit: int = 12) -> list[dict[str, Any]]:
-    """The visitor's top artists (with Spotify genres — which tracks don't expose)."""
+def _top_artists(client: Any, cache: Optional[FeatureCache] = None,
+                 limit: int = 12) -> list[dict[str, Any]]:
+    """The visitor's top artists (with Spotify genres — which tracks don't expose).
+
+    P3.1/D-36: when a cache is supplied, the fetched frame is ALSO persisted to
+    artist_meta — the same data used to be thrown away after render; persisting
+    it is what makes genres/popularity servable to /artists with zero extra API
+    calls. Best-effort: a persist failure never breaks the dashboard."""
     try:
         df = fetch_top_artists(time_range="medium_term", limit=limit, sp=client)
     except Exception:  # noqa: BLE001 — a nice-to-have section, never fatal
         return []
     if df is None or df.empty:
         return []
+    if cache is not None:
+        try:
+            cache.remember_artists(df.to_dict("records"))
+        except Exception:  # noqa: BLE001 — persistence is additive, never fatal
+            logger.warning("artist_meta persist failed (dashboard unaffected)")
     return [
         {
             "name": r.get("artist_name", ""),
