@@ -894,3 +894,23 @@ boundary).
 `research-expert` + `agile-coach` agents (both registered). Same ground rules
 throughout — and one more now standing: **borrowed-time API surfaces are
 absent-safe garnish, never load-bearing** (the research brief's doctrine).
+
+## Model routing — Fable vs Opus 4.8 (owner, 2026-07-15)
+
+**The rule: Fable designs, decides, and audits; Opus executes specced slices.**
+Expert agents are pinned `model: opus` (their charters' "How you think"
+disciplines carry the review quality); `agile-coach` keeps these tags current.
+
+| Roadmap item | Model | Why |
+|---|---|---|
+| P3.3 Library tabs · P3.4 playlists · P3.5 guest dashboard · P3.6 H5/H6 | **Opus** | File-level specs exist (IA consult + D-37); established page patterns to copy; testable acceptance |
+| P3.6 **O2 threshold tuning** (match confidence) | **split** | Opus builds; the corpus-tuned threshold decision is a #19/#24-class judgment — Fable (or owner) signs it |
+| P3.7 **L-lite** (case study / README / how-to) | **Opus** | Strong writing from the chronicle as source; owner reviews the narrative |
+| P3.7 **L-flip** (gitleaks triage · filter-repo scrub · public flip) | **Fable** | Irreversible + security-adversarial; agile-coach runs the checklist, Fable makes the calls |
+| Phase 4 **K0 design** (agentic RAG, tool-use safety, injection evals, go-gates) | **Fable** | Novel architecture + adversarial surface; llm-rag-expert consults ride Opus |
+| K1–K4 **builds** (chat plumbing, upload path) | **Opus** | Execute the K0 spec; evals gate every ship |
+| K2 **injection-eval design** | **Fable** | The eval IS the security boundary |
+| Phase 5 **J1 modeling design + J3 benchmark interpretation** | **Fable** | Co-occurrence/embedding choices + honest at-scale claims are judgment |
+| Phase 5 **J0/J1 ETL execution** | **Opus** | Specced pipeline work with parity/audit gates |
+| Phase 6 **ML capstone scoping** | **Fable** | Unscoped by design |
+| Any new vision/spec, security review, or surprising-behavior debugging | **Fable** | The #19/#25-class problems — where the model must fight its own gut |

@@ -54,4 +54,16 @@ implements scoped in-lane, and NEVER commits. Roster: `data-platform-expert`
 (warehouse / bridge key / marts / MPD-Spark scale), `webapp-expert` (FastAPI /
 sessions / auth / templates / the viewer split), `dsp-expert` (librosa / the
 frozen 77-dim contract / estimator honesty), `llm-rag-expert` (Ollama / RAG /
-the golden evals / grounding contract). Add a new domain by copying any of these.*
+the golden evals / grounding contract), `research-expert` (external facts,
+cited), `agile-coach` (slicing, definition of done, model routing). Add a new
+domain by copying any of these.*
+
+**Model routing (owner, 2026-07-15):** experts are pinned `model: opus` in
+frontmatter — their charters' "How you think" disciplines carry the quality, so
+consults never draw Fable budget. The LEAD runs on Fable for design/decide/audit
+sessions (new specs, security-adversarial work, irreversibles, eval design) and
+on Opus for executing well-specced slices; `agile-coach` keeps the per-slice
+tags (see its charter). A brand-new agent file registers with latency — create
+agents EARLY in a session; if the type isn't registered yet, spawn
+`general-purpose` with "read and follow `.claude/agents/<name>.md`" (proven:
+the research brief's first outing).
