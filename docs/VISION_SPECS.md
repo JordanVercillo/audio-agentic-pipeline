@@ -802,6 +802,18 @@ second correction wave.
   adapters + RL-updated recommendations — with ≤5 users there is today no
   adapter-training corpus and no RL reward signal; the go-gate names the data
   that would unlock each.
+- **D-40 — the D-18 public flip lands in TWO slices (owner via lead, 2026-07-15,
+  P3.3):** the corpus context builders (`_explore_context`, `_recommend_context`)
+  hard-require a user taste (`return None` without `range_ids`), so a blanket
+  anon gate-drop is a real builder refactor, not a cheap flip. Split:
+  **(a) shipped in P3.3** — `/library` (new, population-only by design) + `/song`
+  + `/spectrogram` go public now (all three are taste-free), which already
+  delivers the core D-18 value: anyone browses the catalog and opens any song's
+  deep-dive with no login. **(b) deferred** — `/explore` + `/recommend` stay
+  viewer-gated until a dedicated slice makes their builders render population-only
+  (visitor overlay absent) + their templates handle the no-taste state. That
+  slice is the true "corpus fully public" step; it precedes or accompanies the
+  P3.7 exit-gate flip.
 
 ## Phase 3 — the product surface (build order)
 
@@ -825,12 +837,14 @@ second correction wave.
   **"similar in your library"** (artist_profiles acoustic centroids — the
   honest related-artists replacement: "sounds alike HERE", labelled so) +
   analyze-on-demand POST (authed, ≤10 tracks).
-- **P3.3 — Epic H remainder: Library.** `/library` public (D-18): the H1
-  catalog over the full cache — search/sort/filter (form-GET), `duplicate_of`
-  "same recording as" annotation, album art · tabs **My songs** (viewer: your
-  analyzed ∩ catalog + the honest "why only N" explainer derived from
-  `_TOP_LIMIT`) and **Playlists** (authed; P3.4). Ships WITH the rest of the
-  D-18 public flip for deep-dive links (guest paths already exist via H7).
+- **P3.3 — Epic H remainder: Library. ✅ SHIPPED (2026-07-15, 06da10d).**
+  `/library` public (D-18): the H1 catalog over the full cache —
+  search/sort/filter (form-GET), `duplicate_of` "same recording as" annotation,
+  album art · tabs **My songs** (viewer: your analyzed ∩ catalog + the honest
+  "why only N" explainer derived from `_TOP_LIMIT`) and **Playlists** (authed
+  placeholder; P3.4). `/song` + `/spectrogram` flipped public alongside it.
+  Per **D-40** the corpus flip is partial: `/explore` + `/recommend` stay
+  viewer-gated pending a taste-optional builder refactor (deferred slice).
 - **P3.4 — Epic I: playlists (D-37):** `/me/playlists` list + per-playlist
   coverage ("12/40 engineered") + explicit Analyze (capped) → the existing
   intake path (O1 dedup guard already protects it) → `/status` progress.
