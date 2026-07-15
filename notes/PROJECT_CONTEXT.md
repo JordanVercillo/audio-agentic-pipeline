@@ -213,10 +213,19 @@
   (TWO deprecation waves; artist top-tracks REMOVED no-replacement → derive
   "YOUR top by artist" as core, live absent-safe garnish; 5-seat cap = platform
   ceiling; playlists own+collaborative only). New harness agents:
-  `research-expert`, `agile-coach`. **➡️ NEXT ACTION — build Vision E P3.0
-  (groundwork: fetcher hardening + the 20→50 bump + guardrails refresh wave 2),
-  then P3.1 artist_meta.** Parked: MPD-audio, Epic M, instrumentalness,
-  dupe-pruning (owner call). See the session-29 log line for the live state.
+  `research-expert`, `agile-coach`. ✅ **P3.0 GROUNDWORK SHIPPED (2026-07-15,
+  commits c8f2ce2/4748fb9/1b74f3c, 359 tests, deployed, app-verify ALL-FALSE):**
+  fetcher hardening (absent-safe `_artist_to_record` + artist-popularity capture;
+  batch-`/artists` → singles fallback @0.5s; playlist `items.total`/`item`-entity
+  fallbacks + 50/page; search clamped 10) · **`_TOP_LIMIT=50`** (D-34 — the "why
+  39 songs" fix; next logins pull up to 150 entries/user) · guardrails file
+  correction wave 2 (two-wave dating, borrowed-time doctrine, genres watch item).
+  **➡️ NEXT ACTION — build P3.1 (artist_meta foundation): ArtistMeta table +
+  `remember_artists()` (preserve-if-absent) + `all_artist_meta()` ·
+  `track_meta` += `album_image_url` + `primary_artist_id` (migration) ·
+  `seed_artist_meta.py` from dim_artists · dashboard build persists what it
+  already fetches.** Then P3.2 Artists surface. Parked: MPD-audio, Epic M,
+  instrumentalness, dupe-pruning (owner call).
 - ✅ **SECURITY + ROBUSTNESS REVIEW (2026-07-09, commits 26891b1←): whole-app
   audit via 2 review subagents + a strategic pass; 7 real fixes, all tested,
   deployed, 286 green.** **Security surface came back STRONG** — auth, session
@@ -1262,3 +1271,25 @@ narrative goes to `notes/engineering_journal.md`, plans to
   app-verify ALL-FALSE, 160 tracks, public up, tree synced. **Left off: Vision
   E COMMITTED; next build = P3.0 groundwork (fetcher hardening + 20→50 bump +
   guardrails refresh), then P3.1 artist_meta. NEW SESSION: run `/resume`.**
+- **2026-07-15 (session 30 — P3.0 groundwork via `/orchestrator`, Fable 5):**
+  Executed the researched plan directly (no expert fan-out — the plans WERE
+  session 29's consults) in 3 committed sub-slices. **P3.0a fetchers (c8f2ce2):**
+  shared `_artist_to_record` (absent-safe on the removed-fields list; captures
+  artist `popularity` as fetched context); batch-`/artists` singles fallback
+  (un-deprecated `GET /artists/{id}` @≥0.5s throttle); `_playlist_track_count`
+  (`items.total`→`tracks.total`→0 — the old hard read contradicted its own
+  comment); `_playlist_item_entity` (`item`→`track` alias); playlist pages at
+  50; search clamped to 10; 6 new fake-sp/pure tests; 429 loop-hardening
+  deliberately deferred to P3.4 (spotipy retries ×3 internally). **P3.0b
+  (4748fb9):** `_TOP_LIMIT=50` extracted as THE single source (test asserts all
+  3 ranges fetch at it) — D-34, the "why 39 songs" fix. **P3.0c (1b74f3c):**
+  guardrails wave-2 rewrite (two-wave dating fixed, borrowed-time doctrine
+  standing, artist-genres watch item, allowed-surface list with real limits,
+  research-brief pointer). **359 tests green** (+6), deployed via restart
+  (cache backed up @160), app-verify ALL-FALSE, live edge 200. The 50-bump
+  proves itself on the owner's next real login (expect up to ~90 new tracks to
+  queue — durable queue + O1 dedup absorb it by design). No journal entry —
+  clean execution of a researched plan, zero surprises. **Left off: P3.0
+  COMPLETE; next = P3.1 artist_meta foundation (table + migrations + seed
+  script + dashboard persist), then P3.2 Artists surface. NEW SESSION: run
+  `/resume`.**
