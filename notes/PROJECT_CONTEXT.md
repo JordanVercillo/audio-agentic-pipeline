@@ -220,12 +220,20 @@
   fallbacks + 50/page; search clamped 10) · **`_TOP_LIMIT=50`** (D-34 — the "why
   39 songs" fix; next logins pull up to 150 entries/user) · guardrails file
   correction wave 2 (two-wave dating, borrowed-time doctrine, genres watch item).
-  **➡️ NEXT ACTION — build P3.1 (artist_meta foundation): ArtistMeta table +
-  `remember_artists()` (preserve-if-absent) + `all_artist_meta()` ·
-  `track_meta` += `album_image_url` + `primary_artist_id` (migration) ·
-  `seed_artist_meta.py` from dim_artists · dashboard build persists what it
-  already fetches.** Then P3.2 Artists surface. Parked: MPD-audio, Epic M,
-  instrumentalness, dupe-pruning (owner call).
+  ✅ **P3.1 ARTIST_META FOUNDATION SHIPPED (2026-07-15, commits 134f688/d4a01e3,
+  361 tests, deployed ALL-FALSE):** `ArtistMeta` table + `remember_artists`
+  (preserve-if-absent — "" never overwrites stored genres) + `all_artist_meta`;
+  `track_meta` += `album_image_url`+`primary_artist_id` (migration, threaded
+  through `remember_meta`); `_top_artists(client, cache)` now PERSISTS the frame
+  it always fetched (D-36, zero extra calls); `seed_artist_meta.py` run LIVE —
+  **60 artists, 29 with genres** (the journal-#9 honest ceiling). **➡️ NEXT
+  ACTION — build P3.2 (Epic P: the Artists surface): `/artists` list (viewer) —
+  hover card (popularity·genres·aggregate features grouped by primary artist) +
+  ONE form-GET comparison chart + genre chips/filter; `/artist/{id}` — your
+  top-5 by artist (derived core, D-33) + absent-safe live top-10 (authed) +
+  "similar in your library" (artist_profiles centroids) + analyze-on-demand
+  POST; nav gains Artists (the D-35 two-group IA).** Then P3.3 Library tabs.
+  Parked: MPD-audio, Epic M, instrumentalness, dupe-pruning (owner call).
 - ✅ **SECURITY + ROBUSTNESS REVIEW (2026-07-09, commits 26891b1←): whole-app
   audit via 2 review subagents + a strategic pass; 7 real fixes, all tested,
   deployed, 286 green.** **Security surface came back STRONG** — auth, session
@@ -1292,4 +1300,22 @@ narrative goes to `notes/engineering_journal.md`, plans to
   clean execution of a researched plan, zero surprises. **Left off: P3.0
   COMPLETE; next = P3.1 artist_meta foundation (table + migrations + seed
   script + dashboard persist), then P3.2 Artists surface. NEW SESSION: run
+  `/resume`.**
+- **2026-07-15 (session 31 — P3.1 artist_meta via `/orchestrator`, Fable 5):**
+  Two sub-slices, no fan-out (the session-29 consult was the plan). **P3.1a
+  (134f688):** `ArtistMeta` table (id PK, name/genres/followers/popularity/
+  image/updated_at — every non-identity field nullable+absent-safe; stored copy
+  = system of record) + `remember_artists` preserve-if-absent ("" never
+  overwrites stored genres) + `all_artist_meta`; `track_meta` +=
+  `album_image_url`+`primary_artist_id` (forward-only migration; the top-tracks
+  record already carried both — previously dropped) threaded through
+  `remember_meta`. **P3.1b (d4a01e3):** `_top_artists(client, cache)` persists
+  the frame it always fetched (best-effort, never breaks the dashboard);
+  `meta_items` carries art+primary-artist-id; `seed_artist_meta.py` run LIVE →
+  **artist_meta: 60 artists, 29 with genres** (journal-#9 ceiling, now
+  servable). **361 tests green** (+2), deployed via restart, app-verify
+  ALL-FALSE, public up. No journal entry — second clean plan-execution in a
+  row. **Left off: P3.1 COMPLETE — the Artists surface has its data
+  foundation. Next = P3.2 (Epic P: /artists list + hover + comparison chart +
+  genre chips; /artist/{id} deep-dive per D-33/D-35). NEW SESSION: run
   `/resume`.**
