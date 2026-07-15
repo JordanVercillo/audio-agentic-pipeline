@@ -641,8 +641,23 @@ def test_privacy_page_public_and_honest(client):
     r = client.get("/privacy")
     assert r.status_code == 200
     assert "songs, not people" in r.text          # the design principle
-    assert "user-top-read" in r.text              # the only scope
+    assert "user-top-read" in r.text              # scopes rendered from config (not hard-coded)
+    assert "playlist-read-private" in r.text      # Epic I access disclosed (single source)
+    assert "playlist" in r.text.lower()           # playlist import access explained
     assert "never stored" in r.text.lower()       # audio posture (D-15)
+
+
+def test_scope_gate_derives_from_config():
+    # tripwire: the playlist gate + privacy copy derive from config.SCOPES, never
+    # a second copy. Catches the regression class where scopes are retuned but a
+    # gate/copy elsewhere keeps the old list.
+    from . import auth_web, config
+    assert set(config.PLAYLIST_SCOPES).issubset(set(config.SCOPES.split()))
+    tok = {"token": {"access_token": "x", "scope": config.SCOPES}}
+    old = {"token": {"access_token": "x", "scope": "user-top-read"}}
+    assert auth_web.has_playlist_scope(tok) is True
+    assert auth_web.has_playlist_scope(old) is False
+    assert auth_web.has_playlist_scope({}) is False  # anon
 
 
 def test_analytics_unauthenticated_redirects(client):

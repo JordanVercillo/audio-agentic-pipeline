@@ -919,6 +919,7 @@ def create_app() -> FastAPI:
         return templates.TemplateResponse(request, "privacy.html", {
             "authed": auth_web.is_authenticated(request.state.session),
             "ttl_minutes": config.SESSION_TTL_SECONDS // 60,
+            "scopes": config.SCOPES.split(),  # single source — copy can't drift from the gate
         })
 
     @app.get("/healthz")

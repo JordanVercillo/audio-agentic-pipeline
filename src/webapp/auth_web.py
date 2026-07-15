@@ -102,6 +102,20 @@ def is_authenticated(session: dict[str, Any]) -> bool:
     return bool(session.get(_TOKEN, {}).get("access_token"))
 
 
+def granted_scopes(session: dict[str, Any]) -> set[str]:
+    """The scopes Spotify actually granted this session, read from the token
+    response's `scope` field (stored verbatim by exchange_code). Empty for a
+    pre-scope-change token or an anon session."""
+    return set((session.get(_TOKEN, {}).get("scope") or "").split())
+
+
+def has_playlist_scope(session: dict[str, Any]) -> bool:
+    """True once the session's token carries BOTH playlist scopes — derived from
+    config (never a second copy of the names), so retuning SCOPES can't leave the
+    gate lying. An existing `user-top-read`-only token reads False → re-consent."""
+    return set(config.PLAYLIST_SCOPES).issubset(granted_scopes(session))
+
+
 def client_from_session(session: dict[str, Any]) -> spotipy.Spotify:
     """A spotipy client bound to this visitor's access token."""
     token = session.get(_TOKEN)

@@ -7,10 +7,13 @@
     simple: <strong>we analyze songs, not people.</strong></p>
 
   <h2 class="section">What we access</h2>
-  <p>When you log in with Spotify, this app requests one scope —
-    <code>user-top-read</code> — your top tracks and artists. Authorization uses
-    Spotify's PKCE flow against a public client id; no app secret exists anywhere
-    in this system.</p>
+  <p>When you log in with Spotify, this app requests read-only access to
+    {% for s in scopes %}<code>{{ s }}</code>{% if not loop.last %}{% if loop.revindex0 == 1 %} and {% else %}, {% endif %}{% endif %}{% endfor %} —
+    your top tracks and artists, and (so you can import a playlist into your
+    library) the list of your own and collaborative playlists and their tracks.
+    We only read playlist contents when you click <em>Analyze</em> on a specific
+    playlist. Authorization uses Spotify's PKCE flow against a public client id;
+    no app secret exists anywhere in this system.</p>
 
   <h2 class="section">What we keep — and what we don't</h2>
   <p><strong>Your listening data is ephemeral.</strong> Your top tracks and

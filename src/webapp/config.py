@@ -39,8 +39,19 @@ REDIRECT_URI = os.environ.get("WEBAPP_REDIRECT_URI", "http://127.0.0.1:8000/call
 # The one public host this app serves. The www→apex redirect matches ONLY
 # www.<this> — never an arbitrary Host header (that would be an open redirect).
 CANONICAL_HOST = os.environ.get("WEBAPP_CANONICAL_HOST", "vercilloanalytics.com")
-# Least privilege: the pilot only needs the visitor's top items.
-SCOPES = "user-top-read"
+# Least privilege, but grouped so the gate + the privacy copy derive from ONE
+# source (never a second hard-coded list). BASE = the always-needed top-items
+# read; PLAYLIST = Epic I (playlist import) — adding it forces every existing
+# pilot user to re-consent on next login (their old token lacks these scopes).
+BASE_SCOPES = ("user-top-read",)
+PLAYLIST_SCOPES = ("playlist-read-private", "playlist-read-collaborative")
+SCOPES = " ".join(BASE_SCOPES + PLAYLIST_SCOPES)
+
+# Load-bearing throughput guard (Epic I / D-41): extraction is ~50 s/track,
+# serial on one worker, so a playlist import is capped to this many tracks —
+# a TOTAL, enforced by slicing before enqueue (the fetcher's `limit` is only a
+# page size). 100 ≈ 83 min worst-case worker time. Config-tunable.
+PLAYLIST_IMPORT_CAP = int(os.environ.get("WEBAPP_PLAYLIST_IMPORT_CAP", "100"))
 
 # ── Sessions ──
 SESSION_COOKIE = "va_sid"
