@@ -248,9 +248,22 @@
   flipped PUBLIC (taste-free); `/explore` + `/recommend` stay viewer-gated —
   their builders hard-require a taste (`return None` w/o range_ids), so their anon
   flip is a deferred builder-refactor slice (D-40b, folds into the P3.7 exit
-  gate).** **NOW NEXT: P3.4 — Epic I playlists (D-37): `/me/playlists` + per-playlist
-  coverage + capped Analyze → intake path; re-consent (scope change) lands
-  FIRST.** Parked: MPD-audio, Epic M, instrumentalness, dupe-pruning.
+  gate).** **➡️ NEXT ACTION (SUPERSEDED — P3.4 ✅ SHIPPED 2026-07-15, commits
+  30cb7b9/cccad88/9c78ec2, 401 tests, deployed ALL-FALSE, anon-validated):
+  Epic I playlists live + re-consent.** Playlist scopes added (single-sourced
+  in `config.SCOPES`; `auth_web.has_playlist_scope` reads the granted `scope`;
+  privacy copy discloses it) → **all pilot users re-consent on next login**;
+  `webapp/playlists.py` (own+collaborative filter, fails-closed w/o /me id);
+  `/playlists` (authed: re-consent CTA vs card list) + `POST /playlists/{id}/analyze`
+  (scope+membership gated before any fetch → server-side re-fetch → cap-as-total
+  slice `[:100]` D-41 → remember_meta → enqueue O1; coverage via session flash,
+  XSS-safe). **⚠️ ONE OWNER STEP LEFT: the authed live path (re-login to grant
+  the scope → /playlists → Analyze a small playlist → /status) is Jordan's
+  click-path — code + anon gates validated, but nobody has exercised the real
+  Spotify re-consent yet.** **NOW NEXT: P3.5 — guest dashboard replica (owner
+  ask): extend `snapshot_demo_profile.py` to carry per-range track entries so
+  "View as guest" renders the full dashboard, not just analytics.** Parked:
+  MPD-audio, Epic M, instrumentalness, dupe-pruning.
 - ✅ **SECURITY + ROBUSTNESS REVIEW (2026-07-09, commits 26891b1←): whole-app
   audit via 2 review subagents + a strategic pass; 7 real fixes, all tested,
   deployed, 286 green.** **Security surface came back STRONG** — auth, session
@@ -590,7 +603,7 @@ narrative goes to `notes/engineering_journal.md`, plans to
 | `scripts/build_report.py` | THE one command: fresh gold layer → regenerate all artifacts → `taste_report.html` (0.99 MB, offline). `--no-rebuild`, `--llm-polish`. |
 | `src/agent/` | SPEC P5: `warehouse_agent.py` (pure DuckDB retrieval core — 2-layer SQL security D-10; reused by P8 RAG) + `mcp_server.py` (FastMCP stdio: get_schema / query_warehouse / get_insights). Test: `test_agent.py` (30). Run: `python -m src.agent.mcp_server`. |
 | `src/webapp/` | **SPEC P8 slice 1: FastAPI pilot.** `auth_web.py` (session-scoped PKCE — token in session, CSRF state gate, D-8 no secret), `sessions.py` (TTL `SessionStore` + signed cookie + rotate), `featurestore.py` (bridge-key overlap-join + acoustic insight), `app.py` (routes: `/ login callback dashboard logout healthz`), `config.py`, `templates/`, `static/`. Test: `test_webapp.py` (15). Run: `uv run python scripts/run_webapp.py` → :8000. |
-| `src/webapp/{artists,library}.py` | **Vision-E product surfaces (pure view logic + fetchers).** `artists.py` (P3.2 — rollup, genre strip, comparison SVG, `your_top_by_artist` D-33, `nearest_artists`). `library.py` (P3.3 — `library_view` search/sort/dedup-annotate/mine-overlay, `why_n_analyzed` from `_TOP_LIMIT`); fed by `cache.library_rows()`. `/library`+`/song`+`/spectrogram` are PUBLIC (D-18/D-40); `/explore`+`/recommend` still viewer-gated (taste-required builders). Tests: `test_artists.py`, `test_library.py`. |
+| `src/webapp/{artists,library,playlists}.py` | **Vision-E product surfaces (pure view logic).** `artists.py` (P3.2 — rollup, genre strip, comparison SVG, `your_top_by_artist` D-33, `nearest_artists`). `library.py` (P3.3 — `library_view` search/sort/dedup-annotate/mine-overlay, `why_n_analyzed` from `_TOP_LIMIT`); fed by `cache.library_rows()`. `playlists.py` (P3.4 — `playlist_cards`/`importable_ids` own+collaborative filter, `coverage_line`); `/playlists` + `POST …/analyze` behind `auth_web.has_playlist_scope` (re-consent), cap `config.PLAYLIST_IMPORT_CAP`. `/library`+`/song`+`/spectrogram` PUBLIC (D-18/D-40); `/explore`+`/recommend`+`/playlists` gated. Tests: `test_artists.py`, `test_library.py`, `test_playlists.py`. |
 | `docs/AGENT_ACCESS.md` | P5 artifact: MCP registration config (Claude Desktop/Code) + security model + live demo transcript. |
 | `docs/SCALING.md` | P7 artifact: honest 10K/1M-track scaling design (bottleneck = acquisition+DSP; GCS/BigQuery; Spark-vs-Dataflow; the `spark-parity` CI proof). |
 | `docs/P8_PLAN.md` | P8 build plan (FastAPI + Jinja2; session PKCE; feature-store overlap-join; RAG; 4-slice sequence). Slices 1, 1.5, 2 BUILT. |
@@ -1403,3 +1416,26 @@ narrative goes to `notes/engineering_journal.md`, plans to
   self-caught — the `{8,40}` artist regex rejected short synthetic ids). **Left
   off: P3.3 COMPLETE — the Library is live and public. Next = P3.4 (Epic I
   playlists, D-37; re-consent lands first). NEW SESSION: run `/resume`.**
+- **2026-07-15 (session 35 — P3.4 Epic I playlists via `/orchestrator`, Opus 4.8;
+  ONE webapp-expert consult, no other fan-out):** Built playlist import in 3
+  commits. Consulted webapp-expert on the re-consent flow — it verified the
+  granted `scope` already rides in `session["token"]` (no plumbing), caught a
+  second-encoding bug (`privacy.html` hard-coded "one scope"), and flagged that
+  `fetch_playlist_tracks(limit=)` is a PAGE size not a total cap. **P3.4a
+  (30cb7b9):** `config` single-sources `BASE_SCOPES`/`PLAYLIST_SCOPES`/`SCOPES` +
+  `PLAYLIST_IMPORT_CAP=100`; `auth_web.granted_scopes`/`has_playlist_scope`
+  (derived, no 2nd copy); privacy copy renders scopes from config + discloses
+  playlist access; scope-derivation tripwire test. **P3.4b+c (cccad88):**
+  `webapp/playlists.py` (own+collaborative filter, fails-closed w/o /me id;
+  `coverage_line`) + `/playlists` (authed: re-consent CTA vs cards) + `POST
+  /playlists/{id}/analyze` (scope+membership gated BEFORE fetch → server-side
+  re-fetch → **cap as a TOTAL via `ids[:cap]`** → remember_meta → enqueue O1;
+  coverage via session flash, NOT a query param → XSS-safe) + Library tab wired.
+  Owner calls (D-41): cap 100, membership=own+collab. **401 green (+13), ruff
+  clean, deployed app-verify ALL-FALSE; anon gates curl-validated (playlists
+  GET/POST→303 home), privacy discloses both scopes.** Journal #30 (the
+  NaN-truthy bridge-key bug). **⚠️ Left off: P3.4 CODE COMPLETE but the AUTHED
+  live path is unexercised — owner must re-login (grants the new scope) → open
+  /playlists → Analyze a small playlist → watch /status. Adding scopes means all
+  5 seats re-consent on next login. Next build = P3.5 guest dashboard replica.
+  NEW SESSION: run `/resume`.**

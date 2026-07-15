@@ -35,6 +35,7 @@ current); this file is the story + index. New session? Run **`/resume`**.
 | **Vision E specced — the product era** (2026-07-14) | Owner re-scope → Phases 3–6 (D-32…D-39): P3 = Artists+genres · Library tabs · playlists · guest dashboard · public-flip EXIT GATE; P4 = Epic K (chat+multimodal builds, adapters/RL gated); P5 = MPD; P6 = ML. New agents `research-expert`+`agile-coach`; first research outing → `docs/SPOTIFY_API_RESEARCH.md` — **artist top-tracks REMOVED "no replacement"** → derive "YOUR top by artist" as core, live call = absent-safe garnish (the borrowed-time doctrine); 5-seat cap = platform ceiling; playlists own+collaborative only | spec-only (a5298d0); journal #29 (research the surface before you spec) |
 | **P3.0–P3.2 — groundwork + the Artists surface** (2026-07-15) | Fetchers hardened (absent-safe artist records, singles fallback, playlist 50/page+`items` fallbacks, search 10) · `_TOP_LIMIT=50` (the "why 39 songs" fix) · guardrails wave 2 · `artist_meta` serving path (60 seeded, 29 w/ genres) · **the Artists surface live**: `/artists` (cards+genre chips+coverage honesty+comparison chart) + `/artist/{id}` (D-33 derived core · borrowed-time live top-10 · acoustic "similar in your library" — Muse→Metric Δ1.46σ · analyze-on-demand) + D-35 two-group nav | 375 tests; browser-validated on real data; the first Vision-E product surface |
 | **P3.3 — the Library + the site goes (partly) PUBLIC** (2026-07-15) | `/library` H1 catalog live (search/sort/dedup "same recording as"/My-songs overlay/`why_n_analyzed` from `_TOP_LIMIT`) · **the D-18 flip begins (D-40): `/library`+`/song`+`/spectrogram` now serve with NO login** — anyone browses the corpus + opens any song's deep-dive. `/explore`+`/recommend` stay viewer-gated (their builders require a taste → deferred anon-flip slice, folds into P3.7) | 388 tests; anon browser-validated (160/161 real, gate matrix curl'd); first public corpus surface |
+| **P3.4 — Epic I: import from your playlists** (2026-07-15) | Playlist scopes added → **all pilot users re-consent on next login** (proactive `has_playlist_scope` → graceful CTA, single-sourced config). `/playlists` (own+collaborative only) + capped Analyze POST (cap-as-total, membership-gated before fetch, session-flash coverage) → the O1-guarded intake path. webapp-expert consult shaped the auth flow | 401 tests; anon gates curl'd + privacy disclosure live; **authed re-consent path still owner's to exercise**; journal #30 (nan is truthy — validate the type, not truthiness) |
 
 ## Hard-won lessons (full text: `notes/engineering_journal.md`)
 #12 test the frozen env, not your PATH · #13 select columns by coverage, one ghost
@@ -52,7 +53,9 @@ synthetic fixtures (logic), corpus distributions (stats), named examples you kno
 (meaning) · #25 build the eval before the thing it judges, and believe it when it
 fights your gut · #26 a central line and its spread band must be drawn from the
 same order statistics — median+IQR, not mean+IQR (a "surely-true" invariant that
-failed taught which summary I meant).
+failed taught which summary I meant) · #30 at a type boundary validate the type
+the contract requires, not truthiness — pandas turns `None` into a truthy `nan`
+that `if x:` sails past but `isinstance(x, str)` catches.
 
 ## The system today (2026-07-11)
 - **Serving:** `vercilloanalytics.com` → Cloudflare tunnel (Windows service

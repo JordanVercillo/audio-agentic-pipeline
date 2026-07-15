@@ -729,3 +729,29 @@ execution, not a pardon.)
 > calls still answer, you're on borrowed time: build the derived path as the
 > core and demote the live call to absent-safe garnish — never let a stay of
 > execution become a foundation.*
+
+### 30. `nan` is truthy, so `if id:` is not an emptiness check on a DataFrame column (2026-07-15)
+
+Building the playlist-import intake (P3.4c), the drop-local-tracks filter was the
+obvious `[r for r in records if r.get("spotify_track_id")]` — reject rows whose
+bridge key is absent (Spotify local tracks have `id: null`). A tripwire test fed
+a playlist with one `None` id mixed among strings and asserted it was excluded.
+It wasn't: the enqueue list came back `['good1', nan, 'good2']`. pandas had
+coerced the `None` in that object column to `float('nan')` when it built the
+DataFrame — and `bool(float('nan'))` is **True**. The falsy guard sailed right
+past it, and a `nan` was one `enqueue` call away from becoming a corrupt bridge
+key in the queue (ground rule #1: the key is a *string*).
+
+**The realization:** "is this value present?" and "is this value a valid bridge
+key?" are different questions, and only the second is safe once data has passed
+through pandas. A `None` you put in becomes a `nan` you didn't expect, and `nan`
+is the one falsy-looking value that's actually truthy. The fix wasn't a better
+truthiness test — it was asserting the *type the contract demands*:
+`isinstance(v, str) and v`. The tripwire test earned its keep: this bug is
+invisible to the eye and to `ruff`, and only a row with a real `None`
+round-tripped through a DataFrame reveals it.
+
+> *At a type boundary (DataFrame → dict → domain), validate the type the
+> contract requires, not the truthiness of what you happen to get. `if x:` trusts
+> Python's coercions; `isinstance(x, str) and x` trusts your contract — and pandas
+> turns `None` into a truthy `nan` that only the second one catches.*
