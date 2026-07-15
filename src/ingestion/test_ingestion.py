@@ -182,3 +182,86 @@ def test_track_record_popularity_is_optional():
             "disc_number": 1, "track_number": 1, "artists": [], "album": {}}
     assert _track_to_record({**base, "popularity": 61})["popularity"] == 61
     assert _track_to_record(base)["popularity"] is None  # absent-safe (may vanish upstream)
+
+
+# ── P3.0 fetcher hardening (SPOTIFY_API_RESEARCH; borrowed-time doctrine) ────
+def test_artist_record_absent_safe_on_removed_fields():
+    from src.ingestion.fetchers import _artist_to_record
+    full = _artist_to_record({"id": "a1", "name": "Muse",
+                              "genres": ["rock", "prog"],
+                              "followers": {"total": 123}, "popularity": 78,
+                              "images": [{"url": "http://img"}]})
+    assert full["popularity"] == 78 and full["followers"] == 123
+    assert full["genres"] == "rock, prog" and full["num_genres"] == 2
+    # followers/popularity/genres are on the Feb-2026 removed list — a bare
+    # object (the day they vanish) must not KeyError
+    bare = _artist_to_record({"id": "a2", "name": "X"})
+    assert bare["followers"] == 0 and bare["popularity"] is None
+    assert bare["genres"] == "" and bare["image_url"] is None
+
+
+def test_playlist_track_count_prefers_items_total():
+    from src.ingestion.fetchers import _playlist_track_count
+    assert _playlist_track_count({"items": {"total": 40}, "tracks": {"total": 99}}) == 40
+    assert _playlist_track_count({"tracks": {"total": 12}}) == 12   # deprecated alias fallback
+    assert _playlist_track_count({}) == 0                            # neither → absent-safe
+
+
+def test_playlist_item_entity_current_shape_with_alias_fallback():
+    from src.ingestion.fetchers import _playlist_item_entity
+    assert _playlist_item_entity({"item": {"id": "t1"}})["id"] == "t1"   # current shape
+    assert _playlist_item_entity({"track": {"id": "t2"}})["id"] == "t2"  # deprecated alias
+    assert _playlist_item_entity({}) is None
+
+
+def test_search_clamps_limit_to_10():
+    from src.ingestion.fetchers import search_tracks
+    seen = {}
+
+    class _Sp:
+        def search(self, q, type, limit):
+            seen["limit"] = limit
+            return {"tracks": {"items": []}}
+
+    search_tracks("muse", limit=50, sp=_Sp())
+    assert seen["limit"] == 10  # Feb-2026: /search max 10 — over-ask clamped
+
+
+def test_playlist_tracks_page_at_50_and_read_item_entity(monkeypatch):
+    import src.ingestion.fetchers as f
+    monkeypatch.setattr(f, "throttle", lambda *_: None)
+    seen = {}
+
+    class _Sp:
+        def playlist_items(self, pid, limit, offset):
+            seen["limit"] = limit
+            return {"items": [{"item": {  # current shape: entity under `item`
+                "id": "t1", "name": "Song", "explicit": False, "duration_ms": 1,
+                "disc_number": 1, "track_number": 1, "artists": [], "album": {}},
+                "added_at": "2026-01-01", "added_by": {"id": "u"}}],
+                "next": None}
+
+    df = f.fetch_playlist_tracks("pl1", sp=_Sp())
+    assert seen["limit"] == 50                       # successor endpoint pages at 50
+    assert list(df["spotify_track_id"]) == ["t1"]    # entity read via item→track fallback
+
+
+def test_artists_by_ids_falls_back_to_singles(monkeypatch):
+    import spotipy
+
+    import src.ingestion.fetchers as f
+    monkeypatch.setattr(f, "throttle", lambda *_: None)
+    calls = {"singles": []}
+
+    class _Sp:
+        def artists(self, batch):  # the borrowed-time batch endpoint going dark
+            raise spotipy.exceptions.SpotifyException(403, -1, "gone")
+
+        def artist(self, aid):     # the un-deprecated singular survivor
+            calls["singles"].append(aid)
+            return {"id": aid, "name": f"A{aid}", "popularity": 50}
+
+    df = f.fetch_artists_by_ids(["x1", "x2"], sp=_Sp())
+    assert calls["singles"] == ["x1", "x2"]          # fallback fetched each individually
+    assert list(df["artist_id"]) == ["x1", "x2"]
+    assert list(df["popularity"]) == [50, 50]        # captured absent-safe on the fallback too

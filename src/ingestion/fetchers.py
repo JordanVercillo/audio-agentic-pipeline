@@ -87,6 +87,25 @@ def fetch_top_tracks(
     return df
 
 
+def _artist_to_record(artist: dict) -> dict:
+    """One artist response object → a flat record — ABSENT-SAFE on every
+    deprecated field (P3.0/D-36). `followers` and `popularity` are on the
+    Feb-2026 removed-fields list yet still answer on PKCE tokens (borrowed
+    time, journal #20 doctrine): capture when present, never require.
+    `genres` is deprecated-not-removed — same posture (SPOTIFY_API_RESEARCH §3).
+    """
+    pop = artist.get("popularity")
+    return {
+        "artist_id": artist["id"],
+        "artist_name": artist["name"],
+        "genres": ", ".join(artist.get("genres") or []),
+        "num_genres": len(artist.get("genres") or []),
+        "followers": (artist.get("followers") or {}).get("total", 0),
+        "popularity": int(pop) if pop is not None else None,
+        "image_url": artist["images"][0]["url"] if artist.get("images") else None,
+    }
+
+
 def fetch_top_artists(
     time_range: str = "medium_term",
     limit: int = 50,
@@ -103,7 +122,8 @@ def fetch_top_artists(
     Returns:
         DataFrame with columns:
             artist_id, artist_name, genres, num_genres, followers,
-            image_url, time_range, rank
+            popularity, image_url, time_range, rank
+        (popularity is fetched CONTEXT — display/analysis only, absent-safe.)
     """
     if sp is None:
         sp = get_user_spotify()
@@ -122,16 +142,8 @@ def fetch_top_artists(
     records = []
     for rank, artist in enumerate(results.get("items", []), start=1):
         artist = strip_deprecated_fields(artist)
-        records.append({
-            "artist_id": artist["id"],
-            "artist_name": artist["name"],
-            "genres": ", ".join(artist.get("genres", [])),
-            "num_genres": len(artist.get("genres", [])),
-            "followers": artist["followers"]["total"],
-            "image_url": artist["images"][0]["url"] if artist.get("images") else None,
-            "time_range": time_range,
-            "rank": rank,
-        })
+        records.append({**_artist_to_record(artist),
+                        "time_range": time_range, "rank": rank})
 
     df = pd.DataFrame(records)
     print(f"   ✅ Fetched {len(df)} top artists ({time_range})")
@@ -223,21 +235,26 @@ def fetch_artists_by_ids(
             label=f"GET /artists?ids=… (batch of {len(batch)})",
         )
         if results is None:
-            print(f"   ⚠️  Artist batch fetch failed: {err}")
+            # P3.0 (SPOTIFY_API_RESEARCH §1): the batch endpoint is REMOVED on
+            # paper (Feb-2026) but still answers on PKCE tokens — borrowed time.
+            # When it goes dark, fall back to the migration guide's own remedy:
+            # singular GET /artists/{id} (un-deprecated), throttled ≥0.5 s so a
+            # 100-artist backfill stays under the ~90-req/30s ceiling.
+            print(f"   ⚠️  Artist batch fetch failed ({err}) — "
+                  f"falling back to {len(batch)} singular GET /artists/{{id}} calls")
+            for aid in batch:
+                single, err2 = safe_api_call(
+                    sp.artist, aid, label=f"GET /artists/{aid} (fallback)")
+                if single is not None:
+                    records.append(_artist_to_record(strip_deprecated_fields(single)))
+                throttle(0.5)
             continue
 
         for artist in results.get("artists", []):
             if artist is None:
                 continue  # unknown/removed ID — API returns null in its slot
             artist = strip_deprecated_fields(artist)
-            records.append({
-                "artist_id": artist["id"],
-                "artist_name": artist["name"],
-                "genres": ", ".join(artist.get("genres", [])),
-                "num_genres": len(artist.get("genres", [])),
-                "followers": artist.get("followers", {}).get("total", 0),
-                "image_url": artist["images"][0]["url"] if artist.get("images") else None,
-            })
+            records.append(_artist_to_record(artist))
         throttle(0.2)
 
     df = pd.DataFrame(records)
@@ -384,6 +401,24 @@ def fetch_batch_metadata(
 #  PLAYLISTS
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+def _playlist_track_count(pl: dict) -> int:
+    """Track count from a playlist object — `items.total` (current) with
+    `tracks.total` (deprecated alias, still served) as fallback, absent-safe.
+    P3.0 fix: the old code hard-read pl["tracks"]["total"] — a KeyError the day
+    the deprecated alias vanishes (SPOTIFY_API_RESEARCH §2)."""
+    for key in ("items", "tracks"):
+        total = (pl.get(key) or {}).get("total")
+        if total is not None:
+            return int(total)
+    return 0
+
+
+def _playlist_item_entity(item: dict) -> Optional[dict]:
+    """The track object inside a playlist item — `item` (current shape) with
+    `track` (deprecated alias) as fallback (SPOTIFY_API_RESEARCH §2)."""
+    return item.get("item") or item.get("track")
+
+
 def fetch_user_playlists(
     sp: Optional[spotipy.Spotify] = None,
     limit: int = 50,
@@ -392,7 +427,7 @@ def fetch_user_playlists(
     Fetch the current user's playlists.
 
     Note per guardrails: track counts are accessed via playlist.items.total,
-    NOT playlist.tracks.total (which is deprecated).
+    with the deprecated playlist.tracks.total as an absent-safe fallback.
     """
     if sp is None:
         sp = get_user_spotify()
@@ -416,8 +451,7 @@ def fetch_user_playlists(
             "owner_name": pl["owner"].get("display_name", ""),
             "public": pl.get("public"),
             "collaborative": pl.get("collaborative", False),
-            # 2026 change: use tracks.total (spotipy still returns this key)
-            "track_count": pl["tracks"]["total"],
+            "track_count": _playlist_track_count(pl),
             "snapshot_id": pl.get("snapshot_id"),
             "image_url": pl["images"][0]["url"] if pl.get("images") else None,
         })
@@ -430,10 +464,15 @@ def fetch_user_playlists(
 def fetch_playlist_tracks(
     playlist_id: str,
     sp: Optional[spotipy.Spotify] = None,
-    limit: int = 100,
+    limit: int = 50,
 ) -> pd.DataFrame:
     """
     Fetch all tracks from a playlist, handling pagination.
+
+    P3.0 (SPOTIFY_API_RESEARCH §2): the successor GET /playlists/{id}/items
+    pages at MAX 50 (the old /tracks 100/page is gone) — over-asking may error
+    or silently clamp. The track entity is read from `item` with the deprecated
+    `track` alias as fallback.
 
     Returns a DataFrame with spotify_track_id as the bridge key,
     plus playlist-specific metadata (added_at, added_by, position).
@@ -449,9 +488,9 @@ def fetch_playlist_tracks(
         results, err = safe_api_call(
             sp.playlist_items,
             playlist_id,
-            limit=min(limit, 100),
+            limit=min(limit, 50),
             offset=offset,
-            label=f"GET /playlists/{playlist_id}/tracks (offset={offset})",
+            label=f"GET /playlists/{playlist_id}/items (offset={offset})",
         )
 
         if results is None:
@@ -462,7 +501,7 @@ def fetch_playlist_tracks(
             break
 
         for item in items:
-            track = item.get("track")
+            track = _playlist_item_entity(item)
             if track is None or track.get("id") is None:
                 position += 1
                 continue  # skip local files or unavailable tracks
@@ -492,15 +531,18 @@ def fetch_playlist_tracks(
 
 def search_tracks(
     query: str,
-    limit: int = 20,
+    limit: int = 10,
     sp: Optional[spotipy.Spotify] = None,
 ) -> pd.DataFrame:
     """
     Search Spotify for tracks matching a query.
 
+    P3.0 (SPOTIFY_API_RESEARCH §4): the Feb-2026 wave cut /search to
+    "maximum 10, default 5" — the limit is clamped so an over-ask can't error.
+
     Args:
         query: Search string (e.g., "Radiohead OK Computer", "genre:jazz").
-        limit: Max results (1-50).
+        limit: Max results (1-10).
         sp:    Pre-authenticated Spotify client (PKCE). Created if None.
 
     Returns:
@@ -513,7 +555,7 @@ def search_tracks(
         sp.search,
         q=query,
         type="track",
-        limit=limit,
+        limit=min(limit, 10),
         label=f"GET /search?q={query[:30]}...",
     )
 
