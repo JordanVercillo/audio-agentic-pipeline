@@ -1348,3 +1348,25 @@ narrative goes to `notes/engineering_journal.md`, plans to
   cutoff resume cost one import-restore). **Left off: P3.2 COMPLETE — the
   first Vision-E product surface is live. Next = P3.3 Library tabs (/library
   public + My songs + Playlists placeholder). NEW SESSION: run `/resume`.**
+- **2026-07-15 (session 33 — harness v3: agent review + model routing, Fable
+  5):** Owner asked which roadmap items need Fable vs Opus 4.8 Max, and to
+  inject this arc's judgment into the agents. Reviewed every consult's
+  performance (webapp 2/2 excellent — #27 catch + the IA; data-platform 1/1 —
+  the 10-dupe real-corpus probe; research 1/1 — the two-wave find + a
+  self-caught doc misread; dsp/llm-rag unused, lanes untouched; agile-coach
+  unused → given a real job). **Shipped (commit 19fa411, docs+harness only, no
+  product code — suite stands at session-32's 375):** every agent charter
+  gains a tailored "How you think" block (probe-on-real-data · attack-your-own-
+  plan w/ concrete failure scenarios · evidence classes · derive-don't-
+  transcribe + tripwire tests · borrowed-time garnish rule · escalate
+  irreversibles; per-lane: #28 n≥3 rule for dsp, injection-first + data
+  go-gates for llm-rag, quote-targeted re-verification for research,
+  gate-matrix + second-encoding hunt for webapp) + **`model: opus` pinned on
+  all experts** (consults stop drawing Fable budget). **Model-routing table in
+  VISION_SPECS** (owner rule: **Fable designs/decides/audits; Opus executes
+  specced slices** — P3.3–P3.6 + L-lite = Opus; L-flip scrub, K0 design,
+  injection evals, J modeling/benchmark judgment, new specs = Fable; O2
+  threshold = split). agile-coach = routing keeper + standing P3.7 pre-flip
+  review; orchestrator skill notes the agent-registration-latency fallback.
+  **Left off: harness v3 in place. Next build = P3.3 Library tabs — an OPUS
+  slice per the routing. NEW SESSION: run `/resume` (on Opus is fine).**
