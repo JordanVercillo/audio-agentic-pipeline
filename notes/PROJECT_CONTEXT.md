@@ -227,13 +227,22 @@
   through `remember_meta`); `_top_artists(client, cache)` now PERSISTS the frame
   it always fetched (D-36, zero extra calls); `seed_artist_meta.py` run LIVE —
   **60 artists, 29 with genres** (the journal-#9 honest ceiling). **➡️ NEXT
-  ACTION — build P3.2 (Epic P: the Artists surface): `/artists` list (viewer) —
-  hover card (popularity·genres·aggregate features grouped by primary artist) +
-  ONE form-GET comparison chart + genre chips/filter; `/artist/{id}` — your
-  top-5 by artist (derived core, D-33) + absent-safe live top-10 (authed) +
-  "similar in your library" (artist_profiles centroids) + analyze-on-demand
-  POST; nav gains Artists (the D-35 two-group IA).** Then P3.3 Library tabs.
-  Parked: MPD-audio, Epic M, instrumentalness, dupe-pruning (owner call).
+  ACTION (SUPERSEDED — P3.2 ✅ SHIPPED 2026-07-15, commits de5371b/79824ca, 375
+  tests, deployed ALL-FALSE, browser-validated on REAL data at 375px):**
+  `/artists` — 15 cards w/ stored genres/popularity + hover DSP means + genre
+  chips/?genre= filter + "Genres known for 10 of 15" honesty caption + ONE
+  ranked comparison chart (form-GET picker); `/artist/{id}` — hero + **"Your
+  top tracks by X" (the D-33 DERIVED core, 0 API calls)** + borrowed-time live
+  top-10 (authed-only — PKCE means no app token; absent-safe w/ honest dark/
+  guest captions) + analyze-on-demand POST (server-side re-fetch → remember_meta
+  → enqueue ≤10, O1 guard applies) + **"Similar in your library"** (acoustic
+  centroids — live proof: Muse → Metric Δ1.46σ, Harry Styles Δ1.47σ, Foo
+  Fighters Δ1.69σ; the honest related-artists replacement); nav = the D-35
+  two-group IA (`.nav-sep`). **NOW NEXT: build P3.3 (Library tabs) — `/library`
+  public (the H1 catalog over the cache: search/sort/filter, duplicate_of "same
+  recording as" display, album art) + My songs tab (the "why only N analyzed"
+  explainer derived from `_TOP_LIMIT`) + Playlists tab placeholder (Epic I
+  lands P3.4).** Parked: MPD-audio, Epic M, instrumentalness, dupe-pruning.
 - ✅ **SECURITY + ROBUSTNESS REVIEW (2026-07-09, commits 26891b1←): whole-app
   audit via 2 review subagents + a strategic pass; 7 real fixes, all tested,
   deployed, 286 green.** **Security surface came back STRONG** — auth, session
@@ -1319,3 +1328,23 @@ narrative goes to `notes/engineering_journal.md`, plans to
   foundation. Next = P3.2 (Epic P: /artists list + hover + comparison chart +
   genre chips; /artist/{id} deep-dive per D-33/D-35). NEW SESSION: run
   `/resume`.**
+- **2026-07-15 (session 32 — P3.2 the Artists surface via `/orchestrator`,
+  Fable 5; resumed across a cutoff):** Built Epic P's UI in 2 commits, no
+  fan-out. **P3.2a (de5371b):** `src/webapp/artists.py` pure module —
+  `primary_artist` (the clusters.py:170 rule, one source), `artist_rollup`,
+  genre tokens/filter/strip (coverage honesty), `comparison_svg` (ranked bars,
+  escaped names), `your_top_by_artist` (D-33 derived core), `nearest_artists`
+  (z-scored acoustic centroids) + `fetch_artist_top_tracks` (borrowed-time,
+  absent-safe, capped 10, country=None). **P3.2b (79824ca):** routes `/artists`
+  (viewer; genre filter + chart picker) + `/artist/{id}` (base62-guarded;
+  derived core + authed-only live top-10 w/ honest dark/guest captions +
+  similar-in-library + analyze POST w/ server-side re-fetch) + templates +
+  D-35 two-group nav + CSS; 7 route-matrix tests. **375 green (+14), deployed,
+  app-verify ALL-FALSE; browser-validated LIVE on real data at 375px** — 15
+  artist cards, genre chips (alternative rock 3 · punk 3), "Genres known for
+  10 of 15", Muse deep-dive: 35/35 analyzed, 122 bpm avg/0.51 energy/0.70
+  dance from OUR DSP, similar = Metric Δ1.46σ/Harry Styles Δ1.47σ/Foo Fighters
+  Δ1.69σ, zero overflow. No journal entry (third clean plan-execution; the
+  cutoff resume cost one import-restore). **Left off: P3.2 COMPLETE — the
+  first Vision-E product surface is live. Next = P3.3 Library tabs (/library
+  public + My songs + Playlists placeholder). NEW SESSION: run `/resume`.**
