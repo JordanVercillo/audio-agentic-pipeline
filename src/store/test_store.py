@@ -447,3 +447,36 @@ def test_refresh_duplicate_flags_idempotent_and_annotation_only(cache):
     assert set(cache.get(["a", "b", "c"])) == {"a", "b", "c"}  # features untouched (annotation-only)
     flags = cache.duplicate_flags()
     assert len(flags) == 1 and set(flags) <= {"a", "b"} and set(flags.values()) <= {"a", "b"}
+
+
+# ── artist metadata (P3.1 / D-36) ────────────────────────────────────────────
+def test_remember_artists_preserve_if_absent(cache):
+    cache.remember_artists([{"artist_id": "ar1", "artist_name": "Muse",
+                             "genres": "rock, prog", "followers": 100,
+                             "popularity": 78, "image_url": "http://img/1"}])
+    # a later sparse fetch (genres emptied upstream, fields absent) must not
+    # NULL the stored copy — the D-36 system-of-record posture
+    cache.remember_artists([{"artist_id": "ar1", "artist_name": "Muse", "genres": ""}])
+    got = cache.all_artist_meta()["ar1"]
+    assert got["genres"] == "rock, prog"                # "" never overwrites
+    assert got["followers"] == 100 and got["popularity"] == 78
+    assert got["image_url"] == "http://img/1"
+    # last-sight-wins when a value IS present
+    cache.remember_artists([{"artist_id": "ar1", "popularity": 80}])
+    assert cache.all_artist_meta()["ar1"]["popularity"] == 80
+    # id-less items are skipped, absent-safe
+    cache.remember_artists([{"artist_name": "Ghost"}])
+    assert set(cache.all_artist_meta()) == {"ar1"}
+
+
+def test_remember_meta_threads_art_and_primary_artist(cache):
+    cache.remember_meta([{"spotify_track_id": "t1", "track_name": "Song",
+                          "album_image_url": "http://art/1", "primary_artist_id": "ar1"}])
+    # an update WITHOUT the new fields preserves them (the popularity pattern)
+    cache.remember_meta([{"spotify_track_id": "t1", "track_name": "Song v2"}])
+    with cache._Session() as s:
+        from .models import TrackMeta
+        row = s.get(TrackMeta, "t1")
+        assert row.album_image_url == "http://art/1"
+        assert row.primary_artist_id == "ar1"
+        assert row.track_name == "Song v2"

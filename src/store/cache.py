@@ -29,6 +29,7 @@ from sqlalchemy.orm import sessionmaker
 
 from .dedup import DedupRecord, duplicate_of_map
 from .models import (
+    ArtistMeta,
     Base,
     ExtractionJob,
     TrackFeatures,
@@ -95,7 +96,9 @@ class FeatureCache:
                                          "sections": "JSON"},
                       "track_meta": {"popularity": "INTEGER",
                                      "duration_ms": "INTEGER",
-                                     "duplicate_of": "VARCHAR"}}
+                                     "duplicate_of": "VARCHAR",
+                                     "album_image_url": "VARCHAR",
+                                     "primary_artist_id": "VARCHAR"}}
 
     def _migrate_added_columns(self) -> None:
         inspector = sa_inspect(self.engine)
@@ -335,6 +338,8 @@ class FeatureCache:
                 pop = int(pop) if pop is not None else None
                 dur = it.get("duration_ms")
                 dur = int(dur) if dur is not None else None
+                art = it.get("album_image_url")
+                paid = it.get("primary_artist_id")
                 row = s.get(TrackMeta, tid)
                 if row is None:
                     s.add(TrackMeta(
@@ -342,7 +347,8 @@ class FeatureCache:
                         track_name=it.get("track_name") or it.get("name"),
                         artist_names=it.get("artist_names") or it.get("artist"),
                         album_name=it.get("album_name"), popularity=pop,
-                        duration_ms=dur))
+                        duration_ms=dur, album_image_url=art,
+                        primary_artist_id=paid))
                     continue
                 row.track_name = it.get("track_name") or it.get("name") or row.track_name
                 row.artist_names = (it.get("artist_names") or it.get("artist")
@@ -352,6 +358,10 @@ class FeatureCache:
                     row.popularity = pop  # last sight wins; absent keeps the old value
                 if dur is not None:
                     row.duration_ms = dur  # dedup window; preserve-if-absent (never NULLs a twin)
+                if art:
+                    row.album_image_url = art        # display context (P3.1), same posture
+                if paid:
+                    row.primary_artist_id = paid     # hardens the artist join (P3.1)
             s.commit()
 
     def all_popularity(self) -> dict[str, int]:
@@ -371,6 +381,56 @@ class FeatureCache:
             return {"spotify_track_id": m.spotify_track_id, "track_name": m.track_name,
                     "artist_names": m.artist_names, "album_name": m.album_name,
                     "popularity": m.popularity}
+
+    # ── artist metadata (P3.1 / D-36) ────────────────────────────────────────
+    def remember_artists(self, items: list[dict]) -> None:
+        """Upsert fetched artist metadata (genres/followers/popularity/image) —
+        the D-36 serving path, populated free at dashboard build. Preserve-if-
+        absent like remember_meta: genres are deprecated-not-removed upstream,
+        so an empty later fetch never NULLs a stored value (the stored copy is
+        the system of record)."""
+        if not items:
+            return
+        with self._Session() as s:
+            for it in items:
+                aid = it.get("artist_id") or it.get("id")
+                if not aid:
+                    continue
+                pop = it.get("popularity")
+                pop = int(pop) if pop is not None else None
+                fol = it.get("followers")
+                fol = int(fol) if fol is not None else None
+                genres = it.get("genres")  # comma-joined string; "" = none known
+                row = s.get(ArtistMeta, aid)
+                if row is None:
+                    s.add(ArtistMeta(
+                        artist_id=aid,
+                        artist_name=it.get("artist_name") or it.get("name"),
+                        genres=genres, followers=fol, popularity=pop,
+                        image_url=it.get("image_url") or it.get("image")))
+                    continue
+                row.artist_name = (it.get("artist_name") or it.get("name")
+                                   or row.artist_name)
+                if genres:               # never overwrite stored genres with ""
+                    row.genres = genres
+                if fol is not None:
+                    row.followers = fol
+                if pop is not None:
+                    row.popularity = pop
+                img = it.get("image_url") or it.get("image")
+                if img:
+                    row.image_url = img
+            s.commit()
+
+    def all_artist_meta(self) -> dict[str, dict]:
+        """Every stored artist's metadata, keyed by Spotify artist id."""
+        with self._Session() as s:
+            rows = s.execute(select(ArtistMeta)).scalars().all()
+        return {a.artist_id: {
+            "artist_id": a.artist_id, "artist_name": a.artist_name,
+            "genres": a.genres or "", "followers": a.followers,
+            "popularity": a.popularity, "image_url": a.image_url,
+        } for a in rows}
 
     # ── near-duplicate detection (Epic O / D-28) ─────────────────────────────
     # duplicate_of is a SOFT reference (a spotify_track_id) written only here and

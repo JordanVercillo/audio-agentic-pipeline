@@ -72,6 +72,12 @@ class TrackMeta(Base):
     # primary key, NOT a foreign key, and NOTHING joins on it. The bridge key
     # stays spotify_track_id; dedup never mints or merges an id.
     duplicate_of = Column(String)
+    # Display context, captured from the top-tracks fetch that already carries
+    # them (P3.1/D-36) — art for the library/guest-dashboard, the primary
+    # artist's Spotify id to harden the name-keyed artist join. Nullable,
+    # forward-only migration like popularity.
+    album_image_url = Column(String)
+    primary_artist_id = Column(String)
 
 
 class ExtractionJob(Base):
@@ -152,3 +158,22 @@ class ArtistProfile(Base):
     track_count = Column(Integer, nullable=False, default=0)
     model_id = Column(Integer)
     cluster_id = Column(Integer)
+
+
+class ArtistMeta(Base):
+    """Fetched artist metadata — the serving path for genres/images/popularity
+    (P3.1/D-36). Populated FREE at dashboard build (the top-artists fetch
+    already carries all of it and used to throw it away); `dim_artists` is a
+    one-time seed, not a serving path. Every field except id/name is on
+    Spotify's deprecated/removed lists → nullable, absent-safe, and the stored
+    copy is the system of record (genres can't be un-shipped)."""
+
+    __tablename__ = "artist_meta"
+
+    artist_id = Column(String, primary_key=True)     # Spotify artist id
+    artist_name = Column(String)
+    genres = Column(String)                          # comma-joined; may be ""
+    followers = Column(Integer)
+    popularity = Column(Integer)                     # fetched context (P3.0a)
+    image_url = Column(String)
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
