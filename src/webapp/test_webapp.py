@@ -773,7 +773,10 @@ def test_build_dashboard_context(monkeypatch, tmp_path):
         "long_term": ["trk2", "trk3", "newmiss"],
     }
 
+    seen_limits = []
+
     def fake_tracks(time_range, limit=20, sp=None):
+        seen_limits.append(limit)
         ids = per_range[time_range]
         return pd.DataFrame({
             "spotify_track_id": ids, "track_name": [f"S {i}" for i in ids],
@@ -794,6 +797,9 @@ def test_build_dashboard_context(monkeypatch, tmp_path):
     # H3: popularity rides on each track for the hover — even an unanalyzed one
     pops = {t["id"]: t["popularity"] for t in ctx["ranges"][0]["tracks"]}
     assert pops == {"trk0": 65, "trk1": 55, "newmiss": 45}
+    # D-34: every range fetches at the extracted _TOP_LIMIT depth (50, was 20)
+    from .app import _TOP_LIMIT
+    assert _TOP_LIMIT == 50 and seen_limits == [_TOP_LIMIT] * 3
     assert ctx["coverage"] == {"analyzed": 4, "total": 5, "analyzing": 1}
     assert ctx["profile"]["n"] == 4  # absolute profile over the 4 analyzed songs
     assert ctx["drift"] is not None and math.isfinite(ctx["drift"]["score"])

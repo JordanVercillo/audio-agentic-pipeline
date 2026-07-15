@@ -107,6 +107,12 @@ _TIME_RANGES = [
     ("long_term", "All time"),
 ]
 
+# How deep each top-tracks range is fetched (D-34; Spotify max 50). THE single
+# source for the number — the My-Library "why only N analyzed" explainer derives
+# from it, so retuning the depth can't make the UI lie. Was 20 (3×20 with
+# overlap ≈ 39 unique — the owner's "why 39 songs" mystery).
+_TOP_LIMIT = 50
+
 # Rough per-track extraction cost (yt-dlp download + librosa DSP + spectrogram),
 # for the progress ETA. Measured ~50 s/track on the owner PC; shown as an
 # estimate only, never a promise. Worker processes the queue serially.
@@ -165,7 +171,7 @@ def build_dashboard_context(client: Any, cache: FeatureCache) -> dict[str, Any]:
     per_range_ids: dict[str, list[str]] = {}
     meta_items: list[dict[str, Any]] = []
     for key, label in _TIME_RANGES:
-        df = fetch_top_tracks(time_range=key, limit=20, sp=client)
+        df = fetch_top_tracks(time_range=key, limit=_TOP_LIMIT, sp=client)
         tracks, ids_here = [], []
         if df is not None and not df.empty:
             for _, r in df.iterrows():
