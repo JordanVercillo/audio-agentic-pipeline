@@ -262,6 +262,42 @@ def fetch_artists_by_ids(
     return df
 
 
+def fetch_artist_top_tracks(
+    artist_id: str,
+    sp: Optional[spotipy.Spotify] = None,
+) -> pd.DataFrame:
+    """
+    The artist's official top tracks — a BORROWED-TIME surface (D-33).
+
+    GET /artists/{id}/top-tracks is Removed-with-"no-replacement" in the
+    Feb-2026 changelog yet may still answer on PKCE user tokens (see
+    docs/SPOTIFY_API_RESEARCH.md §1). Policy: attempt absent-safe, NEVER
+    load-bearing — callers must render fine on an empty frame (the derived
+    "your top tracks by this artist" is the core). country=None so the
+    user-token account country applies (spotipy drops None params).
+
+    Returns a DataFrame of _track_to_record rows (≤10), or empty.
+    """
+    if sp is None:
+        sp = get_user_spotify()
+
+    results, err = safe_api_call(
+        sp.artist_top_tracks, artist_id, country=None,
+        label=f"GET /artists/{artist_id}/top-tracks (borrowed-time)",
+    )
+    if results is None:
+        return pd.DataFrame()
+
+    records = []
+    for rank, track in enumerate(results.get("tracks", [])[:10], start=1):
+        if not track or not track.get("id"):
+            continue
+        records.append(_track_to_record(strip_deprecated_fields(track), rank=rank))
+    df = pd.DataFrame(records)
+    print(f"   ✅ Artist top tracks for {artist_id}: {len(df)}")
+    return df
+
+
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 #  TRACK METADATA ENRICHMENT
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
