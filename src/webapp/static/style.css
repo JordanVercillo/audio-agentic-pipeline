@@ -387,3 +387,8 @@ table.tax thead th, table.tax tbody th { font-weight: 600; padding: .3rem .5rem;
 .art-sm { width: 32px; height: 32px; border-radius: 4px; object-fit: cover; display: block; }
 .art-sm.art-ph { display: grid; place-items: center; background: var(--panel-2); color: var(--muted); }
 .dup { display: block; color: var(--muted); }
+
+/* Playlists (P3.4) */
+.pl-analyze { margin: .4rem 0 0; }
+.pl-analyze .btn { margin: 0; font-size: .85rem; padding: .3rem .7rem; }
+.cap.ok { color: var(--spotify); font-size: .85rem; }

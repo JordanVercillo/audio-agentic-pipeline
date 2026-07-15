@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}Playlists — Vercillo Analytics{% endblock %}
+{% block content %}
+<section class="dash">
+  <h1>Your playlists</h1>
+
+  {% if needs_consent %}
+  <p class="lede">Importing a playlist needs one more Spotify permission —
+    read access to <b>your own and collaborative playlists</b>. Your existing
+    login predates this, so reconnect once to grant it.</p>
+  <a class="btn" href="/login">Reconnect Spotify to import playlists →</a>
+  <p class="cap">We only ever read a playlist's tracks when you click
+    <b>Analyze</b> on it — never automatically.</p>
+  {% else %}
+
+  <p class="lede">Import tracks from your own or collaborative playlists into the
+    library — we download each and extract its acoustic features locally
+    (~50 s/track). Each import is capped at <b>{{ cap }}</b> tracks so one
+    playlist never monopolises the worker.</p>
+
+  {% if msg %}<p class="cap ok">{{ msg|safe }}</p>{% endif %}
+
+  {% if cards %}
+  <div class="artist-grid">
+    {% for c in cards %}
+    <div class="acard">
+      {% if c.image %}<img class="art" src="{{ c.image }}" alt="" loading="lazy">
+      {% else %}<span class="art art-ph" title="no cover">♪</span>{% endif %}
+      <span class="ainfo">
+        <span class="tname" title="{{ c.name }}">{{ c.name }}</span>
+        <span class="tartist">{{ c.track_count }} track{{ 's' if c.track_count != 1 else '' }}{% if c.collaborative %} · collaborative{% elif c.owner %} · {{ c.owner }}{% endif %}</span>
+        <form method="post" action="/playlists/{{ c.id }}/analyze" class="pl-analyze">
+          <button type="submit" class="btn">Analyze{% if c.track_count > cap %} first {{ cap }}{% endif %}</button>
+        </form>
+      </span>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="cap">No importable playlists found. In Spotify's current API, only
+    playlists you <b>own</b> or <b>collaborate on</b> expose their tracks —
+    editorial and algorithmic playlists can't be imported.</p>
+  {% endif %}
+
+  {% endif %}
+</section>
+{% endblock %}

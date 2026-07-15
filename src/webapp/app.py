@@ -30,13 +30,17 @@ from fastapi.templating import Jinja2Templates
 
 from ..ingestion.fetchers import (
     fetch_artist_top_tracks,
+    fetch_playlist_tracks,
     fetch_top_artists,
     fetch_top_tracks,
+    fetch_user_playlists,
+    fetch_user_profile,
 )
 from ..store import clusters as cl
 from ..store.cache import FeatureCache
 from . import auth_web, config
 from . import library as library_view_mod
+from . import playlists as playlists_mod
 from .analytics import (
     acoustic_signature,
     average_loudness_arc,
@@ -821,6 +825,86 @@ def create_app() -> FastAPI:
                 "/dashboard" if auth_web.is_authenticated(session) else "/", status_code=303)
         return templates.TemplateResponse(request, "explore.html",
                                           {**ctx, **_viewer_flags(session)})
+
+    _PLAYLIST_ID_RE = re.compile(r"[0-9A-Za-z]{1,64}")  # base62 guard on the import id
+
+    def _user_playlists(client):
+        """(me_id, playlists DataFrame) for the authed client — both absent-safe
+        (borrowed-time /me + /me/playlists). me_id None fails the membership
+        filter CLOSED (collaborative-only)."""
+        try:
+            me_id = fetch_user_profile(client).get("user_id")
+        except Exception:  # noqa: BLE001
+            me_id = None
+        try:
+            df = fetch_user_playlists(client)
+        except Exception:  # noqa: BLE001
+            df = None
+        return me_id, df
+
+    @app.get("/playlists", response_class=HTMLResponse)
+    def playlists_page(request: Request):
+        """Import from YOUR playlists (Epic I). Authed-only (needs a live token);
+        if the session's token predates the scope change, render a re-consent CTA
+        instead of a broken fetch."""
+        session = request.state.session
+        if not auth_web.is_authenticated(session):
+            return RedirectResponse("/", status_code=303)
+        flags = _viewer_flags(session)
+        # server-side flash (trusted, built from ints) — NEVER a query param, so a
+        # crafted /playlists?msg=<script> can't reach the |safe render.
+        msg = session.pop("pl_msg", None)
+        base = {**flags, "cap": config.PLAYLIST_IMPORT_CAP, "msg": msg}
+        if not auth_web.has_playlist_scope(session):
+            return templates.TemplateResponse(request, "playlists.html",
+                                              {**base, "needs_consent": True, "cards": []})
+        me_id, df = _user_playlists(auth_web.client_from_session(session))
+        cards = playlists_mod.playlist_cards(df, me_id)
+        return templates.TemplateResponse(request, "playlists.html",
+                                          {**base, "needs_consent": False, "cards": cards})
+
+    @app.post("/playlists/{playlist_id}/analyze")
+    def playlist_analyze(request: Request, playlist_id: str):
+        """Import a playlist's tracks into the library (Epic I). Authed + scope-
+        gated + membership-checked (own/collaborative only) BEFORE any fetch — a
+        guest/anon or a stranger's playlist never reaches the worker. Server-side
+        re-fetch (the id set never comes from form data), capped to a TOTAL by
+        slicing before enqueue (the fetcher `limit` is only a page size)."""
+        session = request.state.session
+        if not auth_web.is_authenticated(session):
+            return RedirectResponse("/", status_code=303)
+        if not auth_web.has_playlist_scope(session):
+            return RedirectResponse("/playlists", status_code=303)  # re-consent CTA
+        if not _PLAYLIST_ID_RE.fullmatch(playlist_id or ""):
+            return RedirectResponse("/playlists", status_code=303)
+        client = auth_web.client_from_session(session)
+        me_id, df = _user_playlists(client)
+        if playlist_id not in playlists_mod.importable_ids(df, me_id):
+            session["pl_msg"] = "That playlist isn't one you own or collaborate on."
+            return RedirectResponse("/playlists", status_code=303)
+        cap = config.PLAYLIST_IMPORT_CAP
+        try:
+            tdf = fetch_playlist_tracks(playlist_id, client)
+        except Exception:  # noqa: BLE001
+            tdf = None
+        # bridge key MUST be a non-empty string (ground rule #1). Drop local/None
+        # tracks — and note pandas turns None into a TRUTHY float('nan'), so an
+        # isinstance-str check is load-bearing, not just `if id`.
+        recs = [] if tdf is None or tdf.empty else [
+            r for r in tdf.to_dict("records")
+            if isinstance(r.get("spotify_track_id"), str) and r["spotify_track_id"]]
+        total = len(recs)
+        selected = recs[:cap]                                   # cap is a TOTAL, not page size
+        ids = [r["spotify_track_id"] for r in selected]
+        already = _feature_cache().cached_ids(ids)
+        new_ids = [i for i in ids if i not in already]
+        if selected:
+            cache = _feature_cache()
+            cache.remember_meta(selected)
+            cache.enqueue(new_ids)                              # O1 dedup guard applies
+        session["pl_msg"] = playlists_mod.coverage_line(
+            total, len(new_ids), len(already), cap)
+        return RedirectResponse("/playlists", status_code=303)
 
     @app.get("/library", response_class=HTMLResponse)
     def library_page(request: Request):

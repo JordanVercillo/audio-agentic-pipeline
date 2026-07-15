@@ -10,12 +10,12 @@
   <div class="tabs" role="tablist">
     <a class="tab{{ ' is-active' if tab == 'all' else '' }}" href="/library">All songs <b>{{ total }}</b></a>
     {% if viewer %}<a class="tab{{ ' is-active' if tab == 'mine' else '' }}" href="/library?tab=mine">My songs <b>{{ my_count }}</b></a>{% endif %}
-    {% if authed %}<a class="tab{{ ' is-active' if tab == 'playlists' else '' }}" href="/library?tab=playlists">Playlists</a>{% endif %}
+    {% if authed %}<a class="tab" href="/playlists">Playlists →</a>{% endif %}
   </div>
 
   {% if tab == 'playlists' %}
-  <p class="cap">Playlist analysis is coming soon (Epic I) — you'll be able to pull a
-    playlist's tracks into your library and see its acoustic profile.</p>
+  <p class="cap">Playlist import lives on its own page now —
+    <a href="/playlists">open Your playlists →</a></p>
   {% else %}
 
   {% if tab == 'mine' and why_n %}<p class="cap">{{ why_n|safe }}</p>{% endif %}
