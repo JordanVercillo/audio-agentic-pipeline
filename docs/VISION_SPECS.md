@@ -815,6 +815,18 @@ second correction wave.
   slice is the true "corpus fully public" step; it precedes or accompanies the
   P3.7 exit-gate flip.
 
+- **D-41 — playlist import caps + membership (owner, 2026-07-15, P3.4):**
+  per-import cap = **100 tracks** (`config.PLAYLIST_IMPORT_CAP`, env-tunable) —
+  a TOTAL, enforced by slicing `ids[:cap]` before enqueue (the fetcher `limit`
+  is only a page size, so passing it doesn't bound the fetch). Analyze is
+  restricted to the user's **own + collaborative** playlists (membership checked
+  server-side BEFORE any fetch) — the song cache is public corpus data (D-18),
+  so this bounds who can inject tracks into it + burn worker time; the cap is
+  the load-bearing throughput control either way. Adding the two playlist scopes
+  forces **all pilot users to re-consent** on next login (proactive
+  `has_playlist_scope` check → a graceful re-consent CTA on `/playlists`, not a
+  403); the scope list + privacy copy derive from one `config.SCOPES` source.
+
 ## Phase 3 — the product surface (build order)
 
 - **P3.0 — groundwork (fetcher hardening + the 50 bump):** `_TOP_LIMIT=50` +
@@ -845,10 +857,17 @@ second correction wave.
   placeholder; P3.4). `/song` + `/spectrogram` flipped public alongside it.
   Per **D-40** the corpus flip is partial: `/explore` + `/recommend` stay
   viewer-gated pending a taste-optional builder refactor (deferred slice).
-- **P3.4 — Epic I: playlists (D-37):** `/me/playlists` list + per-playlist
-  coverage ("12/40 engineered") + explicit Analyze (capped) → the existing
-  intake path (O1 dedup guard already protects it) → `/status` progress.
-  Re-consent lands FIRST (scope change).
+- **P3.4 — Epic I: playlists (D-37/D-41). ✅ SHIPPED (2026-07-15, commits
+  30cb7b9/cccad88, 401 tests, deployed ALL-FALSE; authed live-path pending
+  owner re-login).** Re-consent landed FIRST (P3.4a: playlist scopes +
+  `has_playlist_scope` + privacy disclosure, single-sourced). `/playlists`
+  (authed): re-consent CTA vs own+collaborative card list. `POST
+  /playlists/{id}/analyze`: scope+membership gated → server-side re-fetch →
+  cap-as-total slice → remember_meta → enqueue (O1 guard); coverage reported via
+  a session flash (not a query param — XSS-safe). **Deferred (own slice):**
+  per-playlist coverage on the LIST ("12/40") needs a playlist→ids membership
+  table (not cache-cheap today) — shown at Analyze time instead; and `/status`
+  playlist attribution (must NOT reuse `range_ids`, which drives taste analytics).
 - **P3.5 — guest dashboard replica (owner ask):** extend
   `snapshot_demo_profile.py` (per-range track entries: id/rank/name/artist/art/
   popularity/analyzed + fetched_total + coverage) · pure
