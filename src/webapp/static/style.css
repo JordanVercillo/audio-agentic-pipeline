@@ -364,3 +364,26 @@ table.tax thead th, table.tax tbody th { font-weight: 600; padding: .3rem .5rem;
 .acard-hero h1 { margin: 0; font-size: 1.35rem; }
 .sim-artists { list-style: none; padding: 0; margin: .4rem 0 0;
   display: flex; flex-direction: column; gap: .3rem; }
+
+/* Library (P3.3) */
+.tabs { display: flex; gap: .5rem; margin: 1rem 0 .5rem; border-bottom: 1px solid var(--line); }
+.tabs .tab { padding: .5rem .8rem; color: var(--muted); text-decoration: none;
+  border-bottom: 2px solid transparent; font-size: .92rem; }
+.tabs .tab b { color: var(--ink); font-weight: 600; }
+.tabs .tab:hover { color: var(--ink); }
+.tabs .tab.is-active { color: var(--ink); border-bottom-color: var(--spotify); }
+.lib-form { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; margin: .75rem 0; }
+.lib-form input[type=search] { flex: 1 1 12rem; min-width: 8rem; padding: .45rem .6rem;
+  background: var(--panel-2); border: 1px solid var(--line); color: var(--ink); border-radius: 6px; }
+.lib-form select { padding: .45rem .5rem; background: var(--panel-2);
+  border: 1px solid var(--line); color: var(--ink); border-radius: 6px; }
+.lib-form .btn { margin: 0; }
+.lib-table { width: 100%; border-collapse: collapse; margin-top: .5rem; }
+.lib-table th, .lib-table td { text-align: left; padding: .45rem .5rem;
+  border-bottom: 1px solid var(--line); vertical-align: middle; }
+.lib-table th { color: var(--muted); font-weight: 500; font-size: .78rem; }
+.lib-table td.num, .lib-table th.num { text-align: right; font-variant-numeric: tabular-nums; }
+.lib-table a { color: var(--ink); }
+.art-sm { width: 32px; height: 32px; border-radius: 4px; object-fit: cover; display: block; }
+.art-sm.art-ph { display: grid; place-items: center; background: var(--panel-2); color: var(--muted); }
+.dup { display: block; color: var(--muted); }

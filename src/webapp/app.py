@@ -36,6 +36,7 @@ from ..ingestion.fetchers import (
 from ..store import clusters as cl
 from ..store.cache import FeatureCache
 from . import auth_web, config
+from . import library as library_view_mod
 from .analytics import (
     acoustic_signature,
     average_loudness_arc,
@@ -688,6 +689,7 @@ def create_app() -> FastAPI:
 
     # ── the Artists surface (Epic P / P3.2) ─────────────────────────────────
     _ARTIST_ID_RE = re.compile(r"[0-9A-Za-z]{8,40}")  # base62 guard (id → URL/queries)
+    _TRACK_ID_RE = re.compile(r"[0-9A-Za-z]{1,64}")   # base62; rejects path-traversal on public /song
 
     @app.get("/artists", response_class=HTMLResponse)
     def artists_view(request: Request, genre: str = "", f: str = "energy"):
@@ -820,11 +822,52 @@ def create_app() -> FastAPI:
         return templates.TemplateResponse(request, "explore.html",
                                           {**ctx, **_viewer_flags(session)})
 
+    @app.get("/library", response_class=HTMLResponse)
+    def library_page(request: Request):
+        """The H1 catalog — PUBLIC corpus data (D-18): every track in the app,
+        searchable/sortable, with the honest analyzed-vs-known coverage. Renders
+        for anyone (no login, no guest); the 'My songs' tab overlays a viewer's
+        own analyzed set. Population-only by design, so no builder refactor."""
+        session = request.state.session
+        params = dict(request.query_params)
+        cache = _feature_cache()
+        rows = library_view_mod.annotate_dupes(cache.library_rows())
+        q = (params.get("q") or "").strip()
+        sort = params.get("sort") or "name"
+        order = params.get("order") or "asc"
+        tab = params.get("tab") if params.get("tab") in ("all", "mine", "playlists") else "all"
+        flags = _viewer_flags(session)
+        # a viewer's own analyzed set (guest = the demo persona's taste)
+        my_ids = {t for ids in ((session.get("taste") or {}).get("range_ids") or {}).values()
+                  for t in ids}
+        my_count = sum(1 for r in rows if r["id"] in my_ids) if flags["viewer"] else 0
+        # anon / non-viewer can't land on a personal tab
+        if tab in ("mine", "playlists") and not flags["viewer"]:
+            tab = "all"
+        if tab == "playlists" and not flags["authed"]:
+            tab = "mine"
+        mine = my_ids if tab == "mine" else None
+        v = library_view_mod.library_view(rows, q=q, sort=sort, order=order, mine_ids=mine)
+        ctx: dict[str, Any] = {
+            **flags, "tab": tab, "q": q, "sort": v["sort"], "order": v["order"],
+            "sort_options": library_view_mod.sort_options(),
+            "rows": v["rows"], "shown": v["shown"], "total": v["total"],
+            "analyzed": v["analyzed"], "my_count": my_count,
+        }
+        if tab == "mine":
+            mine_analyzed = sum(1 for r in v["rows"] if r["analyzed"])
+            ctx["why_n"] = library_view_mod.why_n_analyzed(mine_analyzed, _TOP_LIMIT)
+        return templates.TemplateResponse(request, "library.html", ctx)
+
     @app.get("/song/{track_id}", response_class=HTMLResponse)
     def song(request: Request, track_id: str):
+        # PUBLIC deep-dive (D-18): a track's features are corpus data. `viewer`
+        # flags stay false for anon (nav renders the public shape). Id is base62-
+        # guarded; the cache read is parameterized and _spectrogram_path is
+        # traversal-safe, so widening the audience adds no new attack surface.
         session = request.state.session
-        if not _is_viewer(session):
-            return RedirectResponse("/", status_code=303)
+        if not _TRACK_ID_RE.fullmatch(track_id or ""):
+            return RedirectResponse("/library", status_code=303)
         cache = _feature_cache()
         features = cache.get([track_id]).get(track_id)
         meta = cache.get_meta(track_id) or {}
@@ -854,11 +897,9 @@ def create_app() -> FastAPI:
 
     @app.get("/spectrogram/{track_id}")
     def spectrogram(request: Request, track_id: str):
-        # Gate BEFORE the existence check so a non-viewer can't use 200-vs-404 as
-        # an analyzed-track enumeration oracle. Guests (demo) may load them — the
-        # <img> on /song sends the session cookie, so legit rendering is fine.
-        if not _is_viewer(request.state.session):
-            return RedirectResponse("/", status_code=303)
+        # PUBLIC (D-18): the mel-spectrogram is corpus display data, and /library
+        # already reveals which tracks are analyzed, so the old 200-vs-404
+        # enumeration-oracle concern is moot. _spectrogram_path is traversal-safe.
         path = _spectrogram_path(track_id)
         if not path.exists():
             from fastapi import HTTPException

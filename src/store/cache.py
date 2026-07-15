@@ -145,6 +145,34 @@ class FeatureCache:
             "track_name": m.track_name, "artist_names": m.artist_names,
         } for m in rows}
 
+    def library_rows(self) -> list[dict]:
+        """Every cached track as a flat display row for the /library catalog (H1):
+        metadata + the promoted feature columns + the analyzed flag + the dedup
+        flag. A read-only projection — deliberately NOT a widening of all_meta()
+        (which serves hot paths a 2-field dict). Metadata-only rows (enqueued
+        misses, dedup twins) ride along with analyzed=False so the catalog can be
+        honest about coverage."""
+        with self._Session() as s:
+            feats = {r.spotify_track_id: r
+                     for r in s.execute(select(TrackFeatures)).scalars()}
+            metas = s.execute(select(TrackMeta)).scalars().all()
+            rows = []
+            for m in metas:
+                fr = feats.get(m.spotify_track_id)
+                rows.append({
+                    "id": m.spotify_track_id,
+                    "name": m.track_name or m.spotify_track_id,
+                    "artist": m.artist_names or "",
+                    "art": m.album_image_url,
+                    "popularity": m.popularity,
+                    "duplicate_of": m.duplicate_of,
+                    "analyzed": fr is not None,
+                    "tempo": fr.tempo_bpm if fr else None,
+                    "energy": fr.rms_mean if fr else None,
+                    "brightness": fr.spectral_centroid_mean if fr else None,
+                })
+        return rows
+
     def cached_ids(self, track_ids: list[str]) -> set[str]:
         if not track_ids:
             return set()

@@ -2,7 +2,8 @@
 {% block title %}{{ name }} — Vercillo Analytics{% endblock %}
 {% block content %}
 <section class="dash song">
-  <a class="back" href="/dashboard">← Back to your dashboard</a>
+  {% if authed %}<a class="back" href="/dashboard">← Back to your dashboard</a>
+  {% else %}<a class="back" href="/library">← Back to Library</a>{% endif %}
   <h1>{{ name }}</h1>
   <p class="muted artist-line">{{ artist }}</p>
 
@@ -64,7 +65,8 @@
   {% else %}
   <p class="lede">This song is queued for analysis — its acoustic features and
     spectrogram will appear here once a worker has extracted them.</p>
-  <a class="btn" href="/dashboard">Back to your dashboard</a>
+  {% if authed %}<a class="btn" href="/dashboard">Back to your dashboard</a>
+  {% else %}<a class="btn" href="/library">Back to Library</a>{% endif %}
   {% endif %}
 </section>
 {% endblock %}

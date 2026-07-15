@@ -278,9 +278,13 @@ def test_svg_builders_escape_untrusted_names():
 
 
 # ── deep-dive routes (Epic B) ──────────────────────────────────────────────
-def test_song_unauthenticated_redirects(client):
-    r = client.get("/song/x", follow_redirects=False)
-    assert r.status_code == 303 and r.headers["location"] == "/"
+def test_song_public_and_junk_id_redirects(client):
+    # D-18: /song is public corpus data. A valid-but-unknown id renders (200,
+    # "not analyzed"); a path-traversal / non-base62 id is rejected to /library.
+    ok = client.get("/song/x", follow_redirects=False)
+    assert ok.status_code == 200
+    junk = client.get("/song/bad.id", follow_redirects=False)  # '.' isn't base62
+    assert junk.status_code == 303 and junk.headers["location"] == "/library"
 
 
 def test_song_deep_dive_renders_features_and_similar(client, monkeypatch, tmp_path):
@@ -306,10 +310,11 @@ def test_song_deep_dive_renders_features_and_similar(client, monkeypatch, tmp_pa
     assert "chorus/verse" in r.text                                  # the honesty caption
 
 
-def test_spectrogram_requires_auth(client):
-    # gated so 200-vs-404 can't be an analyzed-track enumeration oracle
+def test_spectrogram_public_404_when_absent(client):
+    # D-18: spectrograms are public corpus display data (the catalog already
+    # reveals which tracks are analyzed). Absent file → honest 404, not a gate.
     r = client.get("/spectrogram/anything", follow_redirects=False)
-    assert r.status_code == 303 and r.headers["location"] == "/"
+    assert r.status_code == 404
 
 
 def test_spectrogram_404_when_missing(client):

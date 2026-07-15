@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}Library — Vercillo Analytics{% endblock %}
+{% block content %}
+<section class="dash">
+  <h1>Library</h1>
+  <p class="lede">Every track in the app — <b>{{ analyzed }}</b> analyzed of
+    <b>{{ total }}</b> known. Each analyzed song has local DSP features and a
+    deep-dive; click a name to open it. Search and sort below.</p>
+
+  <div class="tabs" role="tablist">
+    <a class="tab{{ ' is-active' if tab == 'all' else '' }}" href="/library">All songs <b>{{ total }}</b></a>
+    {% if viewer %}<a class="tab{{ ' is-active' if tab == 'mine' else '' }}" href="/library?tab=mine">My songs <b>{{ my_count }}</b></a>{% endif %}
+    {% if authed %}<a class="tab{{ ' is-active' if tab == 'playlists' else '' }}" href="/library?tab=playlists">Playlists</a>{% endif %}
+  </div>
+
+  {% if tab == 'playlists' %}
+  <p class="cap">Playlist analysis is coming soon (Epic I) — you'll be able to pull a
+    playlist's tracks into your library and see its acoustic profile.</p>
+  {% else %}
+
+  {% if tab == 'mine' and why_n %}<p class="cap">{{ why_n|safe }}</p>{% endif %}
+
+  <form method="get" action="/library" class="lib-form">
+    {% if tab != 'all' %}<input type="hidden" name="tab" value="{{ tab }}">{% endif %}
+    <input type="search" name="q" value="{{ q }}" placeholder="search song or artist" aria-label="search">
+    <select name="sort" onchange="this.form.submit()" aria-label="sort by">
+      {% for s in sort_options %}
+      <option value="{{ s }}" {{ 'selected' if s == sort else '' }}>{{ s }}</option>
+      {% endfor %}
+    </select>
+    <select name="order" onchange="this.form.submit()" aria-label="order">
+      <option value="asc" {{ 'selected' if order == 'asc' else '' }}>asc</option>
+      <option value="desc" {{ 'selected' if order == 'desc' else '' }}>desc</option>
+    </select>
+    <button type="submit" class="btn">Search</button>
+    {% if q %}<a class="chip chip-clear" href="/library{{ '?tab=' + tab if tab != 'all' else '' }}">× clear</a>{% endif %}
+  </form>
+
+  <p class="cap">Showing <b>{{ shown }}</b>{% if tab == 'mine' %} of your songs{% else %} of {{ total }}{% endif %}{% if q %} matching “{{ q }}”{% endif %}.</p>
+
+  {% if rows %}
+  <table class="lib-table">
+    <thead><tr><th></th><th>Song</th><th>Artist</th><th class="num">Pop.</th><th class="num">BPM</th><th></th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+    <tr>
+      <td>{% if r.art %}<img class="art-sm" src="{{ r.art }}" alt="" loading="lazy">{% else %}<span class="art-sm art-ph">♪</span>{% endif %}</td>
+      <td>{% if r.analyzed %}<a href="/song/{{ r.id }}">{{ r.name }}</a>{% else %}<span title="not analyzed yet">{{ r.name }}</span>{% endif %}
+        {% if r.same_as %}<span class="cap dup">↔ same recording as {{ r.same_as }}</span>{% endif %}</td>
+      <td class="tartist">{{ r.artist }}</td>
+      <td class="num">{{ r.popularity if r.popularity is not none else '—' }}</td>
+      <td class="num">{{ r.tempo|round|int if r.tempo is not none else '—' }}</td>
+      <td>{% if not r.analyzed %}<span class="cap">analyzing…</span>{% endif %}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="cap">{% if tab == 'mine' %}No analyzed songs yet — they appear here as extraction finishes.{% else %}No songs match.{% endif %}</p>
+  {% endif %}
+
+  {% endif %}
+</section>
+{% endblock %}
