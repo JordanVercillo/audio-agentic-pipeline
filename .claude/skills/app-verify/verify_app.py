@@ -51,21 +51,28 @@ def _age_seconds(stamp: str | None) -> float | None:
 
 
 def evaluate_worker_flags(heartbeat_age_s: float | None, interval_s: int | None,
-                          oldest_pending_age_s: float | None, *,
+                          pending_count: int | None,
+                          progress_age_s: float | None = None, *,
                           stuck_after_s: float = 900.0) -> dict:
     """Pure flag logic (pytest-covered, like warehouse-audit's check_marts).
 
     WORKER_DOWN — no heartbeat ever, or the last beat is older than 3 poll
     intervals (min 300s: the worker beats between jobs, and a single
     download+DSP can legitimately run a few minutes).
-    QUEUE_STUCK — a queued/running job untouched past `stuck_after_s`:
-    work exists that nothing is consuming.
+    QUEUE_STUCK — pending work exists AND no job row has changed state within
+    `stuck_after_s`. Session-36 re-semantics: the old check keyed on the OLDEST
+    pending job's age, which false-alarms on any healthy deep backlog (a
+    100-track playlist import means the tail legitimately waits ~80 min while
+    the worker drains the head). Progress — any updated_at moving — is the
+    honest signal that something is consuming the queue.
     """
     stale_after_s = max(3 * (interval_s or 30), 300)
+    pending = bool(pending_count)
     return {
         "WORKER_DOWN": heartbeat_age_s is None or heartbeat_age_s > stale_after_s,
-        "QUEUE_STUCK": (oldest_pending_age_s is not None
-                        and oldest_pending_age_s > stuck_after_s),
+        "QUEUE_STUCK": (pending
+                        and (progress_age_s is None
+                             or progress_age_s > stuck_after_s)),
     }
 
 
@@ -107,12 +114,17 @@ def main() -> int:
             cache["worker_heartbeat_age_s"] = _age_seconds(hb[0]) if hb else None
             cache["worker_interval_s"] = hb[1] if hb else None
             try:
-                oldest = con.execute(
-                    "SELECT MIN(updated_at) FROM extraction_jobs "
+                pending = con.execute(
+                    "SELECT COUNT(*) FROM extraction_jobs "
                     "WHERE status IN ('queued','running')").fetchone()[0]
+                # progress = the newest state change ANYWHERE in the job table —
+                # a draining backlog touches a row every ~50 s (session 36).
+                newest = con.execute(
+                    "SELECT MAX(updated_at) FROM extraction_jobs").fetchone()[0]
             except sqlite3.OperationalError:
-                oldest = None
-            cache["oldest_pending_age_s"] = _age_seconds(oldest)
+                pending, newest = None, None
+            cache["pending_jobs"] = pending
+            cache["progress_age_s"] = _age_seconds(newest)
         finally:
             con.close()
     report["cache"] = cache
@@ -129,7 +141,8 @@ def main() -> int:
         "EVALS_MISSING": not report["golden_evals"],
         **evaluate_worker_flags(cache.get("worker_heartbeat_age_s"),
                                 cache.get("worker_interval_s"),
-                                cache.get("oldest_pending_age_s")),
+                                cache.get("pending_jobs"),
+                                cache.get("progress_age_s")),
     }
     print(json.dumps(report, indent=2))
     return 0

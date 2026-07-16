@@ -387,11 +387,15 @@ def test_app_verify_worker_flags():
     flags = mod.evaluate_worker_flags
 
     assert flags(None, None, None)["WORKER_DOWN"] is True          # never beat
-    assert flags(10.0, 30, None) == {"WORKER_DOWN": False, "QUEUE_STUCK": False}
-    assert flags(10_000.0, 30, None)["WORKER_DOWN"] is True        # stale beat
-    assert flags(200.0, 30, None)["WORKER_DOWN"] is False          # < 300s floor
-    assert flags(10.0, 30, 1200.0)["QUEUE_STUCK"] is True          # old pending job
-    assert flags(10.0, 30, 60.0)["QUEUE_STUCK"] is False           # fresh queue
+    assert flags(10.0, 30, 0) == {"WORKER_DOWN": False, "QUEUE_STUCK": False}
+    assert flags(10_000.0, 30, 0)["WORKER_DOWN"] is True           # stale beat
+    assert flags(200.0, 30, 0)["WORKER_DOWN"] is False             # < 300s floor
+    # QUEUE_STUCK = pending work + NO recent progress (session-36 re-semantics:
+    # a deep-but-draining import backlog must NOT alarm)
+    assert flags(10.0, 30, 48, 45.0)["QUEUE_STUCK"] is False       # deep + draining
+    assert flags(10.0, 30, 48, 1200.0)["QUEUE_STUCK"] is True      # pending, no progress
+    assert flags(10.0, 30, 48, None)["QUEUE_STUCK"] is True        # pending, never progressed
+    assert flags(10.0, 30, 0, 99999.0)["QUEUE_STUCK"] is False     # empty queue never stuck
 
 
 # ── O1 dedup guards (Epic O / D-28) ──────────────────────────────────────────
