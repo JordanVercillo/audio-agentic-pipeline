@@ -39,6 +39,7 @@ current); this file is the story + index. New session? Run **`/resume`**.
 | **The field-report bug pass — P3.4 loop closed** (2026-07-15/16) | Owner exercised the authed path live (re-consent + 56/264-track real imports) and filed reports; logs held every diagnosis: `/nan` img (truthy NaN cover) · **skip-then-cap** (Analyze skips analyzed+queued first — re-Analyze walks deeper) · the artists hang (spotipy retries+Retry-After on 429'd borrowed-time garnish → retries=0 + a 10-min top-10 memo) · **the public `/queue` surface** (worker-true FIFO, ETA, self-refresh) · app-verify QUEUE_STUCK re-semantics (progress-based — a deep draining backlog is healthy) | 407 tests; /queue browser-validated on the real 48-track draining queue; journal #31 (re-derive alarms when a feature changes "normal") |
 | **P3.5 — the guest dashboard replica** (2026-07-16) | "View as guest" now renders the FULL dashboard (not just analytics): `guest_dashboard_context()` rebuilds the exact authed context from snapshot ids + cache alone — zero Spotify calls (tests rig fetchers to explode), snapshot schema unchanged (display data DERIVED at render per journal #27, killing the re-snapshot ordering dependency). Ask box honestly gated; guests get the full nav | 409 tests; browser-validated live (117/117, drift 0.141σ, genres joined); the interview showpiece is now the whole app |
 | **P3.6 — the last build slices: O2 + H6 + H5** (2026-07-16) | **Every Phase-3 BUILD slice is now done — only the P3.7 exit gate (case-study + PUBLIC flip, Fable) remains.** O2: duration-aware yt-dlp match scoring (the wrong-version tell is duration, not titles) w/ per-extraction `match_confidence` — heuristic-v1 is selection+recording only, rejection threshold awaits corpus evidence · H6: the landing explains browse-freely / demo / login · H5: the origin-down Cloudflare Worker (honest 503 "runs on-demand" card; owner paste-deploys, SELF_HOSTING §6a) | 417 tests; landing browser-validated; two owner steps open (Worker deploy · O2 weights sign-off) |
+| **P3.7 — the exit gate: publication-clean, READY TO FLIP** (2026-07-16, Fable) | MIT LICENSE · README product-era pass · **`docs/CASE_STUDY.md`** (the portfolio narrative incl. the AI-harness methodology) · gitleaks over all history (3 findings = the one rotated-dead secret) · **agile-coach pre-flip review caught 3 real blockers** (employer email in commit metadata → mailmap; a 2nd pilot name; missing KB .gitignore) · `git filter-repo` ×2 — the post-rewrite VALUE-grep caught the secret alive in committed **bytecode** (`__pycache__` from the original upload) → all .pyc stripped from history · force-pushed, re-verified clean ("no leaks found"), CI green after fixing a cookie-jar test flake | 417 tests; app-verify ALL-FALSE; journal #32 (hunt the value, not the scanner's exit code); **Phase 3 exits when the owner flips visibility** |
 
 ## Hard-won lessons (full text: `notes/engineering_journal.md`)
 #12 test the frozen env, not your PATH · #13 select columns by coverage, one ghost
@@ -60,7 +61,10 @@ failed taught which summary I meant) · #30 at a type boundary validate the type
 the contract requires, not truthiness — pandas turns `None` into a truthy `nan`
 that `if x:` sails past but `isinstance(x, str)` catches · #31 when a feature
 changes what "normal" looks like, re-derive the alarms calibrated to the old
-normal — alert on stalled progress, never on the age of a healthy backlog.
+normal — alert on stalled progress, never on the age of a healthy backlog ·
+#32 verify a scrub by hunting the secret's VALUE across every reachable blob —
+derived artifacts (bytecode, builds) carry source's bytes and scanners
+under-report them; bundle before you rewrite.
 
 ## The system today (2026-07-11)
 - **Serving:** `vercilloanalytics.com` → Cloudflare tunnel (Windows service

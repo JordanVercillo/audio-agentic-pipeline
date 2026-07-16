@@ -782,3 +782,37 @@ the definition-of-done includes re-reading the monitors that watch it.
 > calibrated to the old normal. Alert on the absence of progress, not on the
 > size or age of a healthy backlog — depth is a plan; stalled progress is a
 > problem.*
+
+### 32. The secret survived the scrub — inside compiled bytecode (2026-07-16)
+
+The P3.7 pre-flip history rewrite looked textbook: `git filter-repo
+--replace-text` with the rotated-dead client secret, a mailmap for a stray
+employer email, `--invert-paths` for the course KB. gitleaks had found the
+secret in exactly the expected source blobs; the rewrite ran; the tool
+reported success. The post-rewrite verification sweep — grep every reachable
+commit for the secret's *value*, not for the tool's exit code — came back
+with two hits anyway: `__pycache__/auth.cpython-313.pyc` and
+`spotify_config.cpython-313.pyc`, committed by the original GitHub web upload
+back when the repo had no `.gitignore`. Compiled bytecode stores string
+constants as raw bytes; `--replace-text` did rewrite those blobs' matching
+bytes — but gitleaks' source-oriented rules had never flagged the `.pyc`
+files in the first place, so they weren't in anyone's mental model of "where
+the secret lives." A second pass stripped ALL bytecode paths from history
+(junk that should never have been committed), and only then did the
+value-grep return zero. Bonus lesson from the same run: `filter-repo`'s
+checkout deletes a newly-untracked directory from the working tree — the KB
+vanished from disk and came back from the pre-scrub bundle.
+
+**The realization:** a scrub plan built from a scanner's findings inherits
+the scanner's blind spots. Secrets replicate into *derived artifacts* —
+bytecode, build outputs, caches, minified bundles — which secret scanners
+under-report because their rules target source. The only verification that
+closes the loop is searching every reachable blob for the secret's literal
+value (binary included) and treating "the tool ran clean" as necessary, never
+sufficient. And take the backup bundle first: two of this session's saves
+(the KB restore, the do-over safety) came from one cheap `git bundle create`.
+
+> *Verify a scrub by hunting the VALUE across every reachable blob — not by
+> re-running the scanner that missed it. Derived artifacts (bytecode, builds,
+> caches) carry the same bytes as the source they came from; when in doubt,
+> remove the artifact class from history entirely. Bundle before you rewrite.*

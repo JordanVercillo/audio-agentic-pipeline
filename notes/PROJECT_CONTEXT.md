@@ -287,12 +287,29 @@
   **⚠️ TWO OWNER STEPS: ① deploy the H5 Worker (Cloudflare dashboard paste +
   route, ~2 min, doc'd) — verify with stop_app → browse the domain → fallback
   card, then start_app; ② sign off (or retune) the O2 heuristic-v1 weights
-  once real imports build a match-confidence distribution.** **NOW NEXT:
-  P3.7 — Epic L lite → the PUBLIC GitHub FLIP (D-38, the Phase-3 EXIT GATE;
-  a FABLE slice): dead-file sweep · docs/CASE_STUDY.md · README rewrite ·
-  how-to → gitleaks · KB exclusion (D-21) · LICENSE · git filter-repo scrub
-  (D-20) · flip public. agile-coach holds the standing pre-flip review.**
-  Parked: MPD-audio, Epic M, instrumentalness, dupe-pruning.
+  once real imports build a match-confidence distribution.** ✅ **P3.7 READY
+  TO FLIP (2026-07-16, Fable session 39): every exit-gate item is DONE and
+  re-verified — the flip itself is the owner's hand.** Sweep + MIT LICENSE +
+  README product-era pass + `docs/CASE_STUDY.md` landed; gitleaks 8.24.3 over
+  all history; agile-coach pre-flip review caught 3 real blockers (employer
+  email in commit metadata → mailmapped to live.com · a 2nd pilot name →
+  genericized · missing KB .gitignore); `git filter-repo` ×2 (dead secret +
+  names replace-text, mailmap, KB out of all history D-21, ALL
+  `__pycache__`/.pyc stripped — the secret survived in committed BYTECODE,
+  journal #32); force-pushed; post-scrub verification ALL CLEAN (gitleaks "no
+  leaks found" + value/name/email/KB/pyc greps zero); CI GREEN on the
+  rewritten history (after fixing a cookie-jar test flake); 417 tests;
+  app-verify ALL-FALSE. **NOTE: all pre-scrub commit hashes cited in
+  notes/docs are now historical labels (accepted). The KB dir was restored to
+  disk from the pre-scrub bundle — local-only, gitignored.** **➡️ NEXT ACTION —
+  THREE OWNER STEPS, then Phase 4: ① FLIP PUBLIC (GitHub Settings → General →
+  Danger Zone → Change visibility → Public) — Phase 3 exits the moment this
+  lands; ② paste-deploy the H5 fallback Worker (SELF_HOSTING §6a, ~2 min);
+  ③ O2 heuristic-v1 weights sign-off once real imports build a
+  match-confidence distribution. Then NEXT BUILD = Phase 4 / K0: the Epic-K
+  interview-style design session (llm-rag-expert + the KB) → agentic chat's
+  own phased plan (D-39; a FABLE design session).** Parked: MPD-audio, Epic M,
+  instrumentalness, dupe-pruning.
 - ✅ **SECURITY + ROBUSTNESS REVIEW (2026-07-09, commits 26891b1←): whole-app
   audit via 2 review subagents + a strategic pass; 7 real fixes, all tested,
   deployed, 286 green.** **Security surface came back STRONG** — auth, session
@@ -634,6 +651,8 @@ narrative goes to `notes/engineering_journal.md`, plans to
 | `src/webapp/` | **SPEC P8 slice 1: FastAPI pilot.** `auth_web.py` (session-scoped PKCE — token in session, CSRF state gate, D-8 no secret), `sessions.py` (TTL `SessionStore` + signed cookie + rotate), `featurestore.py` (bridge-key overlap-join + acoustic insight), `app.py` (routes: `/ login callback dashboard logout healthz`), `config.py`, `templates/`, `static/`. Test: `test_webapp.py` (15). Run: `uv run python scripts/run_webapp.py` → :8000. |
 | `src/webapp/{artists,library,playlists}.py` | **Vision-E product surfaces (pure view logic).** `artists.py` (P3.2 — rollup, genre strip, comparison SVG, `your_top_by_artist` D-33, `nearest_artists`). `library.py` (P3.3 — `library_view` search/sort/dedup-annotate/mine-overlay, `why_n_analyzed` from `_TOP_LIMIT`); fed by `cache.library_rows()`. `playlists.py` (P3.4 — `playlist_cards`/`importable_ids` own+collaborative filter, `coverage_line`); `/playlists` + `POST …/analyze` behind `auth_web.has_playlist_scope` (re-consent), cap `config.PLAYLIST_IMPORT_CAP`. `/library`+`/song`+`/spectrogram` PUBLIC (D-18/D-40); `/explore`+`/recommend`+`/playlists` gated. Tests: `test_artists.py`, `test_library.py`, `test_playlists.py`. |
 | `infra/cloudflare/origin-fallback-worker.js` | H5 (P3.6): the $0 origin-down fallback Worker — 502/504/521-523/530 → an honest 503 "runs on-demand" card; healthy origin untouched; /healthz keeps JSON truth. Owner deploys via dashboard paste (SELF_HOSTING §6a). |
+| `docs/CASE_STUDY.md` | **P3.7: the portfolio narrative** — the API-removal origin story, architecture, $0 production, the earned doctrines (w/ journal numbers), and the AI-harness methodology. The README links it front-and-center. |
+| `LICENSE` | MIT (owner choice, P3.7). The KB was history-scrubbed pre-flip, so no license conflict with course material. |
 | `docs/AGENT_ACCESS.md` | P5 artifact: MCP registration config (Claude Desktop/Code) + security model + live demo transcript. |
 | `docs/SCALING.md` | P7 artifact: honest 10K/1M-track scaling design (bottleneck = acquisition+DSP; GCS/BigQuery; Spark-vs-Dataflow; the `spark-parity` CI proof). |
 | `docs/P8_PLAN.md` | P8 build plan (FastAPI + Jinja2; session PKCE; feature-store overlap-join; RAG; 4-slice sequence). Slices 1, 1.5, 2 BUILT. |
@@ -1545,3 +1564,34 @@ narrative goes to `notes/engineering_journal.md`, plans to
   a real distribution exists. Next = P3.7 (case-study + PUBLIC GitHub flip)
   on FABLE — the exit gate; agile-coach holds the pre-flip checklist. NEW
   SESSION: run `/resume` on Fable.**
+- **2026-07-16 (session 39 — P3.7 the exit gate via `/orchestrator`, FABLE per
+  the routing; ONE agile-coach consult — its standing pre-flip review):**
+  Owner decisions: MIT · genericize pilot names · gitleaks download approved ·
+  scrub+force-push mine, flip his · aritzia email → live.com mailmap ·
+  employer NAME stays in SPEC narrative. **Content:** sweep
+  (PR_REFERENCE→legacy/, audioengineer→.agent_prompts/04) · MIT LICENSE ·
+  README product-era pass + run-it-yourself · `docs/CASE_STUDY.md`.
+  **Adversarial pass:** gitleaks 8.24.3 (owner-approved download) over 164
+  commits → 3 findings = ONE rotated-dead secret (9b75…) in upload-era blobs;
+  detect-secrets tree-clean; third-party email NOWHERE in history (verified).
+  **agile-coach review = NO-GO with 3 real blockers** (employer email in
+  commit METADATA — replace-text can't touch it, needed --mailmap · "Joey" a
+  2nd unscrubbed pilot name · .gitignore missing the KB → re-add hazard) — all
+  folded into ONE rewrite. **The scrub:** pre-scrub bundle to scratchpad →
+  tree edits → `uvx git-filter-repo` (replace-text secret+names · mailmap ·
+  --invert-paths KB) → **verification caught the secret ALIVE in two committed
+  .pyc files** (original-upload `__pycache__`; bytecode carries the bytes a
+  source scrub misses — journal #32) → pass 2 stripped ALL bytecode from
+  history → full re-verify CLEAN (gitleaks "no leaks found"; value/name/email/
+  KB/pyc greps = zero) → force-push (8024e3d→5d223c5, every hash changed —
+  old citations are labels now). KB restored to disk from the bundle
+  (filter-repo's checkout deletes newly-untracked dirs) — local-only,
+  gitignored. **CI failed on a pre-existing test flake** (two same-name
+  cookies in the jar, platform-dependent order — CI Linux served the stale
+  guest sid) → `client.cookies.clear()` fix → **CI GREEN on the rewritten
+  history.** 417 green local, app-verify ALL-FALSE (app restarted — owner had
+  it off, on-demand). **Left off: P3.7 READY TO FLIP — the repo is
+  publication-clean end to end. OWNER: ① flip public (GitHub Settings →
+  Danger Zone) = Phase 3 EXITS · ② H5 Worker paste-deploy · ③ O2 weights
+  sign-off later. Next build = Phase 4 / K0 design session (Fable). NEW
+  SESSION: run `/resume`.**
