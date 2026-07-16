@@ -301,15 +301,24 @@
   rewritten history (after fixing a cookie-jar test flake); 417 tests;
   app-verify ALL-FALSE. **NOTE: all pre-scrub commit hashes cited in
   notes/docs are now historical labels (accepted). The KB dir was restored to
-  disk from the pre-scrub bundle — local-only, gitignored.** **➡️ NEXT ACTION —
-  THREE OWNER STEPS, then Phase 4: ① FLIP PUBLIC (GitHub Settings → General →
-  Danger Zone → Change visibility → Public) — Phase 3 exits the moment this
-  lands; ② paste-deploy the H5 fallback Worker (SELF_HOSTING §6a, ~2 min);
-  ③ O2 heuristic-v1 weights sign-off once real imports build a
-  match-confidence distribution. Then NEXT BUILD = Phase 4 / K0: the Epic-K
-  interview-style design session (llm-rag-expert + the KB) → agentic chat's
-  own phased plan (D-39; a FABLE design session).** Parked: MPD-audio, Epic M,
-  instrumentalness, dupe-pruning.
+  disk from the pre-scrub bundle — local-only, gitignored.** 🏁 **PHASE 3 HAS
+  EXITED (2026-07-16): the repo is PUBLIC** — verified anonymously (repo page +
+  raw README both 200 logged-out); already drawing real anon traffic (crawlers
+  on /song pages in the webapp log). ✅ **H5 WORKER DEPLOYED + VERIFIED
+  (session 40, commit 784117d):** wrangler CLI (owner OAuth as
+  jordan@vercilloanalytics.com), worker `origin-fallback` on BOTH zone routes;
+  full loop proven live — app up = pass-through untouched (200s, /healthz
+  `{"ok":true}`); app stopped = the "Demo offline — by design" card (503 +
+  Retry-After 3600) and /healthz **503 JSON** (journal #33: Cloudflare
+  REPLACES a Worker 502/504 response with its own error page — the fallback
+  must ride a 503 to keep authorship). The wrangler deploy config lives in the
+  SCRATCHPAD by design (repo stays clean); redeploy = copy worker.js + a
+  2-route wrangler.jsonc anywhere, `npx wrangler deploy`. **➡️ NEXT ACTION —
+  NEXT BUILD = Phase 4 / K0: the Epic-K interview-style design session
+  (llm-rag-expert + the KB) → agentic chat's own phased plan (D-39; a FABLE
+  design session). One owner item still open: O2 heuristic-v1 weights
+  sign-off once real imports build a match-confidence distribution.** Parked:
+  MPD-audio, Epic M, instrumentalness, dupe-pruning.
 - ✅ **SECURITY + ROBUSTNESS REVIEW (2026-07-09, commits 26891b1←): whole-app
   audit via 2 review subagents + a strategic pass; 7 real fixes, all tested,
   deployed, 286 green.** **Security surface came back STRONG** — auth, session
@@ -1595,3 +1604,29 @@ narrative goes to `notes/engineering_journal.md`, plans to
   Danger Zone) = Phase 3 EXITS · ② H5 Worker paste-deploy · ③ O2 weights
   sign-off later. Next build = Phase 4 / K0 design session (Fable). NEW
   SESSION: run `/resume`.**
+- **2026-07-16 (session 40 — 🏁 THE FLIP + H5 deploy, Fable; owner flipped
+  public, then "deploy the H5 worker for me"; includes a revert of a lost
+  session):** Verified the repo PUBLIC anonymously (repo page + raw README
+  200 logged-out) — **Phase 3 EXITED**; the webapp log already shows real
+  anon traffic (crawlers on /song pages) + the usual wp-admin probe noise.
+  **Cleanup (owner ask):** a lost session's commit `3a29328` (wrangler.jsonc
+  + gitignore for a third-party skills download) reset away — main back to
+  e384333, force-pushed; `cloud_flare_skills-main/` cleared from disk; the
+  restored KB untouched. **H5 deploy:** dashboard path blocked at Cloudflare
+  login (auth = owner's hands, always) → pivoted to `npx wrangler login`
+  (owner clicked Allow; OAuth as jordan@vercilloanalytics.com) → deploy from
+  a SCRATCHPAD config (repo stays clean per the revert): worker
+  `origin-fallback`, routes apex+www. **Full loop verified live:** up =
+  pass-through 200s + /healthz `{"ok":true}` · stop_app = the card (503,
+  Retry-After 3600, "Demo offline — by design") · /healthz 503 JSON ·
+  start_app = real app back. **Two edge behaviors probed live → worker
+  hardened (784117d):** the tunnel's origin-down answer is a REAL 502/530
+  HTML response (fetch doesn't throw), and **Cloudflare replaces a Worker
+  502/504 response with its own error page** — the JSON must ride a 503
+  (journal #33). A transient edge 500 on first /library curl = worker
+  cold-start, self-resolved; a wrangler-version propagation lag briefly
+  served the prior worker (wait-and-retest, don't re-deploy blind).
+  app-verify ALL-FALSE. **Left off: PHASE 3 COMPLETE END TO END — public
+  repo, live public app, fallback edge, case study. Next build = Phase 4 /
+  K0 Epic-K design session (FABLE + llm-rag-expert). O2 weights sign-off
+  stays open until real imports accrue. NEW SESSION: run `/resume`.**

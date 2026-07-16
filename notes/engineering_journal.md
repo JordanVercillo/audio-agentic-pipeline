@@ -816,3 +816,33 @@ sufficient. And take the backup bundle first: two of this session's saves
 > re-running the scanner that missed it. Derived artifacts (bytecode, builds,
 > caches) carry the same bytes as the source they came from; when in doubt,
 > remove the artifact class from history entirely. Bundle before you rewrite.*
+
+### 33. The platform edits your error responses — a Worker's 502 body isn't yours (2026-07-16)
+
+The H5 origin-down Worker had a clean design: serve the fallback card for
+browsers, but keep `/healthz` machine-readable JSON. Deployed, stopped the
+app, curled — and `/healthz` returned Cloudflare's own branded HTML error
+page, not my JSON. Two live probes untangled it. First: the tunnel's
+origin-down answer is a *real HTTP response* (502, or 530/error-1033) with an
+HTML body — `fetch()` doesn't throw, so a "substitute on exception" branch
+never fires. Second, subtler: after fixing that by always substituting JSON
+and propagating the upstream status, the JSON *still* didn't arrive —
+**Cloudflare replaces a Worker response that carries status 502/504 with its
+standard error page, body and all.** The proof was empirical: my 503 card on
+the same route passed through byte-for-byte; the identical JSON on a 502 got
+swapped. Moving the machine branch to 503 (+Retry-After) ended it:
+`{"ok":false,"origin":"unreachable"}` finally reached the wire.
+
+**The realization:** between your code and the client sits a platform with
+opinions about error responses. Status codes aren't just semantics — they're
+*triggers* for edge middleware (error-page substitution, retries, caching
+rules), and the platform doesn't document every rewrite where you'll look for
+it. When a response you constructed doesn't arrive as constructed, suspect
+the layer above; and the fastest diagnostic is differential — find the nearly
+identical response that DOES survive (the 503 card) and diff the one variable
+(the status code).
+
+> *The edge rewrites what it recognizes: a 502/504 from your Worker becomes
+> the platform's error page, your body discarded. Pick statuses for how the
+> intermediary treats them, not just for semantic purity — and debug missing
+> responses differentially: find the twin that survives, diff one variable.*

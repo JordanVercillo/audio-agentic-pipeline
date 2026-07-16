@@ -40,6 +40,7 @@ current); this file is the story + index. New session? Run **`/resume`**.
 | **P3.5 — the guest dashboard replica** (2026-07-16) | "View as guest" now renders the FULL dashboard (not just analytics): `guest_dashboard_context()` rebuilds the exact authed context from snapshot ids + cache alone — zero Spotify calls (tests rig fetchers to explode), snapshot schema unchanged (display data DERIVED at render per journal #27, killing the re-snapshot ordering dependency). Ask box honestly gated; guests get the full nav | 409 tests; browser-validated live (117/117, drift 0.141σ, genres joined); the interview showpiece is now the whole app |
 | **P3.6 — the last build slices: O2 + H6 + H5** (2026-07-16) | **Every Phase-3 BUILD slice is now done — only the P3.7 exit gate (case-study + PUBLIC flip, Fable) remains.** O2: duration-aware yt-dlp match scoring (the wrong-version tell is duration, not titles) w/ per-extraction `match_confidence` — heuristic-v1 is selection+recording only, rejection threshold awaits corpus evidence · H6: the landing explains browse-freely / demo / login · H5: the origin-down Cloudflare Worker (honest 503 "runs on-demand" card; owner paste-deploys, SELF_HOSTING §6a) | 417 tests; landing browser-validated; two owner steps open (Worker deploy · O2 weights sign-off) |
 | **P3.7 — the exit gate: publication-clean, READY TO FLIP** (2026-07-16, Fable) | MIT LICENSE · README product-era pass · **`docs/CASE_STUDY.md`** (the portfolio narrative incl. the AI-harness methodology) · gitleaks over all history (3 findings = the one rotated-dead secret) · **agile-coach pre-flip review caught 3 real blockers** (employer email in commit metadata → mailmap; a 2nd pilot name; missing KB .gitignore) · `git filter-repo` ×2 — the post-rewrite VALUE-grep caught the secret alive in committed **bytecode** (`__pycache__` from the original upload) → all .pyc stripped from history · force-pushed, re-verified clean ("no leaks found"), CI green after fixing a cookie-jar test flake | 417 tests; app-verify ALL-FALSE; journal #32 (hunt the value, not the scanner's exit code); **Phase 3 exits when the owner flips visibility** |
+| **🏁 PHASE 3 EXIT — the repo is PUBLIC + the edge never goes dark** (2026-07-16) | Owner flipped visibility; verified anonymously (repo + raw 200 logged-out) — **the full Vision-E product surface era closes**: public catalog/deep-dives/queue, guest dashboard replica, playlist imports behind re-consent, artists/genres, case study + MIT, scrubbed history. **H5 deployed via wrangler** (owner OAuth; scratchpad config, clean repo): origin down → the "Demo offline — by design" card (503+Retry-After) and /healthz 503 JSON; origin up → byte-for-byte pass-through. Anon crawler traffic already arriving | journal #33 (the edge rewrites Worker 502s — pick statuses for how intermediaries treat them); Phase 4 (Epic K agentic chat) is next |
 
 ## Hard-won lessons (full text: `notes/engineering_journal.md`)
 #12 test the frozen env, not your PATH · #13 select columns by coverage, one ghost
@@ -64,7 +65,10 @@ changes what "normal" looks like, re-derive the alarms calibrated to the old
 normal — alert on stalled progress, never on the age of a healthy backlog ·
 #32 verify a scrub by hunting the secret's VALUE across every reachable blob —
 derived artifacts (bytecode, builds) carry source's bytes and scanners
-under-report them; bundle before you rewrite.
+under-report them; bundle before you rewrite · #33 the edge rewrites what it
+recognizes (a Worker's 502 body becomes the platform's error page) — pick
+statuses for how intermediaries treat them, and debug missing responses
+differentially: find the twin that survives, diff one variable.
 
 ## The system today (2026-07-11)
 - **Serving:** `vercilloanalytics.com` → Cloudflare tunnel (Windows service
