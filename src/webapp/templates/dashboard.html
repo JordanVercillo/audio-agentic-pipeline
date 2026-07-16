@@ -4,12 +4,17 @@
 <section class="dash">
   <h1>Your taste, grounded in acoustics</h1>
 
+  {% if authed %}
   <form class="ask" method="post" action="/ask">
     <input type="text" name="q" required
            placeholder="Ask your taste — e.g. &quot;what&apos;s my vibe lately?&quot;"
            aria-label="Ask a question about your taste">
     <button type="submit">Ask</button>
   </form>
+  {% else %}
+  <p class="cap">The “ask your taste” box needs a login — everything below is the
+    real dashboard, read-only.</p>
+  {% endif %}
 
   <div class="cards">
     {% if coverage %}

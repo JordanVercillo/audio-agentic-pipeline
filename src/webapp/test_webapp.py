@@ -756,9 +756,9 @@ def test_guest_mode_loads_demo_and_renders_analytics(client, monkeypatch, tmp_pa
     monkeypatch.setattr("src.webapp.app.load_demo_profile",
                         lambda: {"range_ids": taste["range_ids"], "artists": taste["artists"]})
 
-    # /guest builds the demo taste from the snapshot + cache and redirects into analytics
+    # /guest builds the demo taste and lands on the DASHBOARD replica (P3.5)
     r = client.get("/guest", follow_redirects=False)
-    assert r.status_code == 303 and r.headers["location"] == "/analytics"
+    assert r.status_code == 303 and r.headers["location"] == "/dashboard"
 
     # the guest analytics render (seeded directly — the house pattern for sessions)
     client.cookies.set(config.SESSION_COOKIE, _seed_guest_session(taste))
@@ -767,6 +767,47 @@ def test_guest_mode_loads_demo_and_renders_analytics(client, monkeypatch, tmp_pa
     assert "Demo view" in r2.text                            # the guest banner
     assert 'action="/classify"' not in r2.text               # auth-only action hidden
     assert "acoustic signature" in r2.text.lower()
+
+
+def test_guest_dashboard_replica_renders_from_cache(client, monkeypatch, tmp_path):
+    # P3.5: the guest dashboard is the SAME template on cache-derived data —
+    # zero Spotify calls, zero enqueue, ask box hidden.
+    from ..store.cache import FeatureCache
+    tc = FeatureCache(url=f"sqlite:///{tmp_path / 'gd.db'}")
+    for i in range(3):
+        tc.upsert(f"g{i}", _feat(100 + i))
+    tc.remember_meta([{"spotify_track_id": f"g{i}", "track_name": f"Guest Song {i}",
+                       "artist_names": "DemoArtist", "popularity": 40 + i}
+                      for i in range(3)])
+    tc.remember_artists([{"artist_id": "gaAAAAAAA", "artist_name": "DemoArtist",
+                          "genres": "dream pop", "image_url": "http://img/a"}])
+    monkeypatch.setattr("src.webapp.app._feature_cache", lambda: tc)
+    monkeypatch.setattr("src.webapp.app.load_demo_profile",
+                        lambda: {"range_ids": {"short_term": ["g0", "g1"],
+                                               "long_term": ["g2"]},
+                                 "artists": [{"name": "DemoArtist", "genres": ""}]})
+
+    def _boom(*a, **k):
+        raise AssertionError("guest replica must not call Spotify")
+    monkeypatch.setattr("src.webapp.app.fetch_top_tracks", _boom)
+    monkeypatch.setattr("src.webapp.app.fetch_top_artists", _boom)
+
+    taste = {"range_ids": {"short_term": ["g0"]}}
+    client.cookies.set(config.SESSION_COOKIE, _seed_guest_session(taste))
+    r = client.get("/dashboard")
+    assert r.status_code == 200
+    assert "Guest Song 0" in r.text and "Guest Song 2" in r.text  # per-range tracks
+    assert "Demo view" in r.text                                  # guest banner
+    assert 'action="/ask"' not in r.text                          # authed-only box hidden
+    assert "dream pop" in r.text                                  # artist_meta genres joined
+    assert "3 / 3 songs analyzed" in r.text                       # coverage honest
+
+
+def test_guest_dashboard_without_profile_redirects_home(client, monkeypatch):
+    monkeypatch.setattr("src.webapp.app.load_demo_profile", lambda: None)
+    client.cookies.set(config.SESSION_COOKIE, _seed_guest_session({}))
+    r = client.get("/dashboard", follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "/"
 
 
 def test_guest_without_profile_redirects_home(client, monkeypatch):

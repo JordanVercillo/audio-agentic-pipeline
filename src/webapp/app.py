@@ -240,6 +240,51 @@ def build_dashboard_context(client: Any, cache: FeatureCache) -> dict[str, Any]:
     }
 
 
+def guest_dashboard_context(prof: dict[str, Any], cache: FeatureCache) -> dict[str, Any]:
+    """The guest DASHBOARD replica (P3.5, owner ask): the same context shape as
+    build_dashboard_context, built ENTIRELY from the snapshot's ids + the cache —
+    zero Spotify calls, zero enqueue (guests are read-only, D-30). Display data
+    is DERIVED, not carried in the snapshot (journal #27): art/popularity from
+    track_meta via library_rows, artist genres/images from artist_meta (P3.1)."""
+    range_ids = {w: list(ids) for w, ids in (prof.get("range_ids") or {}).items()}
+    all_ids = [t for ids in range_ids.values() for t in ids]
+    cached = cache.get(all_ids)
+    meta = {r["id"]: r for r in cache.library_rows()}
+    labels = dict(_TIME_RANGES)
+    ranges = []
+    for key, ids in range_ids.items():
+        tracks = []
+        for i, tid in enumerate(ids, start=1):
+            m = meta.get(tid, {})
+            tracks.append({
+                "rank": i, "id": tid,
+                "name": m.get("name") or tid, "artist": m.get("artist") or "",
+                "art": m.get("art"), "popularity": m.get("popularity"),
+                "analyzed": tid in cached,
+                "feat": track_summary(cached.get(tid)),
+            })
+        ranges.append({"key": key, "label": labels.get(key, key), "tracks": tracks})
+    ameta = cache.all_artist_meta()
+    by_name = {a.get("artist_name", "").lower(): a for a in ameta.values()}
+    artists = []
+    for a in prof.get("artists", []):
+        stored = by_name.get((a.get("name") or "").lower(), {})
+        artists.append({"name": a.get("name", ""),
+                        "genres": stored.get("genres") or a.get("genres", ""),
+                        "image": stored.get("image_url")})
+    per_range_rows = {k: [cached[i] for i in ids if i in cached]
+                      for k, ids in range_ids.items()}
+    return {
+        "ranges": ranges,
+        "range_ids": range_ids,
+        "profile": absolute_profile(list(cached.values())),
+        "drift": drift_over_rows(per_range_rows),
+        "artists": artists,
+        "coverage": {"analyzed": len(cached), "total": len(set(all_ids)), "analyzing": 0},
+        "track_total": len(set(all_ids)),
+    }
+
+
 def _top_artists(client: Any, cache: Optional[FeatureCache] = None,
                  limit: int = 12) -> list[dict[str, Any]]:
     """The visitor's top artists (with Spotify genres — which tracks don't expose).
@@ -371,7 +416,9 @@ def create_app() -> FastAPI:
             "drift": drift_over_rows(per_range_rows),
             "coverage": {"analyzed": len(cached), "total": len(set(all_ids)), "analyzing": 0},
         }
-        return RedirectResponse("/analytics", status_code=303)
+        # P3.5: guests land on the DASHBOARD replica (the full experience),
+        # not straight at /analytics.
+        return RedirectResponse("/dashboard", status_code=303)
 
     @app.get("/callback", response_class=HTMLResponse)
     def callback(request: Request, code: Optional[str] = None,
@@ -395,6 +442,15 @@ def create_app() -> FastAPI:
     def dashboard(request: Request):
         session = request.state.session
         if not auth_web.is_authenticated(session):
+            # The guest replica (P3.5): snapshot ids + cache, read-only, no
+            # fetch/enqueue. Anyone else → home.
+            if session.get("is_guest"):
+                prof = load_demo_profile()
+                if prof is None:
+                    return RedirectResponse("/", status_code=303)
+                ctx = guest_dashboard_context(prof, _feature_cache())
+                return templates.TemplateResponse(
+                    request, "dashboard.html", {**ctx, **_viewer_flags(session)})
             return RedirectResponse("/", status_code=303)
         try:
             client = auth_web.client_from_session(session)
