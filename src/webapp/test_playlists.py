@@ -183,6 +183,28 @@ def test_analyze_rejects_non_member_playlist(client, monkeypatch):
     assert fake.enqueued == []  # membership gate blocked the fetch + enqueue
 
 
+def test_queue_page_public_lists_jobs_and_eta(client, monkeypatch, tmp_path):
+    from ..store.cache import FeatureCache
+    tc = FeatureCache(url=f"sqlite:///{tmp_path / 'q.db'}")
+    tc.remember_meta([{"spotify_track_id": "qq1", "track_name": "Waiting Song",
+                       "artist_names": "Band"}])
+    tc.enqueue(["qq1"])
+    monkeypatch.setattr("src.webapp.app._feature_cache", lambda: tc)
+    r = client.get("/queue")  # anon — same public posture as /library
+    assert r.status_code == 200
+    assert "Waiting Song" in r.text and "min" in r.text
+    assert 'http-equiv="refresh"' in r.text  # self-refreshing while non-empty
+
+
+def test_queue_page_empty_state(client, monkeypatch, tmp_path):
+    from ..store.cache import FeatureCache
+    tc = FeatureCache(url=f"sqlite:///{tmp_path / 'qe.db'}")
+    monkeypatch.setattr("src.webapp.app._feature_cache", lambda: tc)
+    r = client.get("/queue")
+    assert r.status_code == 200 and "queue is empty" in r.text
+    assert 'http-equiv="refresh"' not in r.text  # no pointless reloads
+
+
 def test_analyze_guest_and_no_scope_blocked(client, monkeypatch):
     fake = _FakeCache()
     monkeypatch.setattr("src.webapp.app._feature_cache", lambda: fake)

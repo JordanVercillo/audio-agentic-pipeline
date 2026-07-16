@@ -469,6 +469,24 @@ def test_remember_artists_preserve_if_absent(cache):
     assert set(cache.all_artist_meta()) == {"ar1"}
 
 
+def test_queue_rows_running_first_then_worker_fifo(cache):
+    # /queue must mirror claim_next's own order (requested_at FIFO) — session 36
+    cache.remember_meta([{"spotify_track_id": f"q{i}", "track_name": f"Song {i}",
+                          "artist_names": "A"} for i in range(3)])
+    cache.enqueue(["q0", "q1", "q2"])
+    claimed = cache.claim_next()          # oldest → running
+    rows = cache.queue_rows()
+    assert [r["id"] for r in rows] == [claimed, "q1", "q2"]  # running first, FIFO after
+    assert rows[0]["status"] == "running" and rows[0]["name"] == "Song 0"
+    assert {r["status"] for r in rows[1:]} == {"queued"}
+
+
+def test_active_ids_reports_live_jobs_only(cache):
+    cache.enqueue(["a1", "a2"])
+    cache.upsert("done1", _FEATURES)      # cached, no live job
+    assert cache.active_ids(["a1", "a2", "done1", "ghost"]) == {"a1", "a2"}
+
+
 def test_remember_meta_threads_art_and_primary_artist(cache):
     cache.remember_meta([{"spotify_track_id": "t1", "track_name": "Song",
                           "album_image_url": "http://art/1", "primary_artist_id": "ar1"}])

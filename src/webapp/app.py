@@ -929,6 +929,20 @@ def create_app() -> FastAPI:
             len(queued), len(uniq) - len(fresh), len(fresh) - len(selected), cap)
         return RedirectResponse("/playlists", status_code=303)
 
+    @app.get("/queue", response_class=HTMLResponse)
+    def queue_page(request: Request):
+        """The live extraction queue (owner ask, session 36): what's analyzing
+        NOW and what's up next, in the worker's true FIFO order, with the honest
+        ~50 s/track ETA. PUBLIC — the same posture as /library, which already
+        shows every unanalyzed track as 'analyzing…' (D-18 corpus data)."""
+        rows = _feature_cache().queue_rows()
+        eta_min = max(1, round(len(rows) * _SECONDS_PER_TRACK / 60)) if rows else 0
+        return templates.TemplateResponse(request, "queue.html", {
+            **_viewer_flags(request.state.session),
+            "rows": rows, "n": len(rows), "eta_min": eta_min,
+            "sec_per_track": _SECONDS_PER_TRACK,
+        })
+
     @app.get("/library", response_class=HTMLResponse)
     def library_page(request: Request):
         """The H1 catalog — PUBLIC corpus data (D-18): every track in the app,

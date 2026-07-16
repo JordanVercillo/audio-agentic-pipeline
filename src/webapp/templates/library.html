@@ -50,7 +50,7 @@
       <td class="tartist">{{ r.artist }}</td>
       <td class="num">{{ r.popularity if r.popularity is not none else '—' }}</td>
       <td class="num">{{ r.tempo|round|int if r.tempo is not none else '—' }}</td>
-      <td>{% if not r.analyzed %}<span class="cap">analyzing…</span>{% endif %}</td>
+      <td>{% if not r.analyzed %}<a class="cap" href="/queue">analyzing…</a>{% endif %}</td>
     </tr>
     {% endfor %}
     </tbody>

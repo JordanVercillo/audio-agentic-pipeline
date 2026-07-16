@@ -196,6 +196,34 @@ class FeatureCache:
             ).scalars().all()
         return set(rows)
 
+    def queue_rows(self, limit: int = 200) -> list[dict]:
+        """The live extraction queue for the /queue surface (session 36): running
+        first, then queued in the worker's OWN claim order (requested_at FIFO —
+        the same order_by claim_next uses, so the page never lies about who's
+        next). Display names joined from track_meta; read-only."""
+        with self._Session() as s:
+            jobs = s.execute(
+                select(ExtractionJob)
+                .where(ExtractionJob.status.in_((JOB_RUNNING, JOB_QUEUED)))
+                .order_by(ExtractionJob.requested_at).limit(limit)
+            ).scalars().all()
+            ids = [j.spotify_track_id for j in jobs]
+            metas = {} if not ids else {
+                m.spotify_track_id: m for m in s.execute(
+                    select(TrackMeta).where(TrackMeta.spotify_track_id.in_(ids))
+                ).scalars()}
+            rows = []
+            for j in jobs:
+                m = metas.get(j.spotify_track_id)
+                rows.append({
+                    "id": j.spotify_track_id,
+                    "name": (m.track_name if m and m.track_name else j.spotify_track_id),
+                    "artist": (m.artist_names or "") if m else "",
+                    "status": j.status,
+                })
+        rows.sort(key=lambda r: r["status"] != JOB_RUNNING)  # running first, FIFO kept
+        return rows
+
     def missing(self, track_ids: list[str]) -> list[str]:
         """Uncached ids, deduped, in input order."""
         cached = self.cached_ids(track_ids)

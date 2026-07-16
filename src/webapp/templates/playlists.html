@@ -18,7 +18,7 @@
     (~50 s/track). Each import is capped at <b>{{ cap }}</b> tracks so one
     playlist never monopolises the worker.</p>
 
-  {% if msg %}<p class="cap ok">{{ msg|safe }}</p>{% endif %}
+  {% if msg %}<p class="cap ok">{{ msg|safe }} <a href="/queue">Watch the queue →</a></p>{% endif %}
 
   {% if cards %}
   <div class="artist-grid">

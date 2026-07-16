@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Queue — Vercillo Analytics{% endblock %}
+{% block head_extra %}{% if rows %}<meta http-equiv="refresh" content="30">{% endif %}{% endblock %}
+{% block content %}
+<section class="dash">
+  <h1>Analysis queue</h1>
+
+  {% if rows %}
+  <p class="lede"><b>{{ n }}</b> track{{ 's' if n != 1 else '' }} in the queue ·
+    roughly <b>{{ eta_min }} min</b> to drain (~{{ sec_per_track }} s per track:
+    download, extract, spectrogram — one worker, first come first served).
+    This page refreshes itself every 30 s.</p>
+
+  <table class="lib-table">
+    <thead><tr><th>#</th><th>Song</th><th>Artist</th><th></th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+    <tr>
+      <td class="num">{{ loop.index }}</td>
+      <td>{{ r.name }}</td>
+      <td class="tartist">{{ r.artist }}</td>
+      <td>{% if r.status == 'running' %}<span class="cap ok">⚙ analyzing now</span>
+          {% else %}<span class="cap">queued</span>{% endif %}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="lede">The queue is empty — everything requested has been analyzed.</p>
+  <p class="cap"><a href="/library">Browse the library →</a></p>
+  {% endif %}
+</section>
+{% endblock %}
