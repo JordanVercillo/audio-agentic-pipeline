@@ -244,6 +244,26 @@ uv run python scripts/backup_cache.py --restore backups\<zip>   # STOP the app f
 - Sessions are in-memory: an app restart logs everyone out (they log in again).
 - Update flow: `git pull` → `uv sync --frozen` → restart the two processes.
 
+### 6a. H5 fallback — the shared link is never dead (owner deploy, ~2 min)
+
+When the app is off, the edge shows a bare Cloudflare error (530/1033 tunnel
+down, 502 app down). The Worker at
+[`infra/cloudflare/origin-fallback-worker.js`](../infra/cloudflare/origin-fallback-worker.js)
+replaces that with an honest "runs on-demand" page (503 + Retry-After so
+crawlers don't index the fallback as the site; `/healthz` and non-GET keep the
+raw error for machine callers; a healthy origin passes through untouched).
+
+Deploy (Cloudflare dashboard, free plan — 100k req/day):
+1. **Workers & Pages → Create → Worker** (name: `origin-fallback`), paste the
+   file, **Deploy**.
+2. Worker → **Settings → Domains & Routes → Add route**:
+   `vercilloanalytics.com/*` on zone `vercilloanalytics.com` (add
+   `www.vercilloanalytics.com/*` too — the www→apex redirect lives in the app,
+   which is down in exactly the case this covers).
+3. Verify: `stop_app.bat`, then browse the domain — the fallback card renders
+   (not error 1033); `curl -s -o NUL -w "%{http_code}" https://vercilloanalytics.com/healthz`
+   → `530`-family JSON, not HTML. `start_app.bat` → the real app returns.
+
 ## 7. Tailscale (the private plane)
 
 Keep it for remote admin: RDP/SSH to the PC, private testing of :8000 via
