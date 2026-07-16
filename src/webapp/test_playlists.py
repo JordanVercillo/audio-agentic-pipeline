@@ -212,7 +212,10 @@ def test_analyze_guest_and_no_scope_blocked(client, monkeypatch):
     client.cookies.set(config.SESSION_COOKIE, _seed_session(guest=True))
     g = client.post("/playlists/mine1/analyze", follow_redirects=False)
     assert g.status_code == 303 and g.headers["location"] == "/"
-    # authed but pre-scope token → re-consent, no enqueue
+    # authed but pre-scope token → re-consent, no enqueue.
+    # (clear first: the response above also set the cookie, and two same-name
+    # jar entries are sent in platform-dependent order — flaked on CI Linux)
+    client.cookies.clear()
     client.cookies.set(config.SESSION_COOKIE, _seed_session(scope="user-top-read"))
     n = client.post("/playlists/mine1/analyze", follow_redirects=False)
     assert n.status_code == 303 and n.headers["location"] == "/playlists"
