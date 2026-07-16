@@ -2,9 +2,11 @@
 
 [![CI](https://github.com/JordanVercillo/audio-agentic-pipeline/actions/workflows/ci.yml/badge.svg)](https://github.com/JordanVercillo/audio-agentic-pipeline/actions/workflows/ci.yml)
 
-**A personal music-analytics data platform that rebuilds the acoustic intelligence Spotify's API deleted** — Spotify listening history → YouTube audio acquisition → local 77-dim DSP → medallion warehouse → taste analytics → an **MCP server that lets AI agents query the warehouse directly.**
+**A personal music-analytics data platform that rebuilds the acoustic intelligence Spotify's API deleted** — Spotify listening history → YouTube audio acquisition → local 77-dim DSP → medallion warehouse → taste analytics → a **live multi-user web app** and an **MCP server that lets AI agents query the warehouse directly.**
 
 > When Spotify removed `/audio-features` for third-party apps in Feb 2026, every project that *consumed* those columns died. This one answers by becoming the **producer**: it acquires real audio, extracts its own feature space, and warehouses it for agents to query.
+
+**🌐 Live at [vercilloanalytics.com](https://vercilloanalytics.com)** — self-hosted at $0, on-demand by design (a Cloudflare Worker serves an honest fallback when it's off). Browse the [song library](https://vercilloanalytics.com/library) and any track's acoustic deep-dive with no login; "View as guest" tours the full personalized dashboard; five PKCE pilot seats personalize it end-to-end (top tracks + playlist imports → local DSP → your own taste analytics). The build story: [`docs/CASE_STUDY.md`](docs/CASE_STUDY.md).
 
 ![Taste map — 117 tracks in 77-dim acoustic space, clustered and genre-colored](artifacts/taste_map.png)
 
@@ -28,7 +30,7 @@ python scripts/build_report.py  # taste map + charts + single-file taste_report.
 
 ```text
 $ pytest
-148 passed
+417 passed
 
 $ uv run .claude/skills/warehouse-audit/audit_warehouse.py
 errors: none · flags: ALL-GREEN · fact 151×93 (82 DSP feature cols, exact-contract verified)
@@ -75,26 +77,45 @@ Spotify API (PKCE, no secret)        YouTube (yt-dlp + ffmpeg)
 | Signal | Where |
 |---|---|
 | **Reproducible env** | `pyproject.toml` + `uv.lock` (pinned graph); `requirements.txt` kept as a pip export |
-| **CI / quality gates** | GitHub Actions: `ruff` + `pytest` on every push & PR; 148 synthetic-data tests (no secrets) |
-| **Data quality** | deterministic `warehouse-audit` — bridge-key integrity, fact↔dim joins, **exact** feature-contract verification |
+| **CI / quality gates** | GitHub Actions: `ruff` + `pytest` on every push & PR; 417 synthetic-data tests (no secrets, no network) |
+| **Data quality** | deterministic `warehouse-audit` + `app-verify` — bridge-key integrity, fact↔dim joins, **exact** feature-contract verification, live-system flags |
+| **Production at $0** | self-hosted multi-user FastAPI app: session-scoped PKCE (no client secret exists), SQLite+WAL serving cache, DB-as-queue extraction worker, Cloudflare Tunnel + an origin-down fallback Worker |
 | **Agents on data infra** | MCP server with a two-layer security model (SELECT-only guard + a capability-removed DuckDB sandbox) |
 | **Scale-ready** | PySpark jobs for the distributed centroid/transform path (`spark/`) |
-| **Honest metrics** | drift measured as an effect size (σ-shift), sanity-anchored — see [`notes/engineering_journal.md`](notes/engineering_journal.md) #10 |
+| **Honest metrics** | drift measured as an effect size (σ-shift), sanity-anchored; estimator honesty rules — see [`notes/engineering_journal.md`](notes/engineering_journal.md) |
+| **AI-assisted engineering, documented** | a session harness (`.claude/`: living memory, skills, domain-expert agents) + a numbered lessons journal — the methodology is itself a portfolio piece: [`docs/CASE_STUDY.md`](docs/CASE_STUDY.md) |
 
 ## Repo map
 
 ```
-src/ingestion/   Spotify PKCE auth + fetchers + idempotent YouTube→MP3 acquisition
+src/ingestion/   Spotify PKCE auth + fetchers + idempotent, duration-verified YouTube→MP3 acquisition
 src/dsp/         librosa 77-dim feature extraction (the layer that replaces the vendor API)
 src/warehouse/   medallion transforms: staging → cleansed → modeled (star schema)
+src/store/       the serving layer: SQLite+WAL feature cache, DB-as-queue worker, clustering, dedup
+src/webapp/      the live app: PKCE auth, dashboard/analytics/artists/library/playlists, RAG ask-box
 src/analysis/    taste-drift engine + σ-normalized trend visuals + insight engine
 src/search/      FAISS index + UMAP taste map
 src/agent/       MCP server exposing the gold warehouse to AI agents (read-only)
 src/export/      single-file HTML portfolio report
 spark/           PySpark versions of the warehouse transforms
-scripts/         run_pipeline.py + build_{taste_map,insights,trend_charts,report}.py
+scripts/         run_pipeline.py, run_webapp.py, the worker, build_{taste_map,insights,report}.py
+infra/           the $0 deployment edge (Cloudflare origin-fallback Worker)
+.claude/         the session harness: skills, domain-expert agents, deterministic audits
 artifacts/       committed portfolio outputs (taste map, charts, report)
 legacy/          archived pre-pipeline v0 (not maintained)
+```
+
+## Run it yourself
+
+```bash
+uv sync                                   # reproducible env (Python 3.12+, ffmpeg on PATH)
+echo "SPOTIPY_CLIENT_ID=<your public client id>" > .env       # PKCE — no secret exists
+echo "SPOTIPY_REDIRECT_URI=http://127.0.0.1:8000/callback" >> .env
+uv run python scripts/run_webapp.py       # the app on :8000 (guest mode works with no Spotify app at all
+                                          #   once a demo snapshot exists; login needs your own dev-mode app)
+uv run python scripts/run_extraction_worker.py --loop   # the DSP worker (downloads + analyzes queued tracks)
+python scripts/run_pipeline.py            # or: the batch pipeline → warehouse → report
+pytest                                    # 417 tests — synthetic audio, no credentials, no network
 ```
 
 ## Design docs
@@ -105,4 +126,4 @@ legacy/          archived pre-pipeline v0 (not maintained)
 
 ---
 
-*Built by Jordan Vercillo. Portfolio target: Data Engineer – Platform (pipelines at scale, developer experience, data quality, and systems that let AI agents work with data infrastructure).*
+*Built by Jordan Vercillo. Portfolio target: Data Engineer – Platform (pipelines at scale, developer experience, data quality, and systems that let AI agents work with data infrastructure). MIT licensed.*

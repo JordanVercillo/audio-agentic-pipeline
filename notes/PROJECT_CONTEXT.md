@@ -608,7 +608,7 @@ narrative goes to `notes/engineering_journal.md`, plans to
 | `CLAUDE.md` | Bootloader: ground rules (bridge key, Parquet-only, API guardrails, synthetic tests). Stable. |
 | `SPEC.md` | **The approved design (2026-07-03):** vision, JD/resume-gap mapping, phases P0–P7 w/ acceptance criteria, non-goals, decision log. Supersedes CLAUDE_INSTRUCTIONS' roadmap + roadmap.md gameplan detail. |
 | `CLAUDE_INSTRUCTIONS.md` | The architecture manual: medallion design, module map, 77-dim feature spec, ADR-001…006, code standards, phase roadmap detail. Current-State table frozen at 2026-05-06. |
-| `PR_REFERENCE.md` | Historical: the Copilot PR write-up for Phases 1–4. Describes a webapp + git history this repo copy does NOT contain (see journal #4). |
+| `legacy/PR_REFERENCE.md` | Historical: the Copilot PR write-up for Phases 1–4. Describes a webapp + git history this repo copy does NOT contain (see journal #4). Moved out of root at P3.7 (public-visitor confusion). |
 | `notes/project_roadmap.md` | Severity-ranked weaknesses + the phase gameplan with exit criteria. |
 | `notes/engineering_journal.md` | Numbered insight journal — surprises, not progress. |
 | `llm_knowledge_base/` | **READ-ONLY synced copy** of the course knowledge base (technique cards, skill patterns, tooling matrix). Canonical: `language-models/kb/` — see `llm_knowledge_base/KB_PROVENANCE.md`; never edit here, propose upstream. |

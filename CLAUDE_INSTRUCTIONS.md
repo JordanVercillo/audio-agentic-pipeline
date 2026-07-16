@@ -99,7 +99,7 @@ audio-agentic-pipeline/
 │
 ├── notebooks/                 # Jupyter exploration notebooks
 ├── requirements.txt           # Project dependencies
-├── PR_REFERENCE.md            # PR documentation (Phases 1–4)
+├── legacy/PR_REFERENCE.md     # historical PR documentation (Phases 1–4; moved P3.7)
 └── CLAUDE_INSTRUCTIONS.md     # ← THIS FILE
 ```
 
