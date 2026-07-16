@@ -611,7 +611,7 @@ narrative goes to `notes/engineering_journal.md`, plans to
 | `legacy/PR_REFERENCE.md` | Historical: the Copilot PR write-up for Phases 1–4. Describes a webapp + git history this repo copy does NOT contain (see journal #4). Moved out of root at P3.7 (public-visitor confusion). |
 | `notes/project_roadmap.md` | Severity-ranked weaknesses + the phase gameplan with exit criteria. |
 | `notes/engineering_journal.md` | Numbered insight journal — surprises, not progress. |
-| `llm_knowledge_base/` | **READ-ONLY synced copy** of the course knowledge base (technique cards, skill patterns, tooling matrix). Canonical: `language-models/kb/` — see `llm_knowledge_base/KB_PROVENANCE.md`; never edit here, propose upstream. |
+| `llm_knowledge_base/` | **READ-ONLY synced copy** of the course knowledge base (technique cards, skill patterns, tooling matrix). Canonical: `language-models/kb/` — see `llm_knowledge_base/KB_PROVENANCE.md`; never edit here, propose upstream. **LOCAL-ONLY since P3.7 (D-21): excluded from the public repo + scrubbed from history; gitignored. A public clone won't have it — the llm-rag-expert charter + resume skill reference it as owner-machine context.** |
 | `src/ingestion/` | Spotify PKCE auth, top-items fetchers, YouTube→MP3 downloader (rate-limited, idempotent), Parquet serializer. Tests: `test_ingestion.py`, `test_audio_downloader.py`. |
 | `src/dsp/` | librosa loader, 77-dim feature extractor, batch collection extractor, optional PANNs embeddings. Tests: `test_dsp.py`, `test_collection_extractor.py`. |
 | `src/warehouse/` | Medallion: `staging.py` (Bronze) → `cleansed.py` (Silver) → `modeled.py` (Gold star schema; fact denormalized, agent-optimized per ADR-002). |
@@ -1051,7 +1051,7 @@ narrative goes to `notes/engineering_journal.md`, plans to
   Start-ScheduledTask ×2 → app-verify ALL-false. Then the standing fork:
   F-v2 or the (smaller) closeout.**
 - **2026-07-09 (session 14b — restart + invite flow + the 5-user reality):**
-  Jordan added tester the first pilot user in the Spotify dashboard (screenshot: "1/5
+  Jordan added the first pilot tester in the Spotify dashboard (screenshot: "1/5
   added") and stopped the app for the handoff. Agent restarted webapp +
   worker on the hardened code → app-verify ALL-GREEN (heartbeat live,
   public URL serving); task registration still owner's one-liner (classifier
@@ -1213,7 +1213,7 @@ narrative goes to `notes/engineering_journal.md`, plans to
   **Left off: spec + roadmap COMMITTED; nothing built yet. Next: build Epic H
   slice H0 (guest rendering core). NEW SESSION: run `/resume`.** Session close:
   **PILOT TRIAL T0 SET (owner ask): starts NOW — first window weekend of
-  2026-07-11/12, before Epic H** (2/5 seats filled: the first pilot user 07-09, the second pilot user 07-10).
+  2026-07-11/12, before Epic H** (2/5 seats filled: the first pilot user 07-09, the second 07-10).
   Full per-tester runbook in VISION_SPECS §"Pilot trial — T0": start_app →
   invite ("~1–1.5 h, durable queue, come back anytime") → stagger testers →
   post-drain `train_clusters.py` (map dots need a retrain; analytics is

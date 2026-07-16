@@ -480,7 +480,7 @@ runbook stands — do NOT hot-patch a live drain.**
 
 ## Pilot trial — T0 OPENS NOW (2026-07-11, owner decision)
 
-**2/5 Spotify dev-mode seats are filled** (the first pilot user added 07-09, the second pilot user 07-10)
+**2/5 Spotify dev-mode seats are filled** (the first pilot user added 07-09, the second 07-10)
 and the trial starts **immediately — first coordinated window the weekend of
 2026-07-11/12**, deliberately BEFORE Epic H: real tester feedback steers H's
 copy/polish, and the pilot flow is already proven live (52 s queued→done,

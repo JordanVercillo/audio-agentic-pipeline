@@ -33,3 +33,6 @@ logs/
 
 # ── Cache backups (contain the db + spectrograms — SELF_HOSTING §5) ──
 backups/
+
+# D-21: course-material KB is local-only — excluded from the public repo (P3.7 scrub)
+llm_knowledge_base/
