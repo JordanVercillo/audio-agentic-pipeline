@@ -892,10 +892,23 @@ second correction wave.
   `infra/cloudflare/origin-fallback-worker.js` — origin-down family
   (502/504/521-523/530) → an honest 503 "runs on-demand" card; healthy origin
   passes through untouched; /healthz + non-GET keep machine-readable truth.
-- **P3.7 — Epic L lite → flip (D-38, the exit gate):** dead-file sweep ·
-  `docs/CASE_STUDY.md` (architecture, techniques, the Claude-harness
-  methodology) · README rewrite · how-to → then gitleaks · KB exclusion (D-21)
-  · LICENSE · `git filter-repo` scrub (D-20) · **flip public**.
+- **P3.7 — Epic L lite → flip (D-38, the exit gate). ✅ READY TO FLIP
+  (2026-07-16, Fable session 39): every item done except the flip itself —
+  the owner's hand.** Dead-file sweep (PR_REFERENCE→legacy, role
+  prompt→.agent_prompts) · `docs/CASE_STUDY.md` · README product-era pass +
+  run-it-yourself · MIT LICENSE · gitleaks 8.24.3 over ALL history (3 findings
+  = the one rotated-dead secret) · agile-coach pre-flip review (caught 3
+  blockers: employer email in commit metadata → mailmapped to live.com; a 2nd
+  pilot name → genericized; missing KB .gitignore → added) · `git filter-repo`
+  ×2 (replace-text: dead secret + both pilot names · mailmap · KB removed from
+  all history D-21 · ALL `__pycache__`/.pyc stripped — the secret survived
+  inside committed BYTECODE from the original upload; caught by the
+  post-rewrite verification sweep, journal #32) · force-pushed · re-verified
+  clean (gitleaks "no leaks found"; full-value/name/email/KB/pyc greps all
+  zero) · 417 tests green · CI green on the rewritten history (after fixing a
+  test-only cookie-jar ordering flake) · app-verify ALL-FALSE. **Remaining:
+  GitHub Settings → Danger Zone → Change visibility → Public (owner). Phase 3
+  EXITS when the flip lands.**
 
 **Phase-3 accept:** all six nav surfaces live + browser-validated at
 375/768/1280 (anon, guest, authed × the gate matrix); playlist ingest proven on
