@@ -253,16 +253,21 @@ replaces that with an honest "runs on-demand" page (503 + Retry-After so
 crawlers don't index the fallback as the site; `/healthz` and non-GET keep the
 raw error for machine callers; a healthy origin passes through untouched).
 
-Deploy (Cloudflare dashboard, free plan — 100k req/day):
-1. **Workers & Pages → Create → Worker** (name: `origin-fallback`), paste the
-   file, **Deploy**.
-2. Worker → **Settings → Domains & Routes → Add route**:
-   `vercilloanalytics.com/*` on zone `vercilloanalytics.com` (add
-   `www.vercilloanalytics.com/*` too — the www→apex redirect lives in the app,
-   which is down in exactly the case this covers).
-3. Verify: `stop_app.bat`, then browse the domain — the fallback card renders
-   (not error 1033); `curl -s -o NUL -w "%{http_code}" https://vercilloanalytics.com/healthz`
-   → `530`-family JSON, not HTML. `start_app.bat` → the real app returns.
+**✅ DEPLOYED 2026-07-16** (wrangler CLI, owner OAuth: `npx wrangler login` →
+`npx wrangler deploy` with a config naming both routes; worker `origin-fallback`,
+routes `vercilloanalytics.com/*` + `www.vercilloanalytics.com/*`). Dashboard
+alternative: **Workers & Pages → Create → Worker** → paste the file → Deploy →
+Settings → Domains & Routes → add both routes.
+
+Verified live (2026-07-16, full loop): app up → all routes pass through
+untouched (200s, `/healthz` `{"ok":true}`); `stop_app` → the domain serves the
+fallback card (**503** + `Retry-After: 3600`, "Demo offline — by design") and
+`/healthz` returns **503 JSON** `{"ok":false,"origin":"unreachable"}`;
+`start_app` → the real app returns. Two live-learned edge behaviors baked into
+the worker: the tunnel's origin-down answer is a real 502/530 HTML *response*
+(not a fetch throw), and **Cloudflare replaces a Worker response carrying
+502/504 with its own error page** — the fallback must ride a 503 to keep
+authorship of the body.
 
 ## 7. Tailscale (the private plane)
 

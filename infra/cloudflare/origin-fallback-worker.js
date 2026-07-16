@@ -79,13 +79,17 @@ export default {
     if (response !== null && !ORIGIN_DOWN.has(response.status)) {
       return response; // healthy (or an app-level error the app chose) — untouched
     }
-    // Machine callers get the truth, not HTML.
+    // Machine callers get the truth, not HTML. Two live-learned constraints:
+    // the tunnel's origin-down answer is a REAL 502/530 response with an HTML
+    // body (it doesn't throw), and Cloudflare REPLACES a Worker response
+    // carrying 502/504 with its standard error page (body and all) — so the
+    // JSON must ride a 503, which passes through untouched (proven: the card).
     const url = new URL(request.url);
     if (request.method !== "GET" || url.pathname === "/healthz") {
-      return response !== null
-        ? response
-        : new Response('{"ok":false,"origin":"unreachable"}',
-                       { status: 530, headers: { "content-type": "application/json" } });
+      return new Response('{"ok":false,"origin":"unreachable"}', {
+        status: 503,
+        headers: { "content-type": "application/json", "retry-after": "3600" },
+      });
     }
     return new Response(FALLBACK_HTML, {
       status: 503,
