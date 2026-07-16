@@ -879,10 +879,19 @@ second correction wave.
   `guest_dashboard_context()` (zero API calls — tests rig fetchers to explode) ·
   `/dashboard` branches authed→live / guest→replica / else→/ · `/guest` lands
   on /dashboard · ask-form authed-gated · nav shows Dashboard to guests.
-- **P3.6 — H5 + H6 + O2:** the $0 Cloudflare-Worker origin-down fallback page ·
-  landing copy (browse freely / login personalizes / demo) · yt-dlp match
-  hardening (duration vs duration_ms, official-audio preference, logged match
-  confidence — matters MORE now that playlists grow acquisition volume).
+- **P3.6 — H5 + H6 + O2. ✅ SHIPPED (2026-07-16, commits 0562601/486384f/
+  22f87e9, 417 tests, deployed ALL-FALSE; H5 Worker deploy = owner's 2-min
+  dashboard step, doc'd in SELF_HOSTING §6a).** O2: `resolve_youtube_match`
+  scores ytsearch5 candidates by title keywords + duration-vs-`duration_ms`
+  bands (pure, offline-tested), logs every decision, records
+  `match_confidence` per extraction (`_ADDED_COLUMNS` FLOAT, preserved on
+  rewrites). **Heuristic-v1 weights are selection+recording ONLY — no hard
+  rejection; the rejection threshold awaits corpus evidence (owner/Fable
+  signs).** H6: the landing explains the three access tiers (browse freely /
+  demo / login, demo tier honestly disappears without a snapshot). H5:
+  `infra/cloudflare/origin-fallback-worker.js` — origin-down family
+  (502/504/521-523/530) → an honest 503 "runs on-demand" card; healthy origin
+  passes through untouched; /healthz + non-GET keep machine-readable truth.
 - **P3.7 — Epic L lite → flip (D-38, the exit gate):** dead-file sweep ·
   `docs/CASE_STUDY.md` (architecture, techniques, the Claude-harness
   methodology) · README rewrite · how-to → then gitleaks · KB exclusion (D-21)
