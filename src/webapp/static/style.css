@@ -388,6 +388,17 @@ table.tax thead th, table.tax tbody th { font-weight: 600; padding: .3rem .5rem;
 .art-sm.art-ph { display: grid; place-items: center; background: var(--panel-2); color: var(--muted); }
 .dup { display: block; color: var(--muted); }
 
+/* Landing access tiers (H6 / P3.6) */
+.tiers { display: grid; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+  gap: .75rem; margin: 1.25rem 0 .5rem; text-align: left; }
+.tier { background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+  padding: .8rem .9rem; }
+.tier-name { display: block; font-weight: 600; font-size: .82rem;
+  text-transform: uppercase; letter-spacing: .04em; color: var(--spotify);
+  margin-bottom: .3rem; }
+.tier p { margin: 0; font-size: .88rem; color: var(--muted); }
+.tier a { color: var(--ink); }
+
 /* Playlists (P3.4) */
 .pl-analyze { margin: .4rem 0 0; }
 .pl-analyze .btn { margin: 0; font-size: .85rem; padding: .3rem .7rem; }

@@ -822,6 +822,20 @@ def test_landing_shows_guest_button_when_demo_present(client, monkeypatch):
     assert 'href="/guest"' in client.get("/").text
 
 
+def test_landing_explains_access_tiers(client, monkeypatch):
+    # H6: the split is explained up front — browse freely / demo / login
+    monkeypatch.setattr("src.webapp.app.load_demo_profile",
+                        lambda: {"range_ids": {"long_term": ["x"]}})
+    r = client.get("/")
+    assert "Browse freely" in r.text and 'href="/library"' in r.text  # D-18 public
+    assert "Demo the experience" in r.text                            # guest tier
+    assert "Make it yours" in r.text and "capped at 5" in r.text      # pilot tier
+    # without a demo snapshot the demo tier honestly disappears
+    monkeypatch.setattr("src.webapp.app.load_demo_profile", lambda: None)
+    r2 = client.get("/")
+    assert "Demo the experience" not in r2.text and "Browse freely" in r2.text
+
+
 # ── dashboard context: reads the cache, flags analyzed, queues misses ───────
 def test_build_dashboard_context(monkeypatch, tmp_path):
     from ..store.cache import FeatureCache

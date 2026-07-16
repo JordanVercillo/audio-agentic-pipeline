@@ -13,6 +13,30 @@
     <a class="btn" href="/login">Log in with Spotify</a>
     {% if has_demo %}<a class="btn ghost" href="/guest">or explore a live demo →</a>
     <p class="cap" style="margin:.4rem 0 0">No account needed — the demo loads Jordan's own taste, read-only.</p>{% endif %}
+
+    <div class="tiers">
+      <div class="tier">
+        <span class="tier-name">Browse freely</span>
+        <p>No login needed for the corpus itself: the full
+          <a href="/library">song library</a> — every track's locally-extracted
+          acoustic features, spectrogram, and deep-dive — and the live
+          <a href="/queue">analysis queue</a>.</p>
+      </div>
+      {% if has_demo %}
+      <div class="tier">
+        <span class="tier-name">Demo the experience</span>
+        <p><a href="/guest">View as guest</a> loads Jordan's own taste read-only:
+          the full dashboard, analytics, artists, and recommendations — exactly
+          what a login gets, minus the login.</p>
+      </div>
+      {% endif %}
+      <div class="tier">
+        <span class="tier-name">Make it yours</span>
+        <p>A login personalizes everything to <em>your</em> listening — your top
+          tracks are analyzed into the corpus, and you can import your own
+          playlists. Pilot seats are capped at 5 (below).</p>
+      </div>
+    </div>
     <div class="insight invite">
       <span class="insight-badge">Private demo — invite only</span>
       <p>
