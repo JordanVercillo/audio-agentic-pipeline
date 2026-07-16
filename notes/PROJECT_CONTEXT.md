@@ -270,11 +270,20 @@
   worker-true FIFO + ~50s/track ETA + 30s self-refresh; linked from the
   playlists flash, library "analyzing…" cells, artist Analyze caption)
   ⑤ app-verify QUEUE_STUCK re-semantics (progress-based, not oldest-pending age
-  — a deep draining import backlog is healthy, journal #31). **NOW NEXT:
-  P3.5 — guest dashboard replica (owner ask): extend `snapshot_demo_profile.py`
-  to carry per-range track entries so "View as guest" renders the full
-  dashboard, not just analytics — an OPUS slice per the routing table.** Parked:
-  MPD-audio, Epic M, instrumentalness, dupe-pruning.
+  — a deep draining import backlog is healthy, journal #31). ✅ **P3.5 GUEST
+  DASHBOARD REPLICA SHIPPED (2026-07-16, commit 3158f49, 409 tests, deployed
+  ALL-FALSE, guest path browser-validated live: 117/117 coverage · drift
+  0.141σ · artist genres joined · ask box honestly gated):**
+  `guest_dashboard_context()` builds the SAME dashboard context from snapshot
+  ids + the cache alone (zero API calls — tests rig the fetchers to explode);
+  snapshot schema UNCHANGED (derive-don't-transcribe, journal #27 — display
+  data from `library_rows` + `all_artist_meta`, so no re-snapshot dependency);
+  `/guest` → `/dashboard`; nav shows Dashboard to guests. **NOW NEXT:
+  P3.6 — H5 (the $0 Cloudflare-Worker origin-down fallback page) + H6 (landing
+  copy: browse freely / login personalizes / demo) + O2 (yt-dlp match
+  hardening) — the last build slice before P3.7 (case-study + the PUBLIC
+  GitHub flip, a Fable slice).** Parked: MPD-audio, Epic M, instrumentalness,
+  dupe-pruning.
 - ✅ **SECURITY + ROBUSTNESS REVIEW (2026-07-09, commits 26891b1←): whole-app
   audit via 2 review subagents + a strategic pass; 7 real fixes, all tested,
   deployed, 286 green.** **Security surface came back STRONG** — auth, session
@@ -1478,3 +1487,27 @@ narrative goes to `notes/engineering_journal.md`, plans to
   now visible on /queue. **Left off: bug pass COMPLETE + pushed. Next build =
   P3.5 guest dashboard replica — an OPUS slice per the routing (switch off
   Fable). NEW SESSION: run `/resume`.**
+- **2026-07-16 (session 37 — P3.5 guest dashboard replica via `/orchestrator`,
+  Opus 4.8 per the routing; no fan-out — single-domain, file-level spec):**
+  Built in 1 commit (3158f49) + spec (182d202). `guest_dashboard_context(prof,
+  cache)`: the exact build_dashboard_context shape from snapshot ids + cache
+  ALONE — per-range tracks (rank from list position, name/art/popularity from
+  `library_rows`, ✓/hover-feat from features), artists joined to
+  `all_artist_meta` for genres/images (P3.1's serving path earning its keep),
+  absolute_profile + drift recomputed, coverage honest, analyzing=0. **One
+  deliberate spec deviation (journal #27): snapshot schema UNCHANGED** — the
+  spec said carry display fields in the JSON; deriving at render kills the
+  "owner must re-snapshot after P3.1" ordering dependency and can't go stale.
+  `/dashboard` branches authed→live / guest→replica / anon→home; `/guest` now
+  lands on /dashboard; ask box authed-gated w/ honest caption; nav Dashboard
+  for guests. **409 green (+2 — the replica test rigs fetch_top_tracks/artists
+  to EXPLODE, proving zero API calls), ruff clean, deployed, app-verify
+  ALL-FALSE, guest path browser-validated LIVE:** 117/117 analyzed, profile
+  (126 bpm upbeat), drift 0.141σ "remarkably stable", 15 artists w/ genres,
+  ranked per-range tracks w/ ✓, full guest nav. Public /guest 303s correctly.
+  (Screenshot renderer in the Browser pane still hangs — text + a11y-tree reads
+  used as proof, second session running.) No journal entry (applied #27, no
+  new lesson). **Left off: P3.5 COMPLETE — Phase 3 build slices remaining:
+  P3.6 (H5 fallback page + H6 landing copy + O2 yt-dlp hardening, Opus) then
+  P3.7 (case-study + PUBLIC GitHub flip — FABLE, the exit gate). NEW SESSION:
+  run `/resume`.**
