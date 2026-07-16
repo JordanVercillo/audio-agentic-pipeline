@@ -257,12 +257,23 @@
   `/playlists` (authed: re-consent CTA vs card list) + `POST /playlists/{id}/analyze`
   (scope+membership gated before any fetch → server-side re-fetch → cap-as-total
   slice `[:100]` D-41 → remember_meta → enqueue O1; coverage via session flash,
-  XSS-safe). **⚠️ ONE OWNER STEP LEFT: the authed live path (re-login to grant
-  the scope → /playlists → Analyze a small playlist → /status) is Jordan's
-  click-path — code + anon gates validated, but nobody has exercised the real
-  Spotify re-consent yet.** **NOW NEXT: P3.5 — guest dashboard replica (owner
-  ask): extend `snapshot_demo_profile.py` to carry per-range track entries so
-  "View as guest" renders the full dashboard, not just analytics.** Parked:
+  XSS-safe). ✅ **AUTHED PATH FIELD-VALIDATED (owner, session 36):** Jordan
+  re-consented live and imported real playlists (56 + 264-track, logs prove the
+  whole chain) — his field reports drove the **session-36 bug pass (commits
+  d88d173/0316cf9/74f12e4, 407 tests, deployed, app-verify ALL-FALSE):**
+  ① `/nan` 404s (coverless playlist → truthy NaN `<img src>`) ② **skip-then-cap**
+  (Analyze now skips analyzed AND live-queued tracks first — `cache.active_ids()`
+  — then caps the genuinely-new; re-Analyze walks deeper each time) ③ the
+  "artists page gets stuck" hang (spotipy retries+Retry-After slept renders on
+  429'd garnish → `client_from_session` retries=0 + a 10-min per-app memo for
+  non-empty artist top-10s) ④ **the `/queue` surface** (public; running-first +
+  worker-true FIFO + ~50s/track ETA + 30s self-refresh; linked from the
+  playlists flash, library "analyzing…" cells, artist Analyze caption)
+  ⑤ app-verify QUEUE_STUCK re-semantics (progress-based, not oldest-pending age
+  — a deep draining import backlog is healthy, journal #31). **NOW NEXT:
+  P3.5 — guest dashboard replica (owner ask): extend `snapshot_demo_profile.py`
+  to carry per-range track entries so "View as guest" renders the full
+  dashboard, not just analytics — an OPUS slice per the routing table.** Parked:
   MPD-audio, Epic M, instrumentalness, dupe-pruning.
 - ✅ **SECURITY + ROBUSTNESS REVIEW (2026-07-09, commits 26891b1←): whole-app
   audit via 2 review subagents + a strategic pass; 7 real fixes, all tested,
@@ -1439,3 +1450,31 @@ narrative goes to `notes/engineering_journal.md`, plans to
   /playlists → Analyze a small playlist → watch /status. Adding scopes means all
   5 seats re-consent on next login. Next build = P3.5 guest dashboard replica.
   NEW SESSION: run `/resume`.**
+- **2026-07-15/16 (session 36 — the field-report bug pass via `/orchestrator`,
+  Fable 5; no fan-out — the logs held the evidence):** Jordan exercised the
+  authed P3.4 path live (re-consent + real imports: 56 + 264-track playlists —
+  the P3.4 loop is CLOSED) and filed 3 reports; the webapp log added a 4th.
+  Diagnosis first, all from logs: ① `GET /nan` ×5 — coverless playlist →
+  pandas NaN (truthy) → `<img src="nan">` (journal #30's class on the display
+  path; isinstance-str in `playlist_cards`). ② his 264-track import capped to
+  the first 100 rows INCLUDING analyzed ones → **skip-then-cap**: dedupe →
+  skip `cached_ids ∪ active_ids` (new cache read) → cap the genuinely-new;
+  coverage copy reports queued/skipped/held-by-cap. ③ "artists page gets
+  stuck" — every artist-page GET live-fetched the top-10 garnish; spotipy's
+  default 3-retries + Retry-After honoring slept renders on 429s from his
+  heavy browsing → `client_from_session` retries=0 (all call sites already
+  absent-safe) + a per-app 10-min memo for NON-EMPTY top-10s (dark not cached;
+  memo on app.state, tests bust it). ④ **`/queue`** (the owner ask): running-
+  first + claim_next's own requested_at FIFO (`cache.queue_rows()`), ~50s/track
+  ETA, 30s self-refresh, public (library already shows "analyzing…" publicly);
+  linked from playlists flash / library cells / artist caption. ⑤ Bonus:
+  app-verify's QUEUE_STUCK false-alarmed on the healthy 48-deep backlog →
+  re-semantics to progress-based (pending AND no updated_at movement; journal
+  #31). Commits d88d173/0316cf9/74f12e4; **407 green (+6), ruff clean,
+  deployed, app-verify ALL-FALSE (live: pending 36, progress_age 4.2s),
+  /queue browser-validated on the REAL draining queue (48 tracks, Rise Against
+  import, FIFO order visible).** Also observed: an app restart orphans the
+  running job → `requeue_stale_running` reclaims in ≤15 min — existing design,
+  now visible on /queue. **Left off: bug pass COMPLETE + pushed. Next build =
+  P3.5 guest dashboard replica — an OPUS slice per the routing (switch off
+  Fable). NEW SESSION: run `/resume`.**

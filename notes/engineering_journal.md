@@ -755,3 +755,30 @@ round-tripped through a DataFrame reveals it.
 > contract requires, not the truthiness of what you happen to get. `if x:` trusts
 > Python's coercions; `isinstance(x, str) and x` trusts your contract — and pandas
 > turns `None` into a truthy `nan` that only the second one catches.*
+
+### 31. A monitoring threshold encodes a workload assumption — new features can break the audit, not the code (2026-07-16)
+
+The session-36 bug pass ended with a routine `app-verify` — which came back
+`QUEUE_STUCK: true` while I was literally watching the worker drain the queue
+(48 → 36 jobs during the session, progress every ~50 s). Nothing was stuck.
+The flag keyed on *the oldest pending job's age* (> 15 min ⇒ stuck) — a
+perfectly sound proxy in the era it was written, when the queue held a handful
+of a login's tracks and 15 idle minutes really meant abandonment. P3.4's
+playlist import changed the workload's shape: a 100-track backlog means the
+*tail* legitimately waits ~80 minutes while the head is consumed on schedule.
+The audit's assumption, not the system, had failed. Re-semantics: stuck =
+pending work exists AND **no job row has changed state** recently
+(`MAX(updated_at)` across the table) — progress, not queue depth or tail age,
+is the honest signal that something is consuming.
+
+**The realization:** every alarm threshold silently encodes a model of normal
+workload, and shipping a feature that changes the workload's shape can falsify
+the monitor while the system stays healthy. A false alarm erodes exactly the
+trust an audit exists to provide — the "all-green means all-good" contract.
+When a feature multiplies a queue depth, a payload size, or a latency profile,
+the definition-of-done includes re-reading the monitors that watch it.
+
+> *When you change what "normal" looks like, re-derive the alarms that were
+> calibrated to the old normal. Alert on the absence of progress, not on the
+> size or age of a healthy backlog — depth is a plan; stalled progress is a
+> problem.*
