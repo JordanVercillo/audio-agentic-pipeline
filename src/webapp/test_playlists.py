@@ -42,11 +42,22 @@ def test_empty_df_is_safe():
     assert playlists.playlist_cards(pd.DataFrame(), "me") == []
 
 
-def test_coverage_line_reports_new_already_and_cap():
-    line = playlists.coverage_line(total=150, new_count=90, already_count=10, cap=100)
-    assert "90" in line and "already engineered" in line and "capped at 100 of 150" in line
-    clean = playlists.coverage_line(total=12, new_count=12, already_count=0, cap=100)
-    assert "12" in clean and "capped" not in clean
+def test_nan_cover_becomes_none_not_truthy():
+    # journal #30 on the display path: image_url None → pandas nan (truthy) →
+    # <img src="nan"> → the browser GETs /nan. Must map to None.
+    df = pd.DataFrame([{"playlist_id": "p1", "playlist_name": "NoCover",
+                        "owner_id": "me", "owner_name": "Me",
+                        "collaborative": False, "track_count": 3,
+                        "image_url": None}])
+    card = playlists.playlist_cards(df, "me")[0]
+    assert card["image"] is None
+
+
+def test_coverage_line_reports_queued_skipped_and_remaining():
+    line = playlists.coverage_line(queued=100, skipped=40, remaining=24, cap=100)
+    assert "100" in line and "skipped <b>40</b>" in line and "24" in line and "cap" in line
+    clean = playlists.coverage_line(queued=12, skipped=0, remaining=0, cap=100)
+    assert "12" in clean and "skipped" not in clean and "cap" not in clean
 
 
 # ── route matrix ─────────────────────────────────────────────────────────────
@@ -102,18 +113,24 @@ def test_playlists_authed_with_scope_lists_own_only(client, monkeypatch):
 
 # ── Analyze POST (P3.4c) ─────────────────────────────────────────────────────
 class _FakeCache:
-    def __init__(self):
+    def __init__(self, cached=None, active=None):
+        self.cached = cached or set()
+        self.active = active or set()
         self.enqueued: list = []
         self.remembered: list = []
 
     def cached_ids(self, ids):
-        return set()  # nothing pre-cached
+        return {i for i in ids if i in self.cached}
+
+    def active_ids(self, ids):
+        return {i for i in ids if i in self.active}
 
     def remember_meta(self, recs):
         self.remembered = recs
 
     def enqueue(self, ids):
         self.enqueued = ids
+        return list(ids)
 
 
 def _mock_membership(monkeypatch):
@@ -121,18 +138,22 @@ def _mock_membership(monkeypatch):
     monkeypatch.setattr("src.webapp.app.fetch_user_playlists", lambda c: _PL_DF)
 
 
-def test_analyze_caps_total_before_enqueue(client, monkeypatch):
+def test_analyze_cap_spends_slots_on_new_tracks_only(client, monkeypatch):
+    # owner report (session 36): analyzed/queued tracks must be SKIPPED first,
+    # the cap applied to what's genuinely new — re-Analyze walks deeper each time.
     _mock_membership(monkeypatch)
     big = pd.DataFrame([{"spotify_track_id": f"t{i}", "track_name": f"S{i}",
                          "artist_names": "A"} for i in range(2000)])
     monkeypatch.setattr("src.webapp.app.fetch_playlist_tracks", lambda pid, c: big)
-    fake = _FakeCache()
+    fake = _FakeCache(cached={f"t{i}" for i in range(30)},      # first 30 analyzed
+                      active={f"t{i}" for i in range(30, 50)})  # next 20 already queued
     monkeypatch.setattr("src.webapp.app._feature_cache", lambda: fake)
     client.cookies.set(config.SESSION_COOKIE, _seed_session(scope=config.SCOPES))
     r = client.post("/playlists/mine1/analyze", follow_redirects=False)
     assert r.status_code == 303 and r.headers["location"] == "/playlists"
-    assert len(fake.enqueued) == config.PLAYLIST_IMPORT_CAP  # a TOTAL, not page size
-    assert fake.enqueued == [f"t{i}" for i in range(config.PLAYLIST_IMPORT_CAP)]
+    cap = config.PLAYLIST_IMPORT_CAP
+    assert len(fake.enqueued) == cap                          # cap = a TOTAL of NEW tracks
+    assert fake.enqueued == [f"t{i}" for i in range(50, 50 + cap)]  # skip → then cap
 
 
 def test_analyze_excludes_local_and_none_ids(client, monkeypatch):

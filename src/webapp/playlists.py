@@ -32,13 +32,16 @@ def playlist_cards(df: Optional[pd.DataFrame], me_id: Optional[str]) -> list[dic
     for _, r in df.iterrows():
         if not _is_mine(r, me_id):
             continue
+        # journal #30: a missing cover comes back from the DataFrame as a TRUTHY
+        # float('nan') — `{% if c.image %}` passes it and the browser GETs /nan.
+        img = r.get("image_url")
         cards.append({
             "id": r.get("playlist_id"),
             "name": r.get("playlist_name") or r.get("playlist_id"),
             "owner": r.get("owner_name") or "",
             "collaborative": bool(r.get("collaborative")),
             "track_count": int(r.get("track_count") or 0),
-            "image": r.get("image_url"),
+            "image": img if isinstance(img, str) and img else None,
         })
     return cards
 
@@ -49,12 +52,14 @@ def importable_ids(df: Optional[pd.DataFrame], me_id: Optional[str]) -> set[str]
     return {c["id"] for c in playlist_cards(df, me_id)}
 
 
-def coverage_line(total: int, new_count: int, already_count: int, cap: int) -> str:
-    """Honest post-Analyze summary: queued-new vs already-engineered, and whether
-    the cap clipped the import. `total` is the pre-cap track count."""
-    msg = f"Queued <b>{new_count}</b> new track{'s' if new_count != 1 else ''} for analysis"
-    if already_count > 0:
-        msg += f" · <b>{already_count}</b> already engineered"
-    if total > cap:
-        msg += f" · capped at {cap} of {total} (import more later)"
+def coverage_line(queued: int, skipped: int, remaining: int, cap: int) -> str:
+    """Honest post-Analyze summary. `queued` = newly queued, `skipped` = already
+    analyzed or already in the queue (cap slots are NEVER spent on these),
+    `remaining` = new tracks beyond the cap (a later Analyze picks them up)."""
+    msg = f"Queued <b>{queued}</b> new track{'s' if queued != 1 else ''} for analysis"
+    if skipped > 0:
+        msg += f" · skipped <b>{skipped}</b> already analyzed or queued"
+    if remaining > 0:
+        msg += (f" · <b>{remaining}</b> more held by the {cap}-track cap — "
+                f"run Analyze again once these finish")
     return msg + "."

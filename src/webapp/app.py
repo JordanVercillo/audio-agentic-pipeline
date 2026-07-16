@@ -19,6 +19,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import time
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Optional
@@ -693,6 +694,28 @@ def create_app() -> FastAPI:
 
     # ── the Artists surface (Epic P / P3.2) ─────────────────────────────────
     _ARTIST_ID_RE = re.compile(r"[0-9A-Za-z]{8,40}")  # base62 guard (id → URL/queries)
+
+    # Borrowed-time garnish memo (session-36 fix): the artist page re-fetched the
+    # live top-10 on EVERY view + analyze redirect — heavy browsing rate-limited
+    # the endpoint and, with spotipy's old retry/Retry-After behavior, "the
+    # artists page gets stuck". Non-empty results memoize for 10 min; empty/dark
+    # results are NOT cached (the endpoint may come back). On app.state for tests.
+    _ARTIST_TOP_TTL = 600.0
+    artist_top_cache: dict[str, tuple[float, Any]] = {}
+    app.state.artist_top_cache = artist_top_cache
+
+    def _artist_top_cached(artist_id: str, session: dict[str, Any]):
+        now = time.monotonic()
+        hit = artist_top_cache.get(artist_id)
+        if hit is not None and now - hit[0] < _ARTIST_TOP_TTL:
+            return hit[1]
+        try:
+            df = fetch_artist_top_tracks(artist_id, auth_web.client_from_session(session))
+        except Exception:  # noqa: BLE001 — garnish, never fatal
+            df = None
+        if df is not None and not df.empty:
+            artist_top_cache[artist_id] = (now, df)
+        return df
     _TRACK_ID_RE = re.compile(r"[0-9A-Za-z]{1,64}")   # base62; rejects path-traversal on public /song
 
     @app.get("/artists", response_class=HTMLResponse)
@@ -757,10 +780,7 @@ def create_app() -> FastAPI:
         live_dark = False
         can_analyze = False
         if auth_web.is_authenticated(session):
-            try:
-                df = fetch_artist_top_tracks(artist_id, auth_web.client_from_session(session))
-            except Exception:  # noqa: BLE001 — garnish, never fatal
-                df = None
+            df = _artist_top_cached(artist_id, session)
             if df is None or df.empty:
                 live_dark = True
             else:
@@ -791,10 +811,8 @@ def create_app() -> FastAPI:
         if not _ARTIST_ID_RE.fullmatch(artist_id or ""):
             return RedirectResponse("/artists", status_code=303)
         cache = _feature_cache()
-        try:
-            df = fetch_artist_top_tracks(artist_id, auth_web.client_from_session(session))
-        except Exception:  # noqa: BLE001
-            df = None
+        # server-side data (≤10-min TTL cache of our OWN fetch) — never form data
+        df = _artist_top_cached(artist_id, session)
         if df is not None and not df.empty:
             recs = df.to_dict("records")[:10]
             cache.remember_meta(recs)
@@ -893,17 +911,22 @@ def create_app() -> FastAPI:
         recs = [] if tdf is None or tdf.empty else [
             r for r in tdf.to_dict("records")
             if isinstance(r.get("spotify_track_id"), str) and r["spotify_track_id"]]
-        total = len(recs)
-        selected = recs[:cap]                                   # cap is a TOTAL, not page size
-        ids = [r["spotify_track_id"] for r in selected]
-        already = _feature_cache().cached_ids(ids)
-        new_ids = [i for i in ids if i not in already]
+        # SKIP-then-CAP (owner report, session 36): cap slots are spent ONLY on
+        # genuinely-new tracks — never on already-analyzed or already-queued ones —
+        # so re-running Analyze walks deeper into the playlist each time.
+        cache = _feature_cache()
+        seen: set[str] = set()
+        uniq = [r for r in recs
+                if not (r["spotify_track_id"] in seen or seen.add(r["spotify_track_id"]))]
+        ids = [r["spotify_track_id"] for r in uniq]
+        skip = cache.cached_ids(ids) | cache.active_ids(ids)
+        fresh = [r for r in uniq if r["spotify_track_id"] not in skip]
+        selected = fresh[:cap]                                  # cap is a TOTAL of NEW tracks
         if selected:
-            cache = _feature_cache()
             cache.remember_meta(selected)
-            cache.enqueue(new_ids)                              # O1 dedup guard applies
+        queued = cache.enqueue([r["spotify_track_id"] for r in selected])  # O1 guard applies
         session["pl_msg"] = playlists_mod.coverage_line(
-            total, len(new_ids), len(already), cap)
+            len(queued), len(uniq) - len(fresh), len(fresh) - len(selected), cap)
         return RedirectResponse("/playlists", status_code=303)
 
     @app.get("/library", response_class=HTMLResponse)

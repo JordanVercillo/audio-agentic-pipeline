@@ -216,12 +216,31 @@ def test_artist_page_authed_live_rows_and_analyze(client, monkeypatch, tmp_path)
     assert "official top 10" in r.text and "New Cut" in r.text
     assert "Analyze these" in r.text                      # un-analyzed row → button
     assert tc.get_meta("new9")["track_name"] == "New Cut"  # live rows persisted to meta
-    # the borrowed-time endpoint going dark → honest caption, page still renders
+    # the borrowed-time endpoint going dark → honest caption, page still renders.
+    # (Bust the 10-min top-10 memo first — session 36: non-empty results cache.)
+    client.app.state.artist_top_cache.clear()
     monkeypatch.setattr("src.webapp.app.fetch_artist_top_tracks",
                         lambda aid, sp: pd.DataFrame())
     r2 = client.get("/artist/ar1AAAAAA")
     assert r2.status_code == 200 and "retired" in r2.text
     assert "Your top tracks by Muse" in r2.text           # the core never depends on it
+
+
+def test_artist_top10_memoized_within_ttl(client, monkeypatch, tmp_path):
+    # session-36 hang fix: repeat page views must NOT re-hit the borrowed-time
+    # endpoint (heavy browsing was rate-limiting it into stuck renders).
+    monkeypatch.setattr("src.webapp.app._feature_cache", lambda: _seed_cache(tmp_path))
+    calls = {"n": 0}
+
+    def fetcher(aid, sp):
+        calls["n"] += 1
+        return pd.DataFrame([{"spotify_track_id": "m1", "track_name": "Hysteria",
+                              "artist_names": "Muse", "popularity": 80}])
+    monkeypatch.setattr("src.webapp.app.fetch_artist_top_tracks", fetcher)
+    client.cookies.set(config.SESSION_COOKIE, _seed_session(taste=_TASTE))
+    client.get("/artist/ar1AAAAAA")
+    client.get("/artist/ar1AAAAAA")
+    assert calls["n"] == 1  # second view served from the 10-min memo
 
 
 def test_artist_page_unknown_or_bad_id_redirects(client, monkeypatch, tmp_path):

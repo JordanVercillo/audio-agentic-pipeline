@@ -117,8 +117,15 @@ def has_playlist_scope(session: dict[str, Any]) -> bool:
 
 
 def client_from_session(session: dict[str, Any]) -> spotipy.Spotify:
-    """A spotipy client bound to this visitor's access token."""
+    """A spotipy client bound to this visitor's access token.
+
+    FAIL FAST (owner report, session 36 — "the artists page gets stuck"):
+    spotipy's default is 3 retries WITH Retry-After honoring, so one 429 on a
+    borrowed-time garnish call can sleep a page render for 45s+. Every webapp
+    call site already has an absent-safe try/except — raising immediately is
+    the designed path, so retries are 0 across the board."""
     token = session.get(_TOKEN)
     if not token or "access_token" not in token:
         raise AuthError("Not authenticated.")
-    return spotipy.Spotify(auth=token["access_token"], requests_timeout=15)
+    return spotipy.Spotify(auth=token["access_token"], requests_timeout=15,
+                           retries=0, status_retries=0, backoff_factor=0)

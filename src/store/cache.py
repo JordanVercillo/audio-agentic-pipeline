@@ -183,6 +183,19 @@ class FeatureCache:
             ).scalars().all()
         return set(rows)
 
+    def active_ids(self, track_ids: list[str]) -> set[str]:
+        """Subset of track_ids with a LIVE (queued/running) job — already on
+        their way, so an import's cap shouldn't spend slots on them (P3.4 fix)."""
+        if not track_ids:
+            return set()
+        with self._Session() as s:
+            rows = s.execute(
+                select(ExtractionJob.spotify_track_id).where(
+                    ExtractionJob.spotify_track_id.in_(track_ids),
+                    ExtractionJob.status.in_((JOB_QUEUED, JOB_RUNNING)))
+            ).scalars().all()
+        return set(rows)
+
     def missing(self, track_ids: list[str]) -> list[str]:
         """Uncached ids, deduped, in input order."""
         cached = self.cached_ids(track_ids)
