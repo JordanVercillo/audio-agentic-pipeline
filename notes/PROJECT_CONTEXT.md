@@ -278,12 +278,21 @@
   ids + the cache alone (zero API calls — tests rig the fetchers to explode);
   snapshot schema UNCHANGED (derive-don't-transcribe, journal #27 — display
   data from `library_rows` + `all_artist_meta`, so no re-snapshot dependency);
-  `/guest` → `/dashboard`; nav shows Dashboard to guests. **NOW NEXT:
-  P3.6 — H5 (the $0 Cloudflare-Worker origin-down fallback page) + H6 (landing
-  copy: browse freely / login personalizes / demo) + O2 (yt-dlp match
-  hardening) — the last build slice before P3.7 (case-study + the PUBLIC
-  GitHub flip, a Fable slice).** Parked: MPD-audio, Epic M, instrumentalness,
-  dupe-pruning.
+  `/guest` → `/dashboard`; nav shows Dashboard to guests. ✅ **P3.6 SHIPPED
+  (2026-07-16, commits 0562601/486384f/22f87e9, 417 tests, deployed ALL-FALSE):
+  O2 duration-aware match scoring w/ recorded `match_confidence`
+  (heuristic-v1 = selection+recording ONLY, no rejection threshold — awaits
+  corpus evidence) · H6 three-tier landing (browse freely / demo / login) ·
+  H5 origin-down fallback Worker (`infra/cloudflare/`, SELF_HOSTING §6a).**
+  **⚠️ TWO OWNER STEPS: ① deploy the H5 Worker (Cloudflare dashboard paste +
+  route, ~2 min, doc'd) — verify with stop_app → browse the domain → fallback
+  card, then start_app; ② sign off (or retune) the O2 heuristic-v1 weights
+  once real imports build a match-confidence distribution.** **NOW NEXT:
+  P3.7 — Epic L lite → the PUBLIC GitHub FLIP (D-38, the Phase-3 EXIT GATE;
+  a FABLE slice): dead-file sweep · docs/CASE_STUDY.md · README rewrite ·
+  how-to → gitleaks · KB exclusion (D-21) · LICENSE · git filter-repo scrub
+  (D-20) · flip public. agile-coach holds the standing pre-flip review.**
+  Parked: MPD-audio, Epic M, instrumentalness, dupe-pruning.
 - ✅ **SECURITY + ROBUSTNESS REVIEW (2026-07-09, commits 26891b1←): whole-app
   audit via 2 review subagents + a strategic pass; 7 real fixes, all tested,
   deployed, 286 green.** **Security surface came back STRONG** — auth, session
@@ -624,6 +633,7 @@ narrative goes to `notes/engineering_journal.md`, plans to
 | `src/agent/` | SPEC P5: `warehouse_agent.py` (pure DuckDB retrieval core — 2-layer SQL security D-10; reused by P8 RAG) + `mcp_server.py` (FastMCP stdio: get_schema / query_warehouse / get_insights). Test: `test_agent.py` (30). Run: `python -m src.agent.mcp_server`. |
 | `src/webapp/` | **SPEC P8 slice 1: FastAPI pilot.** `auth_web.py` (session-scoped PKCE — token in session, CSRF state gate, D-8 no secret), `sessions.py` (TTL `SessionStore` + signed cookie + rotate), `featurestore.py` (bridge-key overlap-join + acoustic insight), `app.py` (routes: `/ login callback dashboard logout healthz`), `config.py`, `templates/`, `static/`. Test: `test_webapp.py` (15). Run: `uv run python scripts/run_webapp.py` → :8000. |
 | `src/webapp/{artists,library,playlists}.py` | **Vision-E product surfaces (pure view logic).** `artists.py` (P3.2 — rollup, genre strip, comparison SVG, `your_top_by_artist` D-33, `nearest_artists`). `library.py` (P3.3 — `library_view` search/sort/dedup-annotate/mine-overlay, `why_n_analyzed` from `_TOP_LIMIT`); fed by `cache.library_rows()`. `playlists.py` (P3.4 — `playlist_cards`/`importable_ids` own+collaborative filter, `coverage_line`); `/playlists` + `POST …/analyze` behind `auth_web.has_playlist_scope` (re-consent), cap `config.PLAYLIST_IMPORT_CAP`. `/library`+`/song`+`/spectrogram` PUBLIC (D-18/D-40); `/explore`+`/recommend`+`/playlists` gated. Tests: `test_artists.py`, `test_library.py`, `test_playlists.py`. |
+| `infra/cloudflare/origin-fallback-worker.js` | H5 (P3.6): the $0 origin-down fallback Worker — 502/504/521-523/530 → an honest 503 "runs on-demand" card; healthy origin untouched; /healthz keeps JSON truth. Owner deploys via dashboard paste (SELF_HOSTING §6a). |
 | `docs/AGENT_ACCESS.md` | P5 artifact: MCP registration config (Claude Desktop/Code) + security model + live demo transcript. |
 | `docs/SCALING.md` | P7 artifact: honest 10K/1M-track scaling design (bottleneck = acquisition+DSP; GCS/BigQuery; Spark-vs-Dataflow; the `spark-parity` CI proof). |
 | `docs/P8_PLAN.md` | P8 build plan (FastAPI + Jinja2; session PKCE; feature-store overlap-join; RAG; 4-slice sequence). Slices 1, 1.5, 2 BUILT. |
@@ -1511,3 +1521,27 @@ narrative goes to `notes/engineering_journal.md`, plans to
   P3.6 (H5 fallback page + H6 landing copy + O2 yt-dlp hardening, Opus) then
   P3.7 (case-study + PUBLIC GitHub flip — FABLE, the exit gate). NEW SESSION:
   run `/resume`.**
+- **2026-07-16 (session 38 — P3.6 H5+H6+O2 via `/orchestrator`, Opus 4.8; no
+  fan-out — three small well-specced slices):** **O2 (0562601):**
+  `resolve_youtube_match` — ytsearch5 candidates scored by title keywords +
+  duration-vs-`duration_ms` bands (±3s +25 · ±10s +12 · ±25s 0 · ±45s −10 ·
+  beyond −30; the wrong-version tell is DURATION, not titles); pure
+  `score_candidate`/`pick_best_candidate` (offline tests); every match logged;
+  `match_confidence` recorded per extraction (`_ADDED_COLUMNS` FLOAT,
+  preserve-on-rewrite; AcquireFn → `(path, match)` + `duration_s`; `get_meta`
+  += duration_ms). **Heuristic-v1 = selection+recording ONLY — no rejection
+  threshold (corpus-evidence judgment, owner/Fable signs).** **H6 (486384f):**
+  landing explains the three tiers (browse freely w/ /library + /queue links ·
+  demo the experience · make it yours, 5-seat); demo tier disappears without a
+  snapshot. **H5 (22f87e9):** `infra/cloudflare/origin-fallback-worker.js` —
+  origin-down family (502/504/521-523/530 or fetch-throw) → an honest 503
+  "runs on-demand" card w/ Retry-After; healthy origin passes untouched;
+  /healthz + non-GET keep machine truth; node-syntax-checked; deploy doc =
+  SELF_HOSTING §6a. **417 green (+8), ruff clean, deployed, app-verify
+  ALL-FALSE; landing tiers browser-validated live.** Queue drained pre-restart
+  so no live extraction has written a confidence yet — first real import will.
+  **Left off: P3.6 COMPLETE — every Phase-3 BUILD slice is done. Owner steps:
+  ① paste-deploy the H5 Worker (SELF_HOSTING §6a) ② sign the O2 weights once
+  a real distribution exists. Next = P3.7 (case-study + PUBLIC GitHub flip)
+  on FABLE — the exit gate; agile-coach holds the pre-flip checklist. NEW
+  SESSION: run `/resume` on Fable.**
