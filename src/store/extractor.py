@@ -36,21 +36,30 @@ DSP_VERSION = "77dim-v1"
 # unspellable; the cap just bounds the filename. (Real Spotify ids: 22 base62.)
 _TRACK_ID_RE = re.compile(r"[0-9A-Za-z]{1,64}")
 
-# (track_id, track_name, artist_names, dest_dir) -> path to the audio file, or None.
-AcquireFn = Callable[[str, str, str, Path], Optional[Path]]
+# (track_id, track_name, artist_names, dest_dir, duration_s) ->
+#   (path to the audio file or None, match record or None).
+# The match record is resolve_youtube_match's dict — its `confidence` is
+# recorded on the extraction (O2, D-22); duration_s enables the duration term.
+AcquireFn = Callable[[str, str, str, Path, Optional[float]],
+                     tuple[Optional[Path], Optional[dict]]]
 
 
-def default_acquire(track_id: str, name: str, artist: str, dest_dir: Path) -> Optional[Path]:
-    """Resolve + download the track's audio via the existing yt-dlp downloader."""
+def default_acquire(track_id: str, name: str, artist: str, dest_dir: Path,
+                    duration_s: Optional[float] = None,
+                    ) -> tuple[Optional[Path], Optional[dict]]:
+    """Resolve + download the track's audio via the yt-dlp downloader (O2:
+    duration-aware match, confidence returned for recording)."""
     from ..ingestion.audio_downloader import (
         DownloadConfig,
         download_track_audio,
-        resolve_youtube_url,
+        resolve_youtube_match,
     )
-    url = resolve_youtube_url(name, artist or "")
-    if not url:
-        return None
-    return download_track_audio(url, track_id, DownloadConfig(output_dir=Path(dest_dir)))
+    match = resolve_youtube_match(name, artist or "", duration_s=duration_s)
+    if not match:
+        return None, None
+    path = download_track_audio(match["url"], track_id,
+                                DownloadConfig(output_dir=Path(dest_dir)))
+    return path, match
 
 
 def make_mel_spectrogram(signal, out_path: Path) -> Path:
@@ -124,8 +133,10 @@ def extract_one(cache: FeatureCache, track_id: str, *, audio_dir: Path,
 
     audio_path: Optional[Path] = None
     try:
-        audio_path = acquire(track_id, meta["track_name"], meta.get("artist_names") or "",
-                             Path(audio_dir))
+        dur_ms = meta.get("duration_ms")
+        audio_path, match = acquire(track_id, meta["track_name"],
+                                    meta.get("artist_names") or "", Path(audio_dir),
+                                    (dur_ms / 1000.0) if dur_ms else None)
         if audio_path is None or not Path(audio_path).exists():
             cache.fail(track_id, "audio acquisition failed")
             return False
@@ -140,7 +151,8 @@ def extract_one(cache: FeatureCache, track_id: str, *, audio_dir: Path,
                      loudness_curve=tf.loudness_curve_points(),
                      time_signature=tf.time_signature,
                      beat_times=tf.beat_times_list(),
-                     sections=tf.sections_list())
+                     sections=tf.sections_list(),
+                     match_confidence=(match or {}).get("confidence"))
         return True
     except Exception as exc:  # noqa: BLE001 — a bad track must never crash the worker
         logger.warning("extraction failed for %s: %s", track_id, exc)

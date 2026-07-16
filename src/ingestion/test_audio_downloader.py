@@ -293,6 +293,68 @@ class TestResolveYoutubeUrl:
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#  TEST 3b — O2 match hardening (pure scoring, no network)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+
+class TestO2MatchScoring:
+    """Duration-aware candidate scoring (D-22) — pure functions, no yt_dlp."""
+
+    def test_duration_closeness_beats_title_keywords(self) -> None:
+        # The wrong-version case O2 exists for: a "(Live)"-less live cut whose
+        # only tell is being 90s longer than the studio length.
+        from src.ingestion.audio_downloader import pick_best_candidate
+        entries = [
+            {"title": "Song (Extended Anniversary Edition)", "duration": 330.0,
+             "url": "https://y/long"},
+            {"title": "Song", "duration": 241.0, "url": "https://y/right"},
+        ]
+        best = pick_best_candidate(entries, target_duration_s=240.0)
+        assert best["url"] == "https://y/right"
+        assert best["duration_delta_s"] == pytest.approx(1.0)
+        assert 0.0 <= best["confidence"] <= 1.0
+
+    def test_scoring_degrades_gracefully_without_durations(self) -> None:
+        from src.ingestion.audio_downloader import score_candidate
+        # unknown candidate duration, unknown target — title keywords only
+        assert score_candidate("Song - Official Audio", None, None) == 10
+        assert score_candidate("Song - Live", 240.0, None) == -15
+        assert score_candidate("Song", None, 240.0) == 0
+
+    def test_duration_bands(self) -> None:
+        from src.ingestion.audio_downloader import score_candidate
+        t = 200.0
+        assert score_candidate("Song", 201.0, t) == 25    # ≤3s: near-exact
+        assert score_candidate("Song", 208.0, t) == 12    # ≤10s
+        assert score_candidate("Song", 220.0, t) == 0     # ≤25s: neutral
+        assert score_candidate("Song", 240.0, t) == -10   # ≤45s
+        assert score_candidate("Song", 300.0, t) == -30   # way off: live/extended
+
+    def test_never_rejects_only_ranks(self) -> None:
+        # Selection + recording ONLY (heuristic-v1): even a terrible sole
+        # candidate is returned — rejection thresholds await corpus evidence.
+        from src.ingestion.audio_downloader import pick_best_candidate
+        entries = [{"title": "Song - Live Cover Karaoke", "duration": 500.0,
+                    "url": "https://y/awful"}]
+        best = pick_best_candidate(entries, target_duration_s=200.0)
+        assert best is not None and best["url"] == "https://y/awful"
+        assert best["confidence"] == 0.0  # …but the record says how bad it was
+
+    def test_resolve_match_logs_and_returns_record(self) -> None:
+        from src.ingestion.audio_downloader import resolve_youtube_match
+        entries = [{"title": "Song - Official Audio", "duration": 240.0,
+                    "url": "https://y/ok"}]
+        mock_ydl = MagicMock()
+        mock_ydl.__enter__ = MagicMock(return_value=mock_ydl)
+        mock_ydl.__exit__ = MagicMock(return_value=False)
+        mock_ydl.extract_info.return_value = {"entries": entries}
+        with patch("yt_dlp.YoutubeDL", return_value=mock_ydl):
+            match = resolve_youtube_match("Song", "Artist", duration_s=240.0)
+        assert match["url"] == "https://y/ok"
+        assert match["score"] == 35 and match["confidence"] == 1.0
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 #  TEST 4 — download_track_audio()
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 

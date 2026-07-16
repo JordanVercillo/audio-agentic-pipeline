@@ -48,6 +48,10 @@ class TrackFeatures(Base):
     dsp_version = Column(String)
     extraction_source = Column(String)      # e.g. "youtube"
     spectrogram_uri = Column(String)        # path / GCS uri to the mel-spectrogram PNG
+    # O2 (D-22): the acquisition match's heuristic confidence [0,1] — recorded
+    # per extraction for wrong-version analysis. Display/audit data, never a
+    # feature and never a gate. NULL for pre-O2 rows.
+    match_confidence = Column(Float)
     extracted_at = Column(DateTime, default=utcnow)
 
 

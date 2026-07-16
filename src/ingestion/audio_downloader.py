@@ -84,6 +84,72 @@ _CLEANSED_FEATURES_PATH = (
 _POSITIVE_KEYWORDS = frozenset({"official audio", "lyrics", "official video"})
 _NEGATIVE_KEYWORDS = frozenset({"live", "cover", "karaoke", "remix", "instrumental"})
 
+# O2 (D-22) duration term — the strongest wrong-version signal we have: a live
+# cut / extended mix is usually tens of seconds off the studio length, while
+# official uploads sit within a few seconds of Spotify's duration_ms.
+# HEURISTIC-V1 WEIGHTS (owner sign-off pending): selection + logging only —
+# no candidate is ever hard-REJECTED on duration; a rejection threshold is a
+# corpus-evidence judgment (journal #19/#24 class) deferred until the audit
+# can show real match-confidence distributions.
+_DURATION_BANDS = (  # (max |delta| seconds, score adjustment)
+    (3.0, 25),
+    (10.0, 12),
+    (25.0, 0),
+    (45.0, -10),
+)
+_DURATION_FAR_PENALTY = -30   # |delta| beyond the last band
+# confidence = a monotone [0,1] map of the raw score for logging/analysis;
+# 0.46 ≈ "nothing known either way". Display/analysis heuristic, never a gate.
+_CONF_OFFSET, _CONF_RANGE = 30.0, 65.0
+
+
+def score_candidate(title: str, duration_s: Optional[float],
+                    target_duration_s: Optional[float]) -> int:
+    """Score one search candidate: title keywords + the duration-closeness term.
+    Pure — unit-tested without network (ground rule #5)."""
+    title_lower = (title or "").lower()
+    score = 0
+    for kw in _POSITIVE_KEYWORDS:
+        if kw in title_lower:
+            score += 10
+    for kw in _NEGATIVE_KEYWORDS:
+        if kw in title_lower:
+            score -= 15
+    if duration_s is not None and target_duration_s is not None:
+        delta = abs(float(duration_s) - float(target_duration_s))
+        for band_max, adj in _DURATION_BANDS:
+            if delta <= band_max:
+                score += adj
+                break
+        else:
+            score += _DURATION_FAR_PENALTY
+    return score
+
+
+def pick_best_candidate(entries: list, target_duration_s: Optional[float]) -> Optional[dict]:
+    """Rank flat-search entries → the best match record, or None.
+
+    Returns {url, title, score, confidence, duration_delta_s} — `confidence`
+    is the [0,1] heuristic map of the score; `duration_delta_s` is None when
+    either duration is unknown. Pure."""
+    best: Optional[dict] = None
+    for entry in entries or []:
+        if not entry:
+            continue
+        url = entry.get("url") or entry.get("webpage_url")
+        if not url:
+            continue
+        title = entry.get("title") or ""
+        dur = entry.get("duration")
+        score = score_candidate(title, dur, target_duration_s)
+        if best is None or score > best["score"]:
+            delta = (abs(float(dur) - float(target_duration_s))
+                     if dur is not None and target_duration_s is not None else None)
+            best = {"url": url, "title": title, "score": score,
+                    "confidence": max(0.0, min(1.0, (score + _CONF_OFFSET) / _CONF_RANGE)),
+                    "duration_delta_s": delta}
+    return best
+
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 #  CONFIGURATION DATACLASS
@@ -119,27 +185,34 @@ class DownloadConfig:
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 
-def resolve_youtube_url(
+def resolve_youtube_match(
     track_name: str,
     artist_name: str,
+    duration_s: Optional[float] = None,
     prefer_official: bool = True,
-) -> Optional[str]:
-    """Find the best YouTube URL for a track using yt_dlp's flat search.
+) -> Optional[dict]:
+    """Find the best YouTube match for a track using yt_dlp's flat search (O2).
 
-    Queries YouTube for the top 5 results using ``ytsearch5:``, then ranks
-    candidates by title keywords.  Titles containing "Official Audio" or
-    "Lyrics" are preferred; titles containing "Live" or "Cover" are
-    deprioritised.  No YouTube Data API key is required.
+    Queries the top 5 results (``ytsearch5:``), scores each candidate by title
+    keywords AND duration closeness against Spotify's ``duration_ms`` (the
+    strongest wrong-version signal — live cuts and extended mixes are tens of
+    seconds off), then returns the best as a match record. No YouTube Data API
+    key is required.
 
     Args:
         track_name:      The name of the track (e.g., ``"Bohemian Rhapsody"``).
         artist_name:     The primary artist name (e.g., ``"Queen"``).
+        duration_s:      Spotify's track duration in SECONDS, when known —
+                         enables the duration term; scoring degrades gracefully
+                         without it.
         prefer_official: If ``True``, append "official audio" to the query string
                          to bias YouTube's ranking toward studio recordings.
 
     Returns:
-        A ``str`` YouTube watch URL (``https://www.youtube.com/watch?v=...``)
-        for the best matching video, or ``None`` if no suitable result is found.
+        ``{url, title, score, confidence, duration_delta_s}`` for the best
+        candidate, or ``None`` if no result was found. The match is ALWAYS the
+        best available — never rejected on a threshold (selection + recording
+        only; see the heuristic-v1 note at the weights).
     """
     try:
         import yt_dlp  # local import — optional dependency
@@ -178,37 +251,30 @@ def resolve_youtube_url(
         logger.debug("No YouTube results for query: %r", query)
         return None
 
-    best_url: Optional[str] = None
-    best_score: int = -1_000
-
-    for entry in entries:
-        if not entry:
-            continue
-        title_lower = (entry.get("title") or "").lower()
-        url = entry.get("url") or entry.get("webpage_url")
-        if not url:
-            continue
-
-        score = 0
-        for kw in _POSITIVE_KEYWORDS:
-            if kw in title_lower:
-                score += 10
-        for kw in _NEGATIVE_KEYWORDS:
-            if kw in title_lower:
-                score -= 15
-
-        logger.debug("Candidate %r — score=%d — url=%s", entry.get("title"), score, url)
-
-        if score > best_score:
-            best_score = score
-            best_url = url
-
-    if best_url:
-        logger.debug("Selected result: %s (score=%d)", best_url, best_score)
-    else:
+    best = pick_best_candidate(entries, duration_s)
+    if best is None:
         logger.debug("No suitable YouTube result for %r", query)
+        return None
 
-    return best_url
+    # O2 acceptance: the match decision is always visible in the worker log.
+    delta = best["duration_delta_s"]
+    logger.info(
+        "match %r: score=%d conf=%.2f dur_delta=%s title=%r",
+        query, best["score"], best["confidence"],
+        f"{delta:.1f}s" if delta is not None else "unknown", best["title"],
+    )
+    return best
+
+
+def resolve_youtube_url(
+    track_name: str,
+    artist_name: str,
+    prefer_official: bool = True,
+) -> Optional[str]:
+    """Back-compat wrapper: the best match's URL only (no duration term)."""
+    match = resolve_youtube_match(track_name, artist_name,
+                                  prefer_official=prefer_official)
+    return match["url"] if match else None
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

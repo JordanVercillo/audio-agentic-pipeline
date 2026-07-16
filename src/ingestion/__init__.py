@@ -35,6 +35,7 @@ from .audio_downloader import (
     DownloadConfig,
     download_audio_for_tracks,
     download_track_audio,
+    resolve_youtube_match,
     resolve_youtube_url,
     should_skip_download,
 )
@@ -85,6 +86,7 @@ __all__ = [
     "DownloadConfig",
     "download_audio_for_tracks",
     "download_track_audio",
+    "resolve_youtube_match",
     "resolve_youtube_url",
     "should_skip_download",
     # Serialization

@@ -93,7 +93,8 @@ class FeatureCache:
     _ADDED_COLUMNS = {"track_features": {"loudness_curve": "JSON",
                                          "time_signature": "INTEGER",
                                          "beat_times": "JSON",
-                                         "sections": "JSON"},
+                                         "sections": "JSON",
+                                         "match_confidence": "FLOAT"},
                       "track_meta": {"popularity": "INTEGER",
                                      "duration_ms": "INTEGER",
                                      "duplicate_of": "VARCHAR",
@@ -241,7 +242,8 @@ class FeatureCache:
                loudness_curve: Optional[list] = None,
                time_signature: Optional[int] = None,
                beat_times: Optional[list] = None,
-               sections: Optional[list] = None) -> None:
+               sections: Optional[list] = None,
+               match_confidence: Optional[float] = None) -> None:
         """Store a song's features (idempotent) and mark any pending job done.
 
         Display artifacts (spectrogram_uri, loudness_curve, time_signature,
@@ -263,6 +265,8 @@ class FeatureCache:
                     beat_times = existing.beat_times
                 if sections is None:
                     sections = existing.sections
+                if match_confidence is None:
+                    match_confidence = existing.match_confidence
             s.merge(TrackFeatures(
                 spotify_track_id=track_id, features=features,
                 tempo_bpm=_f(features.get("tempo_bpm")),
@@ -271,7 +275,8 @@ class FeatureCache:
                 spectrogram_uri=spectrogram_uri, extraction_source=source,
                 dsp_version=dsp_version, loudness_curve=loudness_curve,
                 time_signature=(int(time_signature) if time_signature else None),
-                beat_times=beat_times, sections=sections, extracted_at=utcnow()))
+                beat_times=beat_times, sections=sections,
+                match_confidence=_f(match_confidence), extracted_at=utcnow()))
             job = s.get(ExtractionJob, track_id)
             if job is not None:
                 job.status = JOB_DONE
@@ -449,7 +454,8 @@ class FeatureCache:
                 return None
             return {"spotify_track_id": m.spotify_track_id, "track_name": m.track_name,
                     "artist_names": m.artist_names, "album_name": m.album_name,
-                    "popularity": m.popularity}
+                    "popularity": m.popularity,
+                    "duration_ms": m.duration_ms}  # O2: the match's duration target
 
     # ── artist metadata (P3.1 / D-36) ────────────────────────────────────────
     def remember_artists(self, items: list[dict]) -> None:

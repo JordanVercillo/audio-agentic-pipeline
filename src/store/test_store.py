@@ -207,8 +207,9 @@ def test_similar_ranks_by_acoustic_distance(cache):
 
 
 # ── extraction worker (Epic A slice 2) — synthetic audio, no YouTube ────────
-def _synth_acquire(track_id, name, artist, dest_dir):
-    """Injected acquire: write a synthetic WAV so the REAL DSP path runs offline."""
+def _synth_acquire(track_id, name, artist, dest_dir, duration_s=None):
+    """Injected acquire: write a synthetic WAV so the REAL DSP path runs offline.
+    Returns (path, match) per the O2 AcquireFn contract."""
     import soundfile as sf
 
     from ..dsp.audio_loader import generate_test_signal
@@ -217,7 +218,8 @@ def _synth_acquire(track_id, name, artist, dest_dir):
     path.mkdir(parents=True, exist_ok=True)
     out = path / f"{track_id}.wav"
     sf.write(out, sig.waveform, sig.sr)
-    return out
+    return out, {"url": "synthetic", "title": "synthetic", "score": 35,
+                 "confidence": 1.0, "duration_delta_s": 0.0}
 
 
 def test_extract_one_runs_real_dsp_on_synthetic_audio(cache, tmp_path):
@@ -268,7 +270,7 @@ def test_extract_one_acquire_failure_fails(cache, tmp_path):
     cache.enqueue(["s3"])
     cache.claim_next()
     ok = extract_one(cache, "s3", audio_dir=tmp_path / "a", spectrogram_dir=tmp_path / "s",
-                     acquire=lambda *a: None)  # acquisition returns nothing
+                     acquire=lambda *a: (None, None))  # acquisition returns nothing
     assert ok is False and cache.job_status(["s3"])["failed"] == 1
 
 
@@ -289,7 +291,7 @@ def test_drain_on_progress_fires_per_job(cache, tmp_path):
     cache.enqueue(["p0", "p1"])  # no metadata → both fail fast, no DSP needed
     beats = []
     drain(cache, audio_dir=tmp_path / "a", spectrogram_dir=tmp_path / "s",
-          acquire=lambda *a: None, on_progress=lambda: beats.append(1))
+          acquire=lambda *a: (None, None), on_progress=lambda: beats.append(1))
     assert len(beats) == 2
 
 
@@ -471,6 +473,39 @@ def test_remember_artists_preserve_if_absent(cache):
     # id-less items are skipped, absent-safe
     cache.remember_artists([{"artist_name": "Ghost"}])
     assert set(cache.all_artist_meta()) == {"ar1"}
+
+
+def test_match_confidence_recorded_and_preserved(cache):
+    # O2 acceptance: confidence recorded per extraction; a features-only
+    # re-write (no match kwarg) preserves it — same posture as the display cols.
+    cache.upsert("m1", _FEATURES, match_confidence=0.85)
+    with cache._Session() as s:
+        from .models import TrackFeatures
+        assert s.get(TrackFeatures, "m1").match_confidence == 0.85
+    cache.upsert("m1", {**_FEATURES, "tempo_bpm": 99.0})  # seed_cache-style rewrite
+    with cache._Session() as s:
+        from .models import TrackFeatures
+        assert s.get(TrackFeatures, "m1").match_confidence == 0.85  # not NULLed
+
+
+def test_extract_one_records_match_confidence(cache, tmp_path):
+    from .extractor import extract_one
+    cache.remember_meta([{"spotify_track_id": "mc1", "track_name": "T",
+                          "artist_names": "A", "duration_ms": 5000}])
+    cache.enqueue(["mc1"])
+    seen: dict = {}
+
+    def acquire(track_id, name, artist, dest_dir, duration_s=None):
+        seen["duration_s"] = duration_s          # meta's duration_ms threaded in
+        return _synth_acquire(track_id, name, artist, dest_dir)
+
+    tid = cache.claim_next()
+    assert extract_one(cache, tid, audio_dir=tmp_path / "a",
+                       spectrogram_dir=tmp_path / "s", acquire=acquire)
+    assert seen["duration_s"] == 5.0
+    with cache._Session() as s:
+        from .models import TrackFeatures
+        assert s.get(TrackFeatures, "mc1").match_confidence == 1.0
 
 
 def test_queue_rows_running_first_then_worker_fifo(cache):
