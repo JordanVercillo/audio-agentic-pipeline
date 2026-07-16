@@ -868,14 +868,17 @@ second correction wave.
   per-playlist coverage on the LIST ("12/40") needs a playlist→ids membership
   table (not cache-cheap today) — shown at Analyze time instead; and `/status`
   playlist attribution (must NOT reuse `range_ids`, which drives taste analytics).
-- **P3.5 — guest dashboard replica (owner ask):** extend
-  `snapshot_demo_profile.py` (per-range track entries: id/rank/name/artist/art/
-  popularity/analyzed + fetched_total + coverage) · pure
-  `guest_dashboard_context()` · `/dashboard` branches authed→live /
-  guest→snapshot / else→/ (authed check FIRST) · `/guest` redirects to
-  /dashboard · ask-form hidden, poller never renders. **Ordering dependency:**
-  art column (P3.1) → owner visits /dashboard once → re-snapshot (the script
-  prints art coverage as its own guard).
+- **P3.5 — guest dashboard replica (owner ask). ✅ SHIPPED (2026-07-16,
+  commit 3158f49, 409 tests, deployed ALL-FALSE, guest path browser-validated
+  live on real data — 117/117 coverage, drift 0.141σ, artist genres joined).**
+  Built as specced EXCEPT one deliberate deviation (journal #27,
+  derive-don't-transcribe): the snapshot schema is UNCHANGED — display data is
+  derived at render (`library_rows` for name/art/popularity, `all_artist_meta`
+  for genres/images, features for ✓/hover), so no re-snapshot ordering
+  dependency exists and the snapshot can never go stale against the cache.
+  `guest_dashboard_context()` (zero API calls — tests rig fetchers to explode) ·
+  `/dashboard` branches authed→live / guest→replica / else→/ · `/guest` lands
+  on /dashboard · ask-form authed-gated · nav shows Dashboard to guests.
 - **P3.6 — H5 + H6 + O2:** the $0 Cloudflare-Worker origin-down fallback page ·
   landing copy (browse freely / login personalizes / demo) · yt-dlp match
   hardening (duration vs duration_ms, official-audio preference, logged match
