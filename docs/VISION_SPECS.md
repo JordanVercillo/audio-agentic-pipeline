@@ -393,16 +393,11 @@ multi-user contention is real.
 
 ## Epic K — Talk to your library (evals first, journal #25)
 
-Extends A3: **K0** eval extension (golden cases for bucketing + tool-use
-traces) → **K1** LLM-assisted cluster naming/bucketing (gemma4 proposes names/
-descriptions grounded on centroid z-features + exemplar tracks; deterministic
-names stay canonical, LLM additive per D-5) → **K2** multi-turn `/chat`
-grounded on taste + glossary + marts (8192-ctx budget management) → **K3**
-tool-use over the **existing P5 read-only DuckDB core** (get_schema /
-query_warehouse; D-10 sandbox; injection evals) — the literal target-JD line:
-"systems that enable AI agents to interact with data infrastructure." Honest
-risk: gemma4 tool-calling may under-perform → K3 is gated on K0 scores;
-hosted-model fallback stays optional.
+**SUPERSEDED by the K0 plan — see §"Phase 4 — Epic K formal" (D-42…D-46),
+the authoritative phasing (K1 chat → K2 tool-use → K3 bucketing → K4 upload →
+K5/K6 gated docs).** This early sketch kept for the record; its honest-risk
+note (gemma4 tool-calling may under-perform → hosted fallback optional)
+carried into D-44.
 
 ## Epic J — MPD (PARKED, D-19) — the saved future plan
 
@@ -918,16 +913,82 @@ every slice; every genre/borrowed-time surface carries its honesty caption.
 
 ## Phase 4 — Epic K formal (agentic chat + the gated frontier)
 
-**K0** interview-style design session (llm-rag-expert + `llm_knowledge_base/`
-cards) → K's own phased plan with evals-first discipline (journal #25). Then:
-**K1** multi-turn `/chat` grounded on taste+marts (gemma4, 8192 ctx budget) →
-**K2** tool-use over the P5 read-only DuckDB core (the target-JD line; injection
-evals; D-10 sandbox) → **K3** LLM-assisted bucketing/labeling → **K4 multimodal
-upload** (user's own audio file → validated → full 77-dim DSP + display
-artifacts → THEIR library; upload caps + format allowlist; the legally-cleanest
-acquisition path we have) → **K5/K6 (gated explorations, D-39):** LoRA-adapter
-personalization + RL-tuned recommendations as design docs, each with a named
-data go-gate (e.g. N real thumbs-up/down events collected via K1's chat).
+**✅ K0 DESIGN SESSION DONE (2026-07-16, Fable + llm-rag-expert + the KB cards
+— session 41). This section IS the plan; decisions D-42…D-46.** K0 also
+shipped its two exit items: the `force_fallback` harness fix (it only popped
+the API key — a dev box's `ollama:*` route silently de-calibrated the CI
+guard; both env routes now neutralized + a tripwire) and the **first dated
+gemma4:12b baseline artifact** (`evals/runs/`) — every gate below measures
+against committed numbers, never a phantom.
+
+- **D-42 — the eval-first spine + gate thresholds (owner):** every K slice
+  builds its golden set BEFORE its feature (journal #25). **SAFETY checks
+  gate at 100%** (`no_invention`, the injection set, `canonical_name_preserved`
+  — one failure = no ship, never averaged away); **QUALITY checks gate at 80%**
+  (`must_cite`, `context_carry`, tool selection). Each new set is versioned
+  (`_v1`), grown-not-overwritten, graded deterministically, and reported
+  disaggregated beside the constant baseline AND the deterministic fallback
+  (the honesty anchors: fallback 15/15, constant 0/15 on the existing set).
+- **D-43 — K1 `/chat` access (owner): viewer-gated + capped.** Authed + guest
+  sessions only (the /explore gate), ~20 turns/session, server-side history
+  `{taste_snapshot frozen at session start, turns[]}`. Ctx budget (8192):
+  system+contract ~350 · grounding ~2K recomputed once per session · rolling
+  history ~4K, drop-oldest verbatim (NO summarization — a second LLM call
+  that can hallucinate) · output 1024. Marts stay OUT of K1 (the pre-composed
+  taste object is the higher-precision path); marts enter only via K2 tools.
+  Per-turn fallback exactly as today: a degraded turn answers from the pinned
+  taste object (D-5), stateless by design. **Build order: the cheap probe
+  FIRST** — script the chat golden cases as raw calls against live gemma4 and
+  read ~20 turns before building any session machinery; if 12B can't carry
+  4 turns, cap at 2-3 or route multi-turn to the hosted fallback.
+- **D-44 — K2 tool-use SHIPS, gated (owner — the expert recommended deferring;
+  owner chose ship):** gates = K1's GO passed AND the injection set at 100%.
+  The expert's "per-user warehouse isolation" blocker DISSOLVES under D-18 —
+  the gold warehouse is the owner's own deliberately-public corpus (the same
+  data /library serves anonymously); session taste never enters the sandbox.
+  Design: gemma4 has NO native tool API → JSON-action loop in the existing
+  `format=json` envelope (`{thoughts, action:{tool,args}} | {thoughts, answer,
+  cited}`), reusing `_parse_llm_json`; **depth cap 3** (schema → query →
+  answer; on cap-exceed degrade to the K1 grounded fallback); tools = the P5
+  trio as-is behind `is_safe_sql` + the locked sandbox (D-10), except a
+  **chat-specific max_rows≈20** re-injected as a compact rendered table (the
+  MCP path keeps 200). The injection eval set covers three attack classes:
+  prompt-injection via track/artist names in the grounding (untrusted library
+  strings — the case exists TODAY at `_grounding_text`), SQL injection via
+  chat (proves `is_safe_sql` + readable rejection), and tool-arg manipulation
+  (max_rows clamp, file-function `_FORBIDDEN`, sandbox backstop) — plus a
+  guard-bypassed control run to prove the eval distinguishes guarded from
+  unguarded. Hosted-model fallback allowed if gemma4 can't clear the tool bar.
+- **K3 — LLM bucketing/labeling (additive only, D-5):** deterministic cluster
+  names stay canonical; the LLM writes optional grounded descriptions.
+  Graders: `canonical_name_preserved` 100% (a single rename = D-5 violation),
+  `grounded_in_centroid` (must cite the top-|z| dims that produced the name),
+  `no_invention`, vs the name-only baseline. Independent of K2.
+- **D-45 — K4 multimodal upload (owner):** caps **20 MB · 10 min · 10 uploads/
+  user** (config-tunable); bridge key = **`up` + 20 hex of the content hash**
+  (base62-charset-safe → every existing regex guard + `{id}.mp3` filename
+  path works unchanged; collision-proof vs 22-char Spotify ids; identical
+  uploads dedupe for free — ground rule 1 satisfied, no second id system).
+  Validation gateway in front of the EXISTING worker path (DSP 100% reuse):
+  content-sniffed allowlist (mp3/wav/flac/m4a — magic bytes/ffprobe, never
+  extension), byte cap before decode, ffprobe duration before decode,
+  hardened ffmpeg (`-nostdin`, `-t <cap>`, `-vn`, single audio stream,
+  subprocess timeout, temp-dir output). A NEW non-LLM attack surface: gets
+  its own security review, not an eval score. The legally-cleanest
+  acquisition path we have.
+- **D-46 — K5/K6 stay design docs with countable go-gates (owner):** K5 LoRA
+  personalization requires a PROVEN prompt plateau on a named golden dimension
+  + ≥200-500 human-verified examples matching deployment marginals — a 5-seat
+  pilot cannot produce either; gate = "materially more users" (Epic M's
+  trigger). K6 RL-tuned recommendations require thousands of explicit
+  thumb events via K1's chat (5 users produce dozens); **Spotify-fetched
+  fields are NEVER reward inputs** (ground rule 3). Neither is built in
+  Epic K.
+
+**Build order + routing:** K1-probe (Opus) → K1 evals+chat (Opus; Fable reads
+the probe verdict) → **K2 injection evals (FABLE — security-adversarial) →
+K2 loop (Opus)** → K3 (Opus) → K4 gateway (FABLE for the security review,
+Opus for the plumbing) → K5/K6 docs (Fable, when their gates trip).
 
 ## Phase 5 — MPD (Epic J, un-changed shape, now sequenced)
 
