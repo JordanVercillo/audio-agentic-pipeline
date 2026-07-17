@@ -557,8 +557,10 @@ def test_classify_llm_grounded(monkeypatch):
     assert res["source"] == "llm" and "bright" in res["narrative"]
     assert res["name"] == "The Anchored Loyalist"          # name stays deterministic
     assert res["cited"] == ["Bright · Noisy"]              # A2 citations
-    assert "The Anchored Loyalist" in captured["system"]   # model told the archetype
-    assert '"narrative"' in captured["system"]             # contract in the prompt
+    # D-48: the archetype now rides in the DATA (grounding), not the system
+    # prompt — the RTCROS profile contract is generic (one encoding).
+    assert "The Anchored Loyalist" in captured["messages"][0]["content"]
+    assert '"narrative"' in captured["system"]             # the profile-mode contract
     assert "Bright · Noisy" in captured["messages"][0]["content"]  # grounded
 
 

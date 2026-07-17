@@ -25,6 +25,13 @@ import re
 from typing import Any, Optional
 
 from . import config
+from .prompt_contract import (
+    build_system,
+    is_empty_reply,
+    reply_text,
+    retry_hint,
+    verify_citations,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -54,25 +61,6 @@ def _parse_llm_json(text: str) -> Optional[dict]:
 
 # Interpretable features we surface + gloss (must exist in column_descriptions).
 _GLOSSARY_FEATURES = ["tempo_bpm", "rms_mean", "spectral_centroid_mean"]
-
-_SYSTEM = (
-    "You are a warm, precise music-taste analyst for Vercillo Analytics. Answer "
-    "the visitor's question USING ONLY the DATA provided about their own Spotify "
-    "listening and its local acoustic analysis. NEVER invent tracks, artists, or "
-    "statistics that are not in the DATA. If the DATA cannot answer the question, "
-    "say what you can see instead.\n"
-    "GROUND CONCRETELY: name at least one of their actual artists or tracks from "
-    "the DATA, and when the DATA gives a labelled result (a drift label like "
-    "\"Moderate drift\", a sound-bucket name, an archetype), reuse that label "
-    "VERBATIM — copy its exact words, never paraphrase it into a synonym.\n"
-    "Reply as a single JSON object with EXACTLY these fields, in this order:\n"
-    '  "thoughts": your brief reasoning about what the DATA supports (1-2 sentences),\n'
-    '  "answer": the reply shown to the visitor — 2-4 sentences, second person '
-    '("you"), no preamble, plain prose, no markdown,\n'
-    '  "cited": a JSON array of the exact track/artist/cluster names from the DATA '
-    "that your answer mentions.\n"
-    "Output only the JSON object."
-)
 
 _MAX_TOKENS = 1024  # a taste answer is deliberately short — well under stream/timeout limits
 
@@ -223,6 +211,24 @@ class TasteRAG:
             return None
         return next((b.text for b in resp.content if b.type == "text"), "")
 
+    def _grounded_reply(self, mode: str, grounding: str, tail: str) -> Optional[dict[str, Any]]:
+        """One RTCROS turn (D-48) with verify-and-retry. Returns {text, cited} or
+        None to fall back. The teeth the probe demanded: an empty/unparseable
+        reply → None (never ship blank); citations the model claimed but didn't
+        say → ONE corrective retry against the grounding."""
+        system = build_system(mode)
+        user = f"<data>\n{grounding}\n</data>\n\n{tail}".rstrip()
+        parsed = _parse_llm_json(self._chat(system, user) or "")
+        if is_empty_reply(parsed, mode):
+            return None
+        v = verify_citations(parsed, grounding, mode)
+        if not v["ok"]:
+            retry = _parse_llm_json(self._chat(system, user + retry_hint(v["missing"])) or "")
+            if not is_empty_reply(retry, mode):
+                parsed = retry
+        return {"text": reply_text(parsed, mode),
+                "cited": [str(c) for c in parsed.get("cited") or []]}
+
     def answer(self, question: str, taste: dict[str, Any]) -> dict[str, Any]:
         """Return {answer, source, model}. Never raises — falls back deterministically."""
         glossary = self.fs.feature_glossary(_GLOSSARY_FEATURES) if self.fs else {}
@@ -234,13 +240,10 @@ class TasteRAG:
             return {"answer": self._fallback(taste), "source": "fallback", "model": None}
         if self._wants_llm():
             try:
-                prompt = ("DATA (the visitor's own listening + local acoustic analysis):\n"
-                          f"{grounding}\n\nQUESTION: {question}")
-                parsed = _parse_llm_json(self._chat(_SYSTEM, prompt) or "")
-                if parsed and parsed.get("answer"):
-                    return {"answer": str(parsed["answer"]).strip(), "source": "llm",
-                            "model": self.model,
-                            "cited": [str(c) for c in parsed.get("cited") or []]}
+                r = self._grounded_reply("adhoc", grounding, f"QUESTION: {question}")
+                if r is not None:
+                    return {"answer": r["text"], "source": "llm",
+                            "model": self.model, "cited": r["cited"]}
             except Exception as exc:  # noqa: BLE001 — an LLM error must never fail the request
                 logger.warning("RAG LLM answer failed (%s) — deterministic fallback", exc)
         return {"answer": self._fallback(taste), "source": "fallback", "model": None}
@@ -259,28 +262,13 @@ class TasteRAG:
             return {"name": None, "narrative": "", "source": "none"}
         glossary = self.fs.feature_glossary(_GLOSSARY_FEATURES) if self.fs else {}
         grounding = _grounding_text(taste, glossary)
-        if self._wants_llm():
+        # D-48: the profile mode of the ONE contract — no second inline encoding.
+        if self._wants_llm() and grounding != _EMPTY_GROUNDING:
             try:
-                system = (
-                    "You write a short second-person music-taste profile for the "
-                    f"archetype \"{arch['name']}\". Use ONLY the DATA: name the real "
-                    "cluster/sound-bucket names and artists it contains, reusing those "
-                    "labels VERBATIM (copy their exact words, don't paraphrase); "
-                    "invent nothing.\n"
-                    "Reply as a single JSON object with EXACTLY these fields, in this order:\n"
-                    '  "thoughts": brief reasoning about what the DATA supports,\n'
-                    '  "narrative": the profile shown to the visitor — 3-5 sentences, warm '
-                    "but specific, plain prose, no markdown, no preamble, do not restate "
-                    "the archetype name in the first sentence,\n"
-                    '  "cited": a JSON array of the exact cluster/artist names your '
-                    "narrative mentions.\n"
-                    "Output only the JSON object.")
-                parsed = _parse_llm_json(self._chat(system, f"DATA:\n{grounding}") or "")
-                if parsed and parsed.get("narrative"):
-                    return {"name": arch["name"],
-                            "narrative": str(parsed["narrative"]).strip(),
-                            "cited": [str(c) for c in parsed.get("cited") or []],
-                            "source": "llm", "model": self.model}
+                r = self._grounded_reply("profile", grounding, "")
+                if r is not None:
+                    return {"name": arch["name"], "narrative": r["text"],
+                            "cited": r["cited"], "source": "llm", "model": self.model}
             except Exception as exc:  # noqa: BLE001 — never fail the page
                 logger.warning("classify LLM failed (%s) — deterministic narrative", exc)
         return {"name": arch["name"], "narrative": self._archetype_narrative(taste),
