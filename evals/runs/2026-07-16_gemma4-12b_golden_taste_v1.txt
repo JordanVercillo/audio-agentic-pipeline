@@ -1,0 +1,52 @@
+classify LLM failed (HTTPConnectionPool(host='localhost', port=11434): Read timed out. (read timeout=120)) — deterministic narrative
+classify LLM failed (HTTPConnectionPool(host='localhost', port=11434): Read timed out. (read timeout=120)) — deterministic narrative
+== deterministic fallback: 15/15 cases pass ==
+  ask       10/10
+  classify  5/5
+  per check:
+    archetype     5/5
+    must_cite     14/14
+    no_invention  15/15
+    nonempty      14/14
+    plain_prose   14/14
+
+== constant baseline (honesty anchor): 0/15 cases pass ==
+  ask       0/10
+  classify  0/5
+  per check:
+    archetype     0/5
+    must_cite     0/14
+    no_invention  15/15
+    nonempty      14/14
+    plain_prose   14/14
+  FAIL A01 (ask): must_cite
+  FAIL A02 (ask): must_cite
+  FAIL A03 (ask): must_cite
+  FAIL A04 (ask): must_cite
+  FAIL A05 (ask): must_cite
+  FAIL A06 (ask): must_cite
+  FAIL A07 (ask): must_cite
+  FAIL A08 (ask): must_cite
+  FAIL A09 (ask): must_cite
+  FAIL A10 (ask): must_cite
+  FAIL C11 (classify): must_cite, archetype
+  FAIL C12 (classify): must_cite, archetype
+  FAIL C13 (classify): must_cite, archetype
+  FAIL C14 (classify): must_cite, archetype
+  FAIL C15 (classify): archetype
+
+== LLM path (ollama:gemma4:12b): 9/15 cases pass ==
+  ask       6/10
+  classify  3/5
+  per check:
+    archetype     5/5
+    must_cite     8/14
+    no_invention  15/15
+    nonempty      14/14
+    plain_prose   14/14
+  FAIL A01 (ask): must_cite
+  FAIL A03 (ask): must_cite
+  FAIL A04 (ask): must_cite
+  FAIL A05 (ask): must_cite
+  FAIL C11 (classify): must_cite
+  FAIL C12 (classify): must_cite
