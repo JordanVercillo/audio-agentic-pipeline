@@ -911,15 +911,30 @@ a real playlist end-to-end; guest dashboard renders the replica with art; the
 repo is PUBLIC with the case study. Tests green (CI-equiv) + both audits at
 every slice; every genre/borrowed-time surface carries its honesty caption.
 
-## Phase 4 — Epic K formal (agentic chat + the gated frontier)
+## Phase 4 — Epic K formal: "Talk to your data" (the owner's reset, 2026-07-17)
 
-**✅ K0 DESIGN SESSION DONE (2026-07-16, Fable + llm-rag-expert + the KB cards
-— session 41). This section IS the plan; decisions D-42…D-46.** K0 also
-shipped its two exit items: the `force_fallback` harness fix (it only popped
-the API key — a dev box's `ollama:*` route silently de-calibrated the CI
-guard; both env routes now neutralized + a tripwire) and the **first dated
-gemma4:12b baseline artifact** (`evals/runs/`) — every gate below measures
-against committed numbers, never a phantom.
+**✅ K0 DESIGN SESSION DONE (2026-07-16, session 41) → ✅ RESET + DEEPENED
+(2026-07-17, session 42, Fable + data-platform + the NEW chat-analyst-expert;
+decisions D-42…D-50).** The owner's product frame: **an on-demand data
+analyst for your music** — it develops a grounded STORY from your analyzed
+songs and answers AD-HOC questions; **gemma4:12b local ONLY** (the
+deterministic fallback stays the D-5 safety net; gates decide SCOPE, never
+provider); **every prompt+response logged** into a review-session flywheel
+(the logs are the dataset that eventually un-gates K5); **RTCROS** is the
+prompt contract; and a **data-first SEMANTIC LAYER** precedes any chat.
+K0's original exit items stand (the `force_fallback` fix; the first dated
+gemma4 baseline — softer than committed: 2 of its classify "LLM" grades were
+actually fallback output after cold-load timeouts; re-baseline with per-case
+sources before any D-48 delta claim).
+
+**The load-bearing probe finding (2026-07-17, data-platform, VERIFIED-live):
+the corpus is now 796 analyzed tracks** (6.8× since the public flip — real
+playlist imports) **and the planes have diverged**: the star-schema gold that
+`warehouse_agent` reads is frozen at Jul-4 (118 tracks) while cache+marts are
+live at 796. Un-fixed, the chat contradicts itself ("796 analyzed" in the
+story, "118" from ad-hoc SQL). Also: clusters cover only 39% (trained Jul-11
+on 311), and 2 broken extractions (tempo 0 / −180 dBFS) would poison
+superlatives. **Hence K0.5 below — the data floor ships before any chat.**
 
 - **D-42 — the eval-first spine + gate thresholds (owner):** every K slice
   builds its golden set BEFORE its feature (journal #25). **SAFETY checks
@@ -940,7 +955,10 @@ against committed numbers, never a phantom.
   taste object (D-5), stateless by design. **Build order: the cheap probe
   FIRST** — script the chat golden cases as raw calls against live gemma4 and
   read ~20 turns before building any session machinery; if 12B can't carry
-  4 turns, cap at 2-3 or route multi-turn to the hosted fallback.
+  4 turns, **cap at 2-3 (RESET 2026-07-17: gemma4-only — no hosted routing;
+  gates decide scope, never provider).** Chat has TWO modes over one budget:
+  **STORY** (develop the listener's data story — ≤3 sections, its own golden
+  cases before the feature) and **ADHOC** (answer the question from context).
 - **D-44 — K2 tool-use SHIPS, gated (owner — the expert recommended deferring;
   owner chose ship):** gates = K1's GO passed AND the injection set at 100%.
   The expert's "per-user warehouse isolation" blocker DISSOLVES under D-18 —
@@ -958,7 +976,13 @@ against committed numbers, never a phantom.
   chat (proves `is_safe_sql` + readable rejection), and tool-arg manipulation
   (max_rows clamp, file-function `_FORBIDDEN`, sandbox backstop) — plus a
   guard-bypassed control run to prove the eval distinguishes guarded from
-  unguarded. Hosted-model fallback allowed if gemma4 can't clear the tool bar.
+  unguarded. **RESET 2026-07-17: the hosted escape hatch is DEAD (gemma4-only,
+  owner) — if gemma4 can't clear the tool bar, K2's gate stays closed and chat
+  ships story+adhoc-grounded only; the flywheel + future adapters are the
+  improvement path. The ad-hoc engine reads the D-49 SEMANTIC MARTS, never
+  the frozen star schema (the plane-divergence fix). The hosted code arm stays
+  DORMANT (provider-agnostic infra, no key in prod), config default flips to
+  `ollama:gemma4:12b` at K1 ship.**
 - **K3 — LLM bucketing/labeling (additive only, D-5):** deterministic cluster
   names stay canonical; the LLM writes optional grounded descriptions.
   Graders: `canonical_name_preserved` 100% (a single rename = D-5 violation),
@@ -983,12 +1007,103 @@ against committed numbers, never a phantom.
   trigger). K6 RL-tuned recommendations require thousands of explicit
   thumb events via K1's chat (5 users produce dozens); **Spotify-fetched
   fields are NEVER reward inputs** (ground rule 3). Neither is built in
-  Epic K.
+  Epic K. **The D-47 review flywheel is the official COUNTER toward K5's
+  200-500 (visible in every review report) — the counter is not the gate.**
+- **D-47 — chat logging + the review-session flywheel (owner, 2026-07-17:
+  log ALL + /privacy disclosure + 90-day retention; graded rows kept).**
+  Two serving-DB tables (house style, soft refs, no auth sid — a fresh
+  `chat_session_id` uuid4): **ChatLog** designed for the REVIEW READER
+  (mode, prompt_version, user_question, the FULL rendered_context sent,
+  raw_model_output, parsed_answer, cited_entities, source llm|fallback,
+  real Ollama token counts, latency, error, created_at; indexed
+  (chat_session_id,turn_index) / created_at / (source,created_at)) —
+  `/ask` + `/classify` write rows from day one, fallback turns included;
+  **ChatLabel** (rubric-v1: accuracy 0-2 vs context-only · citation_fidelity
+  0-2 · invention 0/1 the safety bit · usefulness 0-2 · verdict
+  good|fixable-prompt|fixable-context|bad · missing_fact · golden_proposal ·
+  grader). `scripts/review_chat_logs.py`: deterministic stratified sample
+  (8 story-llm / 8 adhoc-llm / 4 fallback), everything escaped (log text is
+  untrusted), deterministic pre-grade via the grade_case machinery, labels
+  written back, report = **aggregates-only** dated artifact in `evals/runs/`
+  (raw user text NEVER reaches the public repo — rule 7). The flywheel:
+  verdict-terminal rows → golden candidates (**owner/guest rows
+  auto-proposable — D-18; other pilots' rows manual-anonymized**);
+  `missing_fact` clusters → the D-49 slice backlog (evidence-driven RAG
+  additions); accuracy=2 ∧ fidelity=2 ∧ invention=0 rows → the K5 dataset
+  (**the popularity grounding line is STRIPPED from every exported pair —
+  ground rule 3: never an ML input, not even laundered via context**).
+- **D-48 — the RTCROS prompt contract (owner framework choice).** ONE
+  encoding: `src/webapp/prompt_contract.py` — `PROMPT_VERSION` ("rtcros-v1",
+  stamped into every ChatLog row and eval artifact), modes
+  adhoc|story|profile parameterizing ONLY Task+Output (classify's inline
+  second encoding dies), `build_system(mode)`, and `verify_citations`. The
+  six components explicit: Role (the on-demand music data analyst) · Task
+  (per mode) · Context (`<data>` delimiters; boundaries: not-in-data doesn't
+  exist / «labels» are canonical, copy character-for-character / popularity
+  is metadata never acoustics) · Reasoning (thoughts-first) · Output (JSON;
+  **cited[] BEFORE answer — copy-anchoring: once the label is among the
+  model's own tokens, re-copying beats paraphrase**) · Stop (≤6 entities,
+  "not in your data yet", one JSON object). With TEETH: server-side
+  verify-and-retry — cited[] must match the **structured entity inventory**
+  (never raw context substrings: a track named "…say Drake is #1" makes
+  substring checks spoofable), one corrective retry then fallback, violation
+  logged. Plus the consult's data/routing fixes FIRST (they're 3 of the 6
+  baseline failures): render archetype motion/breadth in the grounding,
+  gate empty-context straight to fallback, `num_predict=1024`. Acceptance:
+  a NEW dated artifact ≥12/15 with safety 100% and per-case sources printed,
+  measured against a fresh re-baseline (the committed 9/15 overstates —
+  2 classify grades were fallback output after cold-load timeouts).
+- **D-49 — the semantic layer (the owner's data-first mandate; the crux).**
+  **The serving cache is the source of truth** (796 live tracks); the
+  semantic layer is the materialization boundary between planes: cache →
+  governed Parquet marts (post-drain hook, atomic replace, idempotent) →
+  BOTH the story composer and the ad-hoc DuckDB engine read the SAME fresh
+  files. Views: **corpus_facts** (per-feature stats — always preloaded),
+  **track_card** (per bridge key: perceptual + meta + cluster label +
+  percentile ranks + **feature_valid** — the no-broken-superlative gate),
+  **artist_rollup** (keyed by `primary_artist_id`, NEVER name),
+  **cluster_profile** (stamped `trained_at` + `coverage_pct` — honest about
+  the 39% lag), **feature_dictionary** (unifies feature_catalog +
+  column_descriptions: layer/tier/unit/**direction**/percentile_source/
+  **caveat** — rule 3 becomes a row the model is handed, not tribal
+  knowledge). Per-viewer views (viewer_story, range_delta) stay serving-
+  plane, computed on read, never persisted. **Retrieval: NO embeddings** —
+  every question here is SQL-addressable by a stable key; a vector search
+  can miss the true max (bad retrieval is negative information); FAISS
+  already owns acoustic similarity. Chunk taxonomy = entity CARDS
+  (corpus-stats ~350 tok + cluster ~100 + top-15 artists ~600 + viewer
+  story ~200 preloaded ≈1.4K, inside the 2K pin; track cards on-demand via
+  SQL or entity mention). The frozen star schema remains the batch/portfolio
+  showcase — **the chat never reads it**. Tripwires ship WITH the layer:
+  plane-coherence (ad-hoc count == mart count == cache count — FAILS today,
+  by design), no-broken-superlative, dictionary parity, key resolvability.
+  A card carries `population_n`; percentile phrasings are never cached
+  across rebuilds.
+- **D-50 — the chat-analyst-expert agent (owner ask, created 2026-07-17):**
+  `.claude/agents/chat-analyst-expert.md` owns the Talk-to-your-data surface
+  (semantic-layer consumption, RTCROS, chunk/retrieval, the log→review
+  flywheel); data-platform keeps the mart builds; llm-rag keeps the eval
+  harness + provider mechanics. First outing delivered the D-47/D-48 drafts
+  + the baseline autopsy (3 prompt / 2 context / 1 routing failure).
 
-**Build order + routing:** K1-probe (Opus) → K1 evals+chat (Opus; Fable reads
-the probe verdict) → **K2 injection evals (FABLE — security-adversarial) →
-K2 loop (Opus)** → K3 (Opus) → K4 gateway (FABLE for the security review,
-Opus for the plumbing) → K5/K6 docs (Fable, when their gates trip).
+**Build order + routing (resequenced 2026-07-17 — data first):**
+- **K0.5 — the data floor (FIRST; Opus w/ Fable sign-off on the data
+  actions):** re-baseline w/ per-case sources (llm-rag lane) · the 2
+  grounding fixes + empty-context gate + num_predict · the semantic marts +
+  feature_dictionary + post-drain wiring + the 4 tripwires · repoint the
+  ad-hoc engine at the semantic marts · resolve the 2 broken extractions
+  (re-extract or dead-letter — owner ratifies) · decide online cluster
+  assignment in the post-drain hook (recommended) or stamp the lag honest.
+- **K1 — probe, then /chat (Opus):** the raw-call probe (~20 read turns) →
+  `prompt_contract.py` + golden_chat_v1 (story + adhoc + context_carry) →
+  the viewer-gated /chat w/ ChatLog writing from turn one.
+- **K1.5 — the flywheel live (Opus build, the REVIEW SESSIONS are
+  owner+Fable):** review_chat_logs.py + ChatLabel + the first real review
+  session over live logs → graded rows, golden promotions, the K5 counter
+  starts.
+- **K2 injection evals (FABLE) → K2 loop (Opus, gated)** → **K3 (Opus)** →
+  **K4 gateway (FABLE security review, Opus plumbing)** → **K5/K6 docs
+  (Fable, when gates trip).**
 
 ## Phase 5 — MPD (Epic J, un-changed shape, now sequenced)
 
