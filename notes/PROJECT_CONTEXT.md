@@ -357,16 +357,26 @@
   the 2 broken tracks gated `feature_valid=False`. **④ broken extractions:
   the feature_valid gate is the interim protection; D-52 re-extraction is the
   permanent fix (no premature DB mutation — owner's ratified call).**
-  **➡️ NEXT ACTION — K1: the probe FIRST (Opus)** — script ~8-10 chat golden
-  cases (story + adhoc) as raw calls against live gemma4:12b, READ ~20 turns,
-  THEN build `prompt_contract.py` (D-48 RTCROS: cited-before-answer +
-  entity-inventory verify-retry — this is what fixes A01/A05) + `golden_chat_v1`
-  + the viewer-gated `/chat` w/ ChatLog from turn one (D-47). **DEFERRED from
-  K0.5 (not blocking K1): cluster_profile + the online-cluster-assignment
-  decision (owner call — clusters at 39%); the ad-hoc-engine repoint off the
-  Jul-4 star schema → lands with K2 when tool-use actually reads it.** Owner
-  item still open: O2 weights sign-off. Parked: MPD-audio, Epic M,
-  instrumentalness, dupe-pruning.
+  ✅ **K1 PROBE + RTCROS CONTRACT SHIPPED (2026-07-17, session 44, Opus;
+  commits af7ba68/ed84869, 431 tests, ruff clean):** the probe read gemma4's
+  REAL behavior (evals/runs/2026-07-17_k1-probe…) → reframed the build;
+  `prompt_contract.py` (ONE RTCROS encoding, verify-retry, empty→fallback
+  guard, PROMPT_VERSION) rewired rag.answer/classify. **THE FINDING
+  (journal #36): the contract dropped the eval 13→9/15 — because it made
+  gemma4 ATTEMPT 8 ask cases via LLM instead of timing out to the
+  verbatim-perfect fallback, and gemma4 PARAPHRASES exact labels
+  (no_invention 15/15, faithful not fabricating). 9/15 is gemma4's honest
+  adhoc ceiling (~57% must_cite, below the 80% gate); it is STRONG on STORY +
+  classify.** **➡️ NEXT ACTION — K1c: STORY-LED `/chat` (Opus, owner
+  confirmed 2026-07-17):** `golden_chat_v1` (story + adhoc + context_carry) →
+  the viewer-gated `/chat` opening with gemma4's generated data STORY (its
+  strength) + adhoc w/ the honest fallback for label queries → the D-47
+  ChatLog + ChatLabel tables writing from turn one (this is the big slice: 2
+  new serving-DB tables house-style, a route, a template, session history
+  ~20 turns drop-oldest, `/ask`+`/classify` log too). **DEFERRED (not
+  blocking): cluster_profile + online-cluster-assignment (owner call, 39%);
+  the ad-hoc-engine repoint → K2.** Owner item still open: O2 weights
+  sign-off. Parked: MPD-audio, Epic M, instrumentalness, dupe-pruning.
 - ✅ **SECURITY + ROBUSTNESS REVIEW (2026-07-09, commits 26891b1←): whole-app
   audit via 2 review subagents + a strategic pass; 7 real fixes, all tested,
   deployed, 286 green.** **Security surface came back STRONG** — auth, session
@@ -710,6 +720,7 @@ narrative goes to `notes/engineering_journal.md`, plans to
 | `infra/cloudflare/origin-fallback-worker.js` | H5 (P3.6): the $0 origin-down fallback Worker — 502/504/521-523/530 → an honest 503 "runs on-demand" card; healthy origin untouched; /healthz keeps JSON truth. Owner deploys via dashboard paste (SELF_HOSTING §6a). |
 | `evals/runs/` | **Dated LLM-path eval artifacts (K0 convention):** `YYYY-MM-DD_<model>_<setname>.txt` — the committed numbers every D-42 gate measures against (gemma4:12b 9/15 2026-07-16 → 13/15 2026-07-17 after the K0.5 fixes). The fallback/constant anchors + a "by source" line ride in the same artifact. |
 | `src/store/semantic.py` | **The D-49 semantic layer (Talk-to-your-data data floor):** governed analyst marts materialized FROM the cache (source of truth, journal #35) via `rebuild_marts` post-drain — `feature_dictionary` (rule-3 caveat as a row), `track_card` (feature_valid gate — no broken superlatives), `artist_rollup` (by primary_artist_id). NO embeddings (SQL + entity cards). Tripwires: `test_semantic.py`. cluster_profile still TODO. |
+| `src/webapp/prompt_contract.py` | **The D-48 RTCROS contract (ONE encoding):** `PROMPT_VERSION` · `build_system(adhoc\|story\|profile)` · `verify_citations` (checks cited[] against the grounding, not the model's word — gemma4 hallucinates inside cited[]) · `is_empty_reply`→fallback guard. `rag.answer/classify` route through it. gemma4 is STRONG on story/profile, weak on strict-label adhoc (journal #36); `/chat` is story-led. |
 | `docs/CASE_STUDY.md` | **P3.7: the portfolio narrative** — the API-removal origin story, architecture, $0 production, the earned doctrines (w/ journal numbers), and the AI-harness methodology. The README links it front-and-center. |
 | `LICENSE` | MIT (owner choice, P3.7). The KB was history-scrubbed pre-flip, so no license conflict with course material. |
 | `docs/AGENT_ACCESS.md` | P5 artifact: MCP registration config (Claude Desktop/Code) + security model + live demo transcript. |
@@ -1763,3 +1774,24 @@ narrative goes to `notes/engineering_journal.md`, plans to
   off: K0.5 data floor SHIPPED; cluster_profile + ad-hoc-repoint deferred
   (not blocking). Next = K1 probe → the RTCROS contract (D-48, fixes A01/A05)
   → /chat + ChatLog. NEW SESSION: run `/resume` on Opus.**
+- **2026-07-17 (session 44 — K1 probe + the RTCROS contract, Opus 4.8; probe
+  first per journal #25):** Built `evals/probe_chat.py`, ran the RTCROS draft +
+  multi-turn + story against LIVE gemma4:12b, READ the transcripts (af7ba68).
+  The probe fought my gut: the cited-before-answer reorder is NOT a silver
+  bullet (A01 2/3, A05 1/2), gemma4 paraphrases even INSIDE cited[] (hallucinated
+  "statement" for "sounds"), multi-turn holds ~3 turns but went EMPTY on an
+  unanswerable Q, and STORY MODE is its strongest surface. Built
+  `prompt_contract.py` (ed84869): ONE RTCROS encoding (classify's inline
+  duplicate retired), `verify_citations` (checks cited[] against the grounding —
+  drops hallucinations, forces claimed-but-unsaid via ONE retry),
+  `is_empty_reply`→fallback (fixes the blank T4), PROMPT_VERSION; rag rewired
+  through a shared `_grounded_reply`. **THE re-baseline finding (journal #36):
+  9/15, DOWN from a timeout-inflated 13 — the contract made gemma4 ATTEMPT 8
+  ask cases instead of timing out to the verbatim-perfect fallback, exposing
+  that gemma4 paraphrases labels (no_invention 15/15, faithful). Its adhoc
+  must_cite ~57% is below the 80% gate; STORY + classify are its strengths.**
+  The gate did its job = decided scope. **Owner confirmed: /chat is
+  STORY-LED**, adhoc w/ honest fallback, flywheel lifts adhoc. 431 tests (+6
+  contract), ruff clean. No deploy (no route yet). **Left off: K1 probe +
+  contract done; the eval honestly says story-led. Next = K1c the story-led
+  /chat + D-47 ChatLog (the big slice). NEW SESSION: run `/resume` on Opus.**

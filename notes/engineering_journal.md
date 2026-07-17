@@ -908,3 +908,35 @@ it documents the bug until the fix lands.
 > they agree — each store's own audit will happily stay green while they
 > drift apart. Probe freshness as a relationship (counts across planes),
 > declare one source of truth, and derive the rest from it.*
+
+### 36. The fix that lowered the score — a failure mode was inflating the metric (2026-07-17)
+
+The RTCROS prompt contract was supposed to lift gemma4's golden-eval score.
+Built it, re-baselined, and the number went the wrong way: 13/15 → 9/15. My
+first instinct was "the contract is worse, revert it." But the per-case
+`source` column (added the session before, precisely for this) told the real
+story: the prior run's "13" leaned on SEVEN cases that had timed out on
+cold-load and fallen to the deterministic fallback — which copies labels
+verbatim and so passes `must_cite` trivially. The contract's empty-guard and
+tighter output made gemma4 actually ANSWER those cases instead of timing out —
+and gemma4 paraphrases exact labels (`no_invention` stayed 15/15, so it's
+faithful, never fabricating; it just says "moderate change" for "Moderate
+drift"). The contract didn't make anything worse; it REMOVED a failure mode
+(timeouts) that had been masking gemma4's true adhoc quality. The 9 is the
+honest number the 13 was hiding.
+
+**The realization:** an aggregate can be propped up by a failure in the very
+pipeline it measures — here, timeouts routing to a component (the fallback)
+that scores well on the grader for reasons unrelated to the thing under test.
+Make that pipeline more reliable and the aggregate can fall, not because the
+system got worse but because you stopped measuring the wrong thing. A score
+that moves the "wrong" way after a fix is a prompt to ask *which component the
+metric was actually crediting* before you revert — and disaggregating by
+source (who answered, not just did-it-pass) is what turns the mystery into a
+finding. This is the mirror of #34: there a guard was green for a coincidental
+reason; here a metric was green for one.
+
+> *When a fix moves a metric the wrong way, don't revert on the aggregate —
+> disaggregate. Ask which component each pass was crediting; a failure mode
+> (a timeout, a fallback, a retry) can inflate a score by routing around the
+> thing you meant to measure. Removing the failure reveals the honest number.*

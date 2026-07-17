@@ -1049,10 +1049,19 @@ superlatives. **Hence K0.5 below — the data floor ships before any chat.**
   substring checks spoofable), one corrective retry then fallback, violation
   logged. Plus the consult's data/routing fixes FIRST (they're 3 of the 6
   baseline failures): render archetype motion/breadth in the grounding,
-  gate empty-context straight to fallback, `num_predict=1024`. Acceptance:
-  a NEW dated artifact ≥12/15 with safety 100% and per-case sources printed,
-  measured against a fresh re-baseline (the committed 9/15 overstates —
-  2 classify grades were fallback output after cold-load timeouts).
+  gate empty-context straight to fallback, `num_predict=1024`. **✅ BUILT +
+  MEASURED (2026-07-17, session 44, commit ed84869): `prompt_contract.py` (one
+  encoding, verify-retry, empty-guard, PROMPT_VERSION). The gate was NOT met on
+  adhoc, and that's the finding (journal #36): the contract made gemma4 ATTEMPT
+  8 ask cases via LLM instead of timing out to the verbatim-perfect fallback →
+  the honest number is 9/15 (the prior 13 was timeout-inflated). gemma4
+  PARAPHRASES exact labels (no_invention 15/15 — faithful, not fabricating), so
+  its adhoc must_cite sits ~57%, below the 80% quality gate; it is STRONG on
+  STORY (the probe) + classify. The contract's structural wins (story mode, one
+  encoding, no-blank-answers, versioning) are what /chat needs; the gate did its
+  job — it decided SCOPE. Verify-retry is the hero (drops gemma4's hallucinated
+  self-citations, forces claimed-but-unsaid ones); it protects honesty, it does
+  not lift must_cite (that's the eval's secret, not the model's cited[]).**
 - **D-49 — the semantic layer (the owner's data-first mandate; the crux).**
   **The serving cache is the source of truth** (796 live tracks); the
   semantic layer is the materialization boundary between planes: cache →
@@ -1094,9 +1103,14 @@ superlatives. **Hence K0.5 below — the data floor ships before any chat.**
   ad-hoc engine at the semantic marts · resolve the 2 broken extractions
   (re-extract or dead-letter — owner ratifies) · decide online cluster
   assignment in the post-drain hook (recommended) or stamp the lag honest.
-- **K1 — probe, then /chat (Opus):** the raw-call probe (~20 read turns) →
-  `prompt_contract.py` + golden_chat_v1 (story + adhoc + context_carry) →
-  the viewer-gated /chat w/ ChatLog writing from turn one.
+- **K1 — probe ✅ + contract ✅ (2026-07-17); next: /chat (Opus).** The probe
+  (af7ba68) + the RTCROS contract (ed84869) are done. **Owner decision
+  (2026-07-17): /chat is STORY-LED** — it opens with gemma4's generated data
+  story (its proven strength); adhoc questions work too, with the deterministic
+  fallback carrying label-heavy ones (gemma4's adhoc must_cite is below gate);
+  every turn logged (D-47) → the flywheel + K5 adapters lift adhoc. Remaining:
+  `golden_chat_v1` (story + adhoc + context_carry) → the viewer-gated /chat w/
+  ChatLog from turn one.
 - **K1.5 — the flywheel live (Opus build, the REVIEW SESSIONS are
   owner+Fable):** review_chat_logs.py + ChatLabel + the first real review
   session over live logs → graded rows, golden promotions, the K5 counter
