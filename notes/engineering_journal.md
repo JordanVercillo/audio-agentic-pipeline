@@ -875,3 +875,36 @@ the branch it missed. The tripwire's job is to arm every branch explicitly.
 > one, and test with every arm deliberately armed. A guard green only in an
 > environment that can't arm the second trigger is a coincidence wearing a
 > checkmark.*
+
+### 35. Two write paths, one kept running — the planes diverged silently (2026-07-17)
+
+Designing the "Talk to your data" semantic layer, the data-platform consult
+did what its charter demands: probed the live system before proposing. The
+brief said ~161 tracks. The serving cache held **796** — the corpus had grown
+6.8× through real public playlist imports since the repo went public, days
+earlier. And the growth exposed a fork built in months ago: the medallion
+star schema is fed by `run_pipeline.py` (owner-run, batch), while the serving
+cache is fed by the live queue+worker. Only the second kept running. The
+gold plane `warehouse_agent` reads was frozen at July 4 with 118 tracks —
+perfectly intact, internally consistent, and six weeks out of date the
+moment anyone asked it a question. The planned chat would have answered
+"you have 796 analyzed songs" from the story grounding and "118" from
+ad-hoc SQL — a self-contradiction inside one conversation, shipped with
+green tests, because every test exercised each plane separately and none
+asserted they agree.
+
+**The realization:** a platform with two write paths diverges the instant
+only one keeps writing — and nothing alerts, because each plane is healthy
+by its own audit. Freshness is not a property of a table; it's a property of
+the RELATIONSHIP between tables that claim to describe the same world, and
+that relationship must be probed (row counts, mtimes) and then pinned by a
+cross-plane invariant test. The design consequence followed immediately:
+declare ONE source of truth (the plane the live writers feed) and make every
+other surface a materialization of it, refreshed by the same hook that
+writes it. The plane-coherence tripwire ships failing — that's the point:
+it documents the bug until the fix lands.
+
+> *Where two stores describe the same world, write the test that asserts
+> they agree — each store's own audit will happily stay green while they
+> drift apart. Probe freshness as a relationship (counts across planes),
+> declare one source of truth, and derive the rest from it.*

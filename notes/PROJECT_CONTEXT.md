@@ -326,13 +326,32 @@
   (`evals/runs/2026-07-16_…txt` — must_cite 8/14, no_invention 15/15,
   archetype 5/5; fallback 15/15 + constant 0/15 anchored in the same run;
   two cold-load timeouts visibly degraded to the D-5 fallback = the
-  deployment-honest number). **➡️ NEXT ACTION — K1, probe FIRST (Opus): script
-  ~8-10 chat golden cases as raw calls against live gemma4:12b and READ ~20
-  turns (an afternoon, $0) — if 12B can't carry 4 turns, cap at 2-3 or route
-  multi-turn to the hosted fallback; only then build `golden_chat_v1` + the
-  /chat session machinery (D-43 budget: grounding pinned ~2K · history ~4K
-  drop-oldest · no summarization). Owner item still open: O2 weights
-  sign-off once real imports accrue.** Parked: MPD-audio, Epic M,
+  deployment-honest number). ✅ **THE K RESET (owner, 2026-07-17, session 42 —
+  commit 89d0b83): Epic K is now "TALK TO YOUR DATA"** — an on-demand music
+  data analyst (STORY + ADHOC modes), **gemma4-only** (both hosted clauses
+  removed; gates decide scope, never provider), every prompt+response logged
+  into a review flywheel (D-47: log-all + /privacy disclosure + 90-day
+  retention; graded rows = the K5 counter), **RTCROS** contract in ONE
+  encoding (D-48: prompt_contract.py, cited-before-answer, entity-inventory
+  verify-retry), and a **data-first SEMANTIC LAYER before any chat** (D-49).
+  New agent: `chat-analyst-expert` (D-50, registered). **STALE-FACT FIXES
+  (probed live 2026-07-17): the corpus is 796 analyzed tracks** (6.8× since
+  the public flip — real playlist imports), NOT ~161; **the planes have
+  DIVERGED** (star-schema gold frozen Jul-4 at 118 — `warehouse_agent` reads
+  it; cache+marts live at 796); clusters cover 39% (trained Jul-11 on 311);
+  **the warehouse audit is RED today** on FEATURE_DISTRIBUTION (2 broken
+  extractions: tempo 0/−180 dBFS "Aftermath — Muse" + "Q&A — Drake"; 11
+  legit DJ-mix outliers) — known cause, K0.5 fixes it. **➡️ NEXT ACTION —
+  K0.5 the data floor (Opus; owner ratifies the 2 broken-track re-extracts):
+  ① re-baseline w/ per-case sources (the 9/15 overstates — 2 classify grades
+  were fallback after cold-load timeouts) ② the grounding fixes
+  (motion/breadth) + empty-context gate + num_predict=1024 ③ the semantic
+  marts (corpus_facts · track_card w/ feature_valid · artist_rollup by id ·
+  cluster_profile stamped · feature_dictionary w/ caveats) + post-drain
+  wiring + the 4 tripwires (plane-coherence FAILS today by design) ④ repoint
+  the ad-hoc engine at the semantic marts ⑤ resolve the 2 broken extractions
+  + the online-cluster-assignment call. THEN K1 probe → /chat. Owner item
+  still open: O2 weights sign-off.** Parked: MPD-audio, Epic M,
   instrumentalness, dupe-pruning.
 - ✅ **SECURITY + ROBUSTNESS REVIEW (2026-07-09, commits 26891b1←): whole-app
   audit via 2 review subagents + a strategic pass; 7 real fixes, all tested,
@@ -1665,3 +1684,29 @@ narrative goes to `notes/engineering_journal.md`, plans to
   **Left off: K0 COMPLETE — Phase 4 is specced and calibrated. Next = K1
   probe (Opus): raw-call ~20 chat turns against live gemma4 BEFORE building
   session machinery. NEW SESSION: run `/resume` on Opus.**
+- **2026-07-17 (session 42 — the K RESET: "Talk to your data", Fable; 2
+  parallel consults + owner interview):** Owner reset Epic K's product frame:
+  an on-demand music data analyst (story + adhoc), gemma4-ONLY, every
+  prompt+response logged → review sessions, RTCROS contract, and a concrete
+  data-first semantic layer before chat. Created **`chat-analyst-expert`**
+  (D-50) — its FIRST OUTING delivered the D-47/D-48 drafts + the baseline
+  autopsy: of gemma4's 6 failures only 3 are prompt failures; 2 are CONTEXT
+  (motion/breadth never rendered — the model can't cite what it never saw)
+  and 1 ROUTING (LLM called on empty context); and the committed 9/15
+  OVERSTATES (2 classify "LLM" grades were fallback output after cold-load
+  timeouts → re-baseline w/ per-case sources first). **data-platform's probe
+  changed the design (journal #35): the corpus is 796 live tracks (6.8×
+  since the flip) and the planes DIVERGED** — warehouse_agent reads the
+  Jul-4 star schema (118) while cache/marts serve 796 → the chat would
+  contradict itself across two turns; the semantic layer sources from the
+  CACHE and the ad-hoc engine repoints; the star schema stays as the batch
+  showcase. Also surfaced: clusters 39% coverage, 2 broken extractions
+  poisoning superlatives (audit RED today, named cause), NO-embeddings
+  retrieval decision (SQL + entity cards; FAISS owns similarity). Owner
+  locked: log-all + disclose + 90-day (graded rows kept) · gemma4-only
+  confirmed (ship narrower, never hosted). **Spec rewritten (89d0b83):
+  D-47…D-50 + both hosted clauses removed + build order resequenced (K0.5
+  data floor FIRST → K1 probe → K1.5 flywheel → K2 → K3 → K4 → K5/K6).**
+  418 tests stand (docs+charter-only session). **Left off: the reset is
+  specced end to end. Next = K0.5 the data floor (Opus; owner ratifies the
+  2 broken-track re-extracts). NEW SESSION: run `/resume` on Opus.**
