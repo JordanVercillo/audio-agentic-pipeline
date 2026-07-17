@@ -1105,6 +1105,83 @@ superlatives. **Hence K0.5 below — the data floor ships before any chat.**
   **K4 gateway (FABLE security review, Opus plumbing)** → **K5/K6 docs
   (Fable, when gates trip).**
 
+## Phase 4.5 — provenance QA + the artist knowledge base (owner's "phase 2", specced 2026-07-17)
+
+**Entry criterion: Epic K complete.** Two epics from the owner's QA note
+(session 42, screenshots in hand): acquisition transparency ("provide the
+YouTube source so we can validate it's the actual song") and Artists 2.0
+("the artist tab overall 2.0"). Decisions D-51…D-54.
+
+### Epic Q — acquisition provenance & QA
+
+- **D-51 — the provenance schema, captured AT extraction (owner: "extract and
+  store all relevant metadata … consistency and standards").** New table
+  **`track_provenance`** — one row per EXTRACTION EVENT (append-only history;
+  current = latest per bridge key): `spotify_track_id` · youtube_url ·
+  youtube_video_id · youtube_title · channel/uploader · youtube_duration_s ·
+  upload_date · the search query used · match score/confidence/
+  duration_delta_s · matcher version (heuristic-v1…) · candidate_count ·
+  audio format/bitrate · dsp_version · extracted_at. Everything yt-dlp's
+  match already knows, persisted instead of discarded. Exported post-drain as
+  a **Parquet provenance mart** (the analytic table the QA review reads).
+  **Exposure:** `/song` gains a "Source & provenance" section — the YouTube
+  link, its title, channel, duration delta, match confidence — "validate it
+  yourself" transparency; `/library` gains an at-a-glance provenance glyph
+  (✓ high-confidence · ~ check-me · ∅ pre-provenance). **The QA review loop
+  rides D-47's review-session pattern (harness-Claude, $0):** each session
+  samples the provenance mart + the duration audit, grades match accuracy,
+  and reports the running **pipeline-health metric** (share of corpus with
+  verified-consistent provenance + confidence distribution) as a dated
+  `evals/runs/` artifact.
+- **D-52 — the FULL corpus re-extraction (owner, 2026-07-17: all 796, no
+  patchwork).** One uniform pass re-acquires + re-extracts every cached track
+  through the D-51 schema with the duration-aware matcher: **schema ships
+  first, then the batch** (~11 h worker time, resumable, rate-limited, capped
+  batches). Non-destructive by design: per-track atomic swap on SUCCESS only
+  (a failed re-extract keeps the old features + gains a flagged provenance
+  row); dedup flags respected (twins stay flagged, canonical tracks
+  re-extracted); the frozen 77-dim contract untouched (same DSP version —
+  this is re-ACQUISITION; features may shift where the source improves, so
+  the run ends with the standard post-drain rebuild + a cluster retrain +
+  plane-coherence green). Every track exits with uniform provenance — the
+  "source not recorded" era ends in one program.
+
+### Epic R — Artists 2.0 (the artist knowledge base)
+
+- **D-53 — MusicBrainz spine + Spotify garnish, on-demand + cache-forever
+  (owner).** The discography truth source is **MusicBrainz** (open, free,
+  auth-less, ~1 req/s etiquette, can't be deprecated out from under us):
+  artist → release groups (albums, years, types) → recordings (full song
+  lists). Spotify garnish rides the STORED artist_meta (images, genres,
+  popularity) + the **not-deprecated** `GET /artists/{id}/albums` (10/page,
+  research-verified 2026-07-14) for cover art. **Bridge-key discipline:
+  `artist_id` (Spotify) stays the key; `mbid` is an attribute** on artist_meta
+  (matched by name+score at first fetch, manual-correctable). New tables:
+  `artist_albums` (album/release-group grain) + `artist_catalog_tracks`
+  (recording grain, matched-to-corpus flag where a recording maps to a cached
+  `spotify_track_id`). **Build mode: on-demand + cache forever** — first
+  visit to an artist profile fetches + caches (seconds, once ever), the
+  analyze-on-demand pattern; a nightly-idle backfill may trickle the corpus
+  artists later (config-gated, off by default).
+- **D-54 — the artist profile 2.0 surface.** `/artist/{id}` grows: the
+  discography section (albums grid w/ years + covers; full song list w/
+  in-corpus ✓ badges linking to `/song`), "in your library: N of their M
+  known recordings" honesty stats, and the existing derived core (your top
+  tracks · similar-in-library · analyze-on-demand) unchanged. **Dashboard
+  "YOUR TOP ARTISTS" cards become links to the profiles** (the owner's
+  circled screenshot — a one-line template fix that ships EARLY, in the next
+  webapp slice, not held for this epic). Guests/anon follow the existing
+  viewer/public gates.
+
+**Slices + routing:** Q1 schema+capture (Opus) → Q2 exposure on /song +
+/library (Opus) → **Q3 the re-extraction program (Opus build; FABLE signs the
+batch plan — an 11-hour data-mutating run)** → Q4 the QA review loop (owner +
+harness-Claude, D-47 pattern) · R1 mbid mapping + MusicBrainz client
+(Opus; research-expert verifies MB rate/ToS once) → R2 catalog tables +
+on-demand fetch (Opus) → R3 the profile 2.0 UI (Opus) → the dashboard-links
+fix (rides ANY next webapp slice). Epic Q before Epic R (Q's uniform
+provenance feeds R's in-corpus matching).
+
 ## Phase 5 — MPD (Epic J, un-changed shape, now sequenced)
 
 The saved plan holds (metadata-only, D-26; Spark un-parks on the real 66M rows,
