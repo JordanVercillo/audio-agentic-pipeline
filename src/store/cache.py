@@ -167,6 +167,7 @@ class FeatureCache:
                     "art": m.album_image_url,
                     "popularity": m.popularity,
                     "duplicate_of": m.duplicate_of,
+                    "primary_artist_id": m.primary_artist_id,  # the artist-rollup join key (D-49)
                     "analyzed": fr is not None,
                     "tempo": fr.tempo_bpm if fr else None,
                     "energy": fr.rms_mean if fr else None,

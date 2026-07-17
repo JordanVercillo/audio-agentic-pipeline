@@ -286,4 +286,9 @@ def rebuild_marts(cache: FeatureCache, marts_dir: Path) -> dict[str, Any]:
     _write_atomic(df, marts_dir / "track_perceptual.parquet")
     _write_atomic(catalog, marts_dir / "feature_catalog.parquet")
     _write_atomic(stats, marts_dir / "feature_stats.parquet")
-    return {"n_tracks": n, "perceptual": df, "catalog": catalog, "stats": stats}
+    # D-49: the semantic layer rides the same hook + the frame we just computed
+    # (no recompute) — the chat's analyst views stay as fresh as /explore.
+    from .semantic import build_semantic_marts
+    semantic = build_semantic_marts(cache, df, marts_dir)
+    return {"n_tracks": n, "perceptual": df, "catalog": catalog, "stats": stats,
+            "semantic": semantic}
