@@ -313,12 +313,27 @@
   REPLACES a Worker 502/504 response with its own error page — the fallback
   must ride a 503 to keep authorship). The wrangler deploy config lives in the
   SCRATCHPAD by design (repo stays clean); redeploy = copy worker.js + a
-  2-route wrangler.jsonc anywhere, `npx wrangler deploy`. **➡️ NEXT ACTION —
-  NEXT BUILD = Phase 4 / K0: the Epic-K interview-style design session
-  (llm-rag-expert + the KB) → agentic chat's own phased plan (D-39; a FABLE
-  design session). One owner item still open: O2 heuristic-v1 weights
-  sign-off once real imports build a match-confidence distribution.** Parked:
-  MPD-audio, Epic M, instrumentalness, dupe-pruning.
+  2-route wrangler.jsonc anywhere, `npx wrangler deploy`. ✅ **K0 DONE
+  (2026-07-16, session 41, Fable + llm-rag-expert): Epic K's phased plan is
+  IN THE SPEC (VISION_SPECS §Phase 4, D-42…D-46)** — owner locked: K2
+  tool-use SHIPS gated (injection evals 100% + K1's GO; D-18 defuses the
+  expert's isolation concern) · K1 /chat viewer-gated ~20 turns · K4 uploads
+  20MB/10min/10 w/ the `up`+hash bridge-safe id · safety-100/quality-80
+  gates. K0 exit items shipped: the `force_fallback` harness hole FIXED
+  (only popped the API key — a dev `.env`'s `ollama:*` route silently
+  de-calibrated the CI guard; both routes now neutralized + tripwire,
+  journal #34) and the **first committed gemma4:12b baseline: 9/15**
+  (`evals/runs/2026-07-16_…txt` — must_cite 8/14, no_invention 15/15,
+  archetype 5/5; fallback 15/15 + constant 0/15 anchored in the same run;
+  two cold-load timeouts visibly degraded to the D-5 fallback = the
+  deployment-honest number). **➡️ NEXT ACTION — K1, probe FIRST (Opus): script
+  ~8-10 chat golden cases as raw calls against live gemma4:12b and READ ~20
+  turns (an afternoon, $0) — if 12B can't carry 4 turns, cap at 2-3 or route
+  multi-turn to the hosted fallback; only then build `golden_chat_v1` + the
+  /chat session machinery (D-43 budget: grounding pinned ~2K · history ~4K
+  drop-oldest · no summarization). Owner item still open: O2 weights
+  sign-off once real imports accrue.** Parked: MPD-audio, Epic M,
+  instrumentalness, dupe-pruning.
 - ✅ **SECURITY + ROBUSTNESS REVIEW (2026-07-09, commits 26891b1←): whole-app
   audit via 2 review subagents + a strategic pass; 7 real fixes, all tested,
   deployed, 286 green.** **Security surface came back STRONG** — auth, session
@@ -660,6 +675,7 @@ narrative goes to `notes/engineering_journal.md`, plans to
 | `src/webapp/` | **SPEC P8 slice 1: FastAPI pilot.** `auth_web.py` (session-scoped PKCE — token in session, CSRF state gate, D-8 no secret), `sessions.py` (TTL `SessionStore` + signed cookie + rotate), `featurestore.py` (bridge-key overlap-join + acoustic insight), `app.py` (routes: `/ login callback dashboard logout healthz`), `config.py`, `templates/`, `static/`. Test: `test_webapp.py` (15). Run: `uv run python scripts/run_webapp.py` → :8000. |
 | `src/webapp/{artists,library,playlists}.py` | **Vision-E product surfaces (pure view logic).** `artists.py` (P3.2 — rollup, genre strip, comparison SVG, `your_top_by_artist` D-33, `nearest_artists`). `library.py` (P3.3 — `library_view` search/sort/dedup-annotate/mine-overlay, `why_n_analyzed` from `_TOP_LIMIT`); fed by `cache.library_rows()`. `playlists.py` (P3.4 — `playlist_cards`/`importable_ids` own+collaborative filter, `coverage_line`); `/playlists` + `POST …/analyze` behind `auth_web.has_playlist_scope` (re-consent), cap `config.PLAYLIST_IMPORT_CAP`. `/library`+`/song`+`/spectrogram` PUBLIC (D-18/D-40); `/explore`+`/recommend`+`/playlists` gated. Tests: `test_artists.py`, `test_library.py`, `test_playlists.py`. |
 | `infra/cloudflare/origin-fallback-worker.js` | H5 (P3.6): the $0 origin-down fallback Worker — 502/504/521-523/530 → an honest 503 "runs on-demand" card; healthy origin untouched; /healthz keeps JSON truth. Owner deploys via dashboard paste (SELF_HOSTING §6a). |
+| `evals/runs/` | **Dated LLM-path eval artifacts (K0 convention):** `YYYY-MM-DD_<model>_<setname>.txt` — the committed numbers every D-42 gate measures against (first: gemma4:12b 9/15, 2026-07-16). The fallback/constant anchors ride in the same artifact. |
 | `docs/CASE_STUDY.md` | **P3.7: the portfolio narrative** — the API-removal origin story, architecture, $0 production, the earned doctrines (w/ journal numbers), and the AI-harness methodology. The README links it front-and-center. |
 | `LICENSE` | MIT (owner choice, P3.7). The KB was history-scrubbed pre-flip, so no license conflict with course material. |
 | `docs/AGENT_ACCESS.md` | P5 artifact: MCP registration config (Claude Desktop/Code) + security model + live demo transcript. |
@@ -1630,3 +1646,22 @@ narrative goes to `notes/engineering_journal.md`, plans to
   repo, live public app, fallback edge, case study. Next build = Phase 4 /
   K0 Epic-K design session (FABLE + llm-rag-expert). O2 weights sign-off
   stays open until real imports accrue. NEW SESSION: run `/resume`.**
+- **2026-07-16 (session 41 — K0 the Epic-K design session, Fable; ONE
+  llm-rag-expert consult per D-39):** The consult read rag.py/evalset/
+  warehouse_agent/clusters + the KB cards and delivered per-phase eval
+  designs, ctx budgets, the JSON-action tool loop, the K4 validation
+  gateway, and countable K5/K6 gates — plus TWO real finds: the
+  `force_fallback` harness hole and the missing-in-repo gemma4 baseline. I
+  corrected its one over-reach (per-user warehouse isolation as a K2
+  blocker — dissolves under D-18: the warehouse IS the owner's public
+  corpus; session taste never enters the sandbox). Owner interview locked 4
+  calls → **D-42…D-46 written into VISION_SPECS §Phase 4** (K1 viewer-gated
+  chat probe-first → K2 tool-use SHIPS gated → K3 additive bucketing → K4
+  uploads 20MB/10min/10 + `up`+hash id → K5/K6 docs-only). **K0 exit items
+  shipped:** harness fix + tripwire (418 green, ruff clean; journal #34) ·
+  the first dated baseline artifact (`evals/runs/`, gemma4:12b **9/15**,
+  anchors in-run, cold-load timeouts visibly falling back = deployment-
+  honest). Commits: K0a harness · c4f85ca plan · aa0de7c baseline; pushed.
+  **Left off: K0 COMPLETE — Phase 4 is specced and calibrated. Next = K1
+  probe (Opus): raw-call ~20 chat turns against live gemma4 BEFORE building
+  session machinery. NEW SESSION: run `/resume` on Opus.**

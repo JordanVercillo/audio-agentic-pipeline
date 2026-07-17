@@ -846,3 +846,32 @@ identical response that DOES survive (the 503 card) and diff the one variable
 > the platform's error page, your body discarded. Pick statuses for how the
 > intermediary treats them, not just for semantic purity — and debug missing
 > responses differentially: find the twin that survives, diff one variable.*
+
+### 34. A guard that disarms one of two triggers is only accidentally safe (2026-07-16)
+
+The golden-eval harness's `force_fallback=True` was the CI honesty guard: pop
+`ANTHROPIC_API_KEY`, measure the deterministic path, assert 15/15. It had been
+green for weeks. The K0 design consult read it cold and noticed the routing
+predicate it guards has TWO arms: `_wants_llm()` is true for a hosted model
+with a key **or** for `WEBAPP_LLM_MODEL=ollama:*` — which needs no key at
+all. On any dev box with the live `.env` (Ollama configured), the
+"deterministic" run silently measured the LLM path — or, with Ollama down,
+whatever the error path fell through to. CI stayed honest only by accident of
+environment: CI has no `.env`, so the un-neutralized arm was never armed
+there. The fix was small (pop both variables, restore both); the tripwire now
+arms BOTH routes deliberately and asserts no `llm` source appears in the
+report.
+
+**The realization:** a guard is defined by the predicate it must defeat, not
+by the trigger it happens to disarm. When the guarded condition is a
+disjunction, neutralizing one branch produces a guard that passes everywhere
+it's tested and fails everywhere it matters — and "it's green in CI" says
+nothing, because CI may simply lack the second trigger. Related but distinct
+from #23 (test the interlock against its own lifecycle): here the interlock
+worked where it ran; the flaw was that its *test environment* couldn't arm
+the branch it missed. The tripwire's job is to arm every branch explicitly.
+
+> *When a guard defeats a disjunction, enumerate the arms: neutralize each
+> one, and test with every arm deliberately armed. A guard green only in an
+> environment that can't arm the second trigger is a coincidence wearing a
+> checkmark.*
