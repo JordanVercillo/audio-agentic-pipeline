@@ -82,7 +82,15 @@ _MAX_TOKENS = 1024  # a taste answer is deliberately short — well under stream
 # grammar-constrains a thinking model's output to one JSON object (reasoning
 # lands in the schema's `thoughts` field, not as loose prose).
 _OLLAMA_NUM_CTX = 8192
+# K0.5: cap generation. gemma4 is a THINKING model — uncapped at temp 0 it can
+# grind a huge `thoughts` field and blow the timeout (the mechanism behind the
+# two classify timeouts in the 2026-07-16 baseline). A taste answer is short.
+_OLLAMA_NUM_PREDICT = 1024
 _OLLAMA_TIMEOUT = 120  # seconds — covers a cold model load; warm calls are ~3-8 s
+
+# The grounding sentinel for "this visitor has no retrieved data yet" — the
+# answer() path short-circuits to the deterministic fallback on it (no LLM call).
+_EMPTY_GROUNDING = "(no listening data available)"
 
 
 def warm_model(model: str) -> None:
@@ -112,7 +120,8 @@ def _ollama_chat(model: str, system: str, prompt: str) -> Optional[str]:
             "messages": [{"role": "system", "content": system},
                          {"role": "user", "content": prompt}],
             "format": "json", "stream": False,
-            "options": {"num_ctx": _OLLAMA_NUM_CTX, "temperature": 0},
+            "options": {"num_ctx": _OLLAMA_NUM_CTX,
+                        "num_predict": _OLLAMA_NUM_PREDICT, "temperature": 0},
             "keep_alive": "10m",  # keep it resident so back-to-back asks are warm
         },
         timeout=_OLLAMA_TIMEOUT)
@@ -137,6 +146,14 @@ def _grounding_text(taste: dict[str, Any], glossary: dict[str, str]) -> str:
     if arch:
         lines.append(f"Taste archetype (derived): {arch['name']} — "
                      + "; ".join(arch.get("evidence", [])))
+        # K0.5: render motion/breadth — they were absent from the grounding, so
+        # the model could not cite "read as anchored/roaming" (the C11/C12
+        # context failures). Same phrasing the deterministic narrative uses.
+        if arch.get("motion"):
+            lines.append("Between your recent and all-time listening you read as "
+                         f"{arch['motion'].lower()}.")
+        if arch.get("breadth"):
+            lines.append(f"Across artists you read as {arch['breadth'].lower()}.")
     clusters = taste.get("clusters") or {}
     for window, segs in (clusters.get("windows") or {}).items():
         seg_s = ", ".join(f"{s['share']}% “{s['label']}”" for s in segs[:3])
@@ -173,7 +190,7 @@ def _grounding_text(taste: dict[str, Any], glossary: dict[str, str]) -> str:
     if glossary:
         lines.append("Feature glossary: "
                      + " ".join(f"{k} = {v}" for k, v in glossary.items()))
-    return "\n".join(lines) if lines else "(no listening data available)"
+    return "\n".join(lines) if lines else _EMPTY_GROUNDING
 
 
 class TasteRAG:
@@ -210,6 +227,11 @@ class TasteRAG:
         """Return {answer, source, model}. Never raises — falls back deterministically."""
         glossary = self.fs.feature_glossary(_GLOSSARY_FEATURES) if self.fs else {}
         grounding = _grounding_text(taste, glossary)
+        # K0.5: an empty context has nothing to ground on — don't spend an LLM
+        # call (and a possible cold-load timeout) to have it guess; the
+        # deterministic fallback answers honestly from the retrieved facts (D-5).
+        if grounding == _EMPTY_GROUNDING:
+            return {"answer": self._fallback(taste), "source": "fallback", "model": None}
         if self._wants_llm():
             try:
                 prompt = ("DATA (the visitor's own listening + local acoustic analysis):\n"

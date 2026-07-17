@@ -146,7 +146,18 @@ def format_report(title: str, report: dict[str, Any]) -> str:
     lines.append("  per check:")
     for check, c in sorted(report["by_check"].items()):
         lines.append(f"    {check:13s} {c['pass']}/{c['total']}")
+    # K0.5 honesty: surface which cases each SOURCE answered. In an LLM-path
+    # run, cases that degraded to "fallback" were NOT graded on the model — the
+    # 2026-07-16 baseline hid two classify timeouts this way, overstating gemma4.
+    by_source: dict[str, list[str]] = {}
+    for r in report.get("results", []):
+        by_source.setdefault(r.get("source") or "?", []).append(r["id"])
+    if set(by_source) - {"?"}:
+        lines.append("  by source: "
+                     + " · ".join(f"{s} {len(ids)} [{','.join(ids)}]"
+                                  for s, ids in sorted(by_source.items())))
+    src_of = {r["id"]: r.get("source") for r in report.get("results", [])}
     for f in report["failures"]:
         bad = [name for name, ok in f["checks"].items() if not ok]
-        lines.append(f"  FAIL {f['id']} ({f['kind']}): {', '.join(bad)}")
+        lines.append(f"  FAIL {f['id']} ({f['kind']}, {src_of.get(f['id'])}): {', '.join(bad)}")
     return "\n".join(lines)

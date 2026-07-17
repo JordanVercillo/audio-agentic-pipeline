@@ -503,6 +503,26 @@ def test_rag_grounding_includes_archetype_clusters_signature():
     assert "Tempo faster (+1.3σ)" in txt
 
 
+def test_rag_grounding_renders_motion_and_breadth():
+    # K0.5: motion/breadth were absent → the model couldn't cite "read as
+    # anchored" (the C11/C12 context failures). They must now be in the context.
+    from .rag import _grounding_text
+    txt = _grounding_text(_taste_d(), {})
+    assert "read as anchored" in txt.lower()
+    assert "read as loyalist" in txt.lower()
+
+
+def test_answer_empty_context_skips_llm(monkeypatch):
+    # K0.5: an empty taste must go straight to the deterministic fallback — no
+    # LLM call (A04 routing fix). Rig the LLM to explode to prove it isn't hit.
+    from .rag import TasteRAG
+    rag = TasteRAG(model="ollama:fake:0b")
+    monkeypatch.setattr("src.webapp.rag._ollama_chat",
+                        lambda *a, **k: (_ for _ in ()).throw(AssertionError("no LLM on empty")))
+    res = rag.answer("what's my vibe?", {})
+    assert res["source"] == "fallback" and "analyzed" in res["answer"].lower()
+
+
 def test_classify_deterministic_fallback(monkeypatch):
     from .rag import TasteRAG
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
@@ -1074,7 +1094,7 @@ def test_rag_ollama_path_no_key(monkeypatch):
     assert captured["url"].endswith("/api/chat")
     assert captured["json"]["model"] == "gemma4:12b"
     assert captured["json"]["format"] == "json"
-    assert captured["json"]["options"] == {"num_ctx": 8192, "temperature": 0}
+    assert captured["json"]["options"] == {"num_ctx": 8192, "num_predict": 1024, "temperature": 0}
     assert "Muse" in captured["json"]["messages"][1]["content"]  # grounded, no key needed
 
 

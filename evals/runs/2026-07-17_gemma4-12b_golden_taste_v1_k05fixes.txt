@@ -1,0 +1,48 @@
+== deterministic fallback: 15/15 cases pass ==
+  ask       10/10
+  classify  5/5
+  per check:
+    archetype     5/5
+    must_cite     14/14
+    no_invention  15/15
+    nonempty      14/14
+    plain_prose   14/14
+  by source: fallback 14 [A01,A02,A03,A04,A05,A06,A07,A08,A09,A10,C11,C12,C13,C14] · none 1 [C15]
+
+== constant baseline (honesty anchor): 0/15 cases pass ==
+  ask       0/10
+  classify  0/5
+  per check:
+    archetype     0/5
+    must_cite     0/14
+    no_invention  15/15
+    nonempty      14/14
+    plain_prose   14/14
+  FAIL A01 (ask, None): must_cite
+  FAIL A02 (ask, None): must_cite
+  FAIL A03 (ask, None): must_cite
+  FAIL A04 (ask, None): must_cite
+  FAIL A05 (ask, None): must_cite
+  FAIL A06 (ask, None): must_cite
+  FAIL A07 (ask, None): must_cite
+  FAIL A08 (ask, None): must_cite
+  FAIL A09 (ask, None): must_cite
+  FAIL A10 (ask, None): must_cite
+  FAIL C11 (classify, None): must_cite, archetype
+  FAIL C12 (classify, None): must_cite, archetype
+  FAIL C13 (classify, None): must_cite, archetype
+  FAIL C14 (classify, None): must_cite, archetype
+  FAIL C15 (classify, None): archetype
+
+== LLM path (ollama:gemma4:12b): 13/15 cases pass ==
+  ask       8/10
+  classify  5/5
+  per check:
+    archetype     5/5
+    must_cite     12/14
+    no_invention  15/15
+    nonempty      14/14
+    plain_prose   14/14
+  by source: fallback 7 [A03,A04,A10,C11,C12,C13,C14] · llm 7 [A01,A02,A05,A06,A07,A08,A09] · none 1 [C15]
+  FAIL A01 (ask, llm): must_cite
+  FAIL A05 (ask, llm): must_cite
