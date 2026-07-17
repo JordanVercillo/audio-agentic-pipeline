@@ -1707,6 +1707,18 @@ narrative goes to `notes/engineering_journal.md`, plans to
   confirmed (ship narrower, never hosted). **Spec rewritten (89d0b83):
   D-47…D-50 + both hosted clauses removed + build order resequenced (K0.5
   data floor FIRST → K1 probe → K1.5 flywheel → K2 → K3 → K4 → K5/K6).**
-  418 tests stand (docs+charter-only session). **Left off: the reset is
-  specced end to end. Next = K0.5 the data floor (Opus; owner ratifies the
-  2 broken-track re-extracts). NEW SESSION: run `/resume` on Opus.**
+  418 tests stand (docs+charter-only session). **PLUS (same session, owner's
+  QA note + screenshots): Phase 4.5 specced (fc0de32, D-51…D-54)** — Epic Q
+  acquisition provenance & QA (`track_provenance` captured AT extraction ·
+  /song source-transparency + /library glyphs · the D-47-pattern QA review
+  loop · **D-52 FULL 796-track re-extraction, owner: "no patchwork —
+  consistency and standards"**, schema-first, non-destructive, ~11 h) and
+  Epic R Artists 2.0 (MusicBrainz spine + Spotify garnish, mbid = attribute
+  never key, on-demand+cache-forever; /artist profile 2.0 w/ discography;
+  dashboard top-artist cards → links, ships early). Facts grounded first:
+  the YouTube URL was NEVER stored (796/796), 497 have O2 confidence;
+  `GET /artists/{id}/albums` survived the deprecations (10/page). Entry:
+  after Epic K; Q before R. **Left off: the reset + phase-2 are specced end
+  to end. Next = K0.5 the data floor (Opus; owner ratifies the 2
+  broken-track re-extracts — note D-52 will re-extract everything anyway,
+  so K0.5 may just dead-letter them). NEW SESSION: run `/resume` on Opus.**
