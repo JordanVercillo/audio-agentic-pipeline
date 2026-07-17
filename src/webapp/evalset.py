@@ -82,16 +82,26 @@ def run_case(rag: TasteRAG, case: dict) -> dict:
 
 def run_golden(cases: Optional[list[dict]] = None, *,
                force_fallback: bool = True) -> dict[str, Any]:
-    """Grade every golden case. force_fallback=True hides the API key so the
-    deterministic path is what's measured (the CI guard)."""
+    """Grade every golden case. force_fallback=True neutralizes BOTH LLM routes
+    so the deterministic path is what's measured (the CI guard).
+
+    K0 fix: popping only the API key left a hole — a local `.env` with
+    `WEBAPP_LLM_MODEL=ollama:…` needs no key, so the "deterministic" run
+    silently measured the LLM path (or whatever a down Ollama fell through
+    to). Both env routes must be neutralized or the $0 CI guard de-calibrates
+    the moment someone runs it on a dev box."""
     cases = cases if cases is not None else load_golden()
-    saved = os.environ.pop("ANTHROPIC_API_KEY", None) if force_fallback else None
+    saved: dict[str, Optional[str]] = {}
+    if force_fallback:
+        for var in ("ANTHROPIC_API_KEY", "WEBAPP_LLM_MODEL"):
+            saved[var] = os.environ.pop(var, None)
     try:
         rag = TasteRAG()
         results = [run_case(rag, c) for c in cases]
     finally:
-        if saved is not None:
-            os.environ["ANTHROPIC_API_KEY"] = saved
+        for var, val in saved.items():
+            if val is not None:
+                os.environ[var] = val
     return _summarize(results)
 
 
@@ -123,6 +133,9 @@ def _summarize(results: list[dict]) -> dict[str, Any]:
             "passed": sum(1 for r in results if r["passed"]),
             "total": len(results),
             "by_kind": by_kind, "by_check": by_check,
+            # which path actually answered — the K0 tripwire asserts {"fallback"}
+            # under force_fallback (a de-calibrated guard shows "llm" here)
+            "sources": sorted({r.get("source") for r in results if r.get("source")}),
             "failures": [r for r in results if not r["passed"]]}
 
 

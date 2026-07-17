@@ -30,6 +30,20 @@ def test_fallback_passes_every_golden_case():
     assert report["passed"] == report["total"], "\n" + format_report("fallback", report)
 
 
+def test_force_fallback_neutralizes_local_llm_route(monkeypatch):
+    # K0 tripwire: a dev box's WEBAPP_LLM_MODEL=ollama:* needs no API key, so
+    # popping only the key left the "deterministic" run on the LLM path. With
+    # BOTH routes armed, force_fallback must still measure the fallback only.
+    monkeypatch.setenv("WEBAPP_LLM_MODEL", "ollama:fake-model:0b")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-fake")
+    report = run_golden(force_fallback=True)
+    assert report["passed"] == report["total"]
+    # "fallback" + "none" (archetype-missing early return) are the only
+    # legitimate non-LLM sources; "llm" here = the guard is de-calibrated.
+    assert set(report["sources"]) <= {"fallback", "none"}
+    assert "llm" not in report["sources"]
+
+
 def test_baseline_scores_below_fallback_on_citing():
     """The constant baseline must fail must_cite — proof the check carries skill."""
     base = run_baseline()
