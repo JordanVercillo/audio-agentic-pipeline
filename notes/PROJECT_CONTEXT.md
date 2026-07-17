@@ -341,17 +341,31 @@
   it; cache+marts live at 796); clusters cover 39% (trained Jul-11 on 311);
   **the warehouse audit is RED today** on FEATURE_DISTRIBUTION (2 broken
   extractions: tempo 0/−180 dBFS "Aftermath — Muse" + "Q&A — Drake"; 11
-  legit DJ-mix outliers) — known cause, K0.5 fixes it. **➡️ NEXT ACTION —
-  K0.5 the data floor (Opus; owner ratifies the 2 broken-track re-extracts):
-  ① re-baseline w/ per-case sources (the 9/15 overstates — 2 classify grades
-  were fallback after cold-load timeouts) ② the grounding fixes
-  (motion/breadth) + empty-context gate + num_predict=1024 ③ the semantic
-  marts (corpus_facts · track_card w/ feature_valid · artist_rollup by id ·
-  cluster_profile stamped · feature_dictionary w/ caveats) + post-drain
-  wiring + the 4 tripwires (plane-coherence FAILS today by design) ④ repoint
-  the ad-hoc engine at the semantic marts ⑤ resolve the 2 broken extractions
-  + the online-cluster-assignment call. THEN K1 probe → /chat. Owner item
-  still open: O2 weights sign-off.** Parked: MPD-audio, Epic M,
+  legit DJ-mix outliers) — known cause. ✅ **K0.5 THE DATA FLOOR — MOSTLY
+  SHIPPED (2026-07-17, session 43, Opus; commits 7f12daf/5584750, 425 tests,
+  app-verify ALL-FALSE, semantic marts BUILT LIVE on 796 tracks):**
+  **① eval honesty** — `format_report` now prints per-case source + a "by
+  source" line (the 9/15 hid 2 fallback-graded classify timeouts). **② the
+  grounding/routing fixes** (motion/breadth render, empty-context→fallback
+  gate, num_predict=1024) → **gemma4 9→13/15** (honest artifact: 7 passes are
+  fallback, gemma4's own LLM record 5/7; A01/A05 must_cite remain for D-48's
+  RTCROS reorder). **③ the semantic layer** (`src/store/semantic.py`:
+  feature_dictionary w/ the rule-3 caveat as a ROW · track_card w/
+  feature_valid gate · artist_rollup by primary_artist_id) wired into
+  `rebuild_marts` (rides post-drain, no recompute); the 4 tripwires ship as
+  tests; built live = 796 track_cards (plane-coherent), 299 artist_rollups,
+  the 2 broken tracks gated `feature_valid=False`. **④ broken extractions:
+  the feature_valid gate is the interim protection; D-52 re-extraction is the
+  permanent fix (no premature DB mutation — owner's ratified call).**
+  **➡️ NEXT ACTION — K1: the probe FIRST (Opus)** — script ~8-10 chat golden
+  cases (story + adhoc) as raw calls against live gemma4:12b, READ ~20 turns,
+  THEN build `prompt_contract.py` (D-48 RTCROS: cited-before-answer +
+  entity-inventory verify-retry — this is what fixes A01/A05) + `golden_chat_v1`
+  + the viewer-gated `/chat` w/ ChatLog from turn one (D-47). **DEFERRED from
+  K0.5 (not blocking K1): cluster_profile + the online-cluster-assignment
+  decision (owner call — clusters at 39%); the ad-hoc-engine repoint off the
+  Jul-4 star schema → lands with K2 when tool-use actually reads it.** Owner
+  item still open: O2 weights sign-off. Parked: MPD-audio, Epic M,
   instrumentalness, dupe-pruning.
 - ✅ **SECURITY + ROBUSTNESS REVIEW (2026-07-09, commits 26891b1←): whole-app
   audit via 2 review subagents + a strategic pass; 7 real fixes, all tested,
@@ -694,7 +708,8 @@ narrative goes to `notes/engineering_journal.md`, plans to
 | `src/webapp/` | **SPEC P8 slice 1: FastAPI pilot.** `auth_web.py` (session-scoped PKCE — token in session, CSRF state gate, D-8 no secret), `sessions.py` (TTL `SessionStore` + signed cookie + rotate), `featurestore.py` (bridge-key overlap-join + acoustic insight), `app.py` (routes: `/ login callback dashboard logout healthz`), `config.py`, `templates/`, `static/`. Test: `test_webapp.py` (15). Run: `uv run python scripts/run_webapp.py` → :8000. |
 | `src/webapp/{artists,library,playlists}.py` | **Vision-E product surfaces (pure view logic).** `artists.py` (P3.2 — rollup, genre strip, comparison SVG, `your_top_by_artist` D-33, `nearest_artists`). `library.py` (P3.3 — `library_view` search/sort/dedup-annotate/mine-overlay, `why_n_analyzed` from `_TOP_LIMIT`); fed by `cache.library_rows()`. `playlists.py` (P3.4 — `playlist_cards`/`importable_ids` own+collaborative filter, `coverage_line`); `/playlists` + `POST …/analyze` behind `auth_web.has_playlist_scope` (re-consent), cap `config.PLAYLIST_IMPORT_CAP`. `/library`+`/song`+`/spectrogram` PUBLIC (D-18/D-40); `/explore`+`/recommend`+`/playlists` gated. Tests: `test_artists.py`, `test_library.py`, `test_playlists.py`. |
 | `infra/cloudflare/origin-fallback-worker.js` | H5 (P3.6): the $0 origin-down fallback Worker — 502/504/521-523/530 → an honest 503 "runs on-demand" card; healthy origin untouched; /healthz keeps JSON truth. Owner deploys via dashboard paste (SELF_HOSTING §6a). |
-| `evals/runs/` | **Dated LLM-path eval artifacts (K0 convention):** `YYYY-MM-DD_<model>_<setname>.txt` — the committed numbers every D-42 gate measures against (first: gemma4:12b 9/15, 2026-07-16). The fallback/constant anchors ride in the same artifact. |
+| `evals/runs/` | **Dated LLM-path eval artifacts (K0 convention):** `YYYY-MM-DD_<model>_<setname>.txt` — the committed numbers every D-42 gate measures against (gemma4:12b 9/15 2026-07-16 → 13/15 2026-07-17 after the K0.5 fixes). The fallback/constant anchors + a "by source" line ride in the same artifact. |
+| `src/store/semantic.py` | **The D-49 semantic layer (Talk-to-your-data data floor):** governed analyst marts materialized FROM the cache (source of truth, journal #35) via `rebuild_marts` post-drain — `feature_dictionary` (rule-3 caveat as a row), `track_card` (feature_valid gate — no broken superlatives), `artist_rollup` (by primary_artist_id). NO embeddings (SQL + entity cards). Tripwires: `test_semantic.py`. cluster_profile still TODO. |
 | `docs/CASE_STUDY.md` | **P3.7: the portfolio narrative** — the API-removal origin story, architecture, $0 production, the earned doctrines (w/ journal numbers), and the AI-harness methodology. The README links it front-and-center. |
 | `LICENSE` | MIT (owner choice, P3.7). The KB was history-scrubbed pre-flip, so no license conflict with course material. |
 | `docs/AGENT_ACCESS.md` | P5 artifact: MCP registration config (Claude Desktop/Code) + security model + live demo transcript. |
@@ -1722,3 +1737,29 @@ narrative goes to `notes/engineering_journal.md`, plans to
   to end. Next = K0.5 the data floor (Opus; owner ratifies the 2
   broken-track re-extracts — note D-52 will re-extract everything anyway,
   so K0.5 may just dead-letter them). NEW SESSION: run `/resume` on Opus.**
+- **2026-07-17 (session 43 — K0.5 the data floor, Opus 4.8 executing the
+  specced slice; no fan-out — the 2 consults' file:line designs carried it):**
+  Built the first "Talk to your data" BUILD slice in 2 commits.
+  **7f12daf (eval honesty + grounding/routing fixes):** `format_report` prints
+  per-case source + a "by source" line (the K0a-era 9/15 HID 2 classify
+  timeouts graded on fallback); `_grounding_text` renders archetype
+  motion/breadth (the C11/C12 context failures — the model couldn't cite what
+  it never saw); `answer()` short-circuits an empty context to the
+  deterministic fallback (A04 routing); `num_predict=1024` caps gemma4's
+  thinking (the timeout mechanism). New dated artifact: **gemma4 9→13/15,
+  honestly** (7 passes fallback, gemma4's own record 5/7, A01/A05 must_cite
+  left for D-48's RTCROS reorder). **5584750 (the D-49 semantic layer):**
+  `src/store/semantic.py` — feature_dictionary (rule-3 popularity caveat as a
+  ROW), track_card (feature_valid gate: tempo>1 ∧ loud>−80, broken rows
+  survive but are excluded from superlatives + percentile ranks), artist_rollup
+  (by `primary_artist_id`; widened `library_rows` to carry it); wired into
+  `rebuild_marts` (post-drain, reuses the perceptual frame, no recompute); the
+  4 named tripwires ship as `test_semantic.py`. **Built LIVE on the 796-track
+  cache: 796 track_cards (plane-coherent), 299 artist_rollups, the 2 broken
+  tracks (Aftermath/Muse, Q&A/Drake) correctly gated invalid.** 425 tests
+  (+7), ruff clean, deployed, app-verify ALL-FALSE, /library 200 (widened
+  read). Broken extractions: feature_valid gate is the interim fix, D-52
+  re-extraction the permanent one (no prod mutation — owner's call). **Left
+  off: K0.5 data floor SHIPPED; cluster_profile + ad-hoc-repoint deferred
+  (not blocking). Next = K1 probe → the RTCROS contract (D-48, fixes A01/A05)
+  → /chat + ChatLog. NEW SESSION: run `/resume` on Opus.**
