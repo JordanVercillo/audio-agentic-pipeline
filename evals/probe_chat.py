@@ -24,9 +24,19 @@ import requests
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from src.webapp import config  # noqa: E402
-from src.webapp.rag import _grounding_text, _parse_llm_json, _SYSTEM  # noqa: E402
+from src.webapp.rag import _grounding_text, _parse_llm_json  # noqa: E402
 
 _MODEL = "gemma4:12b"
+
+# the pre-RTCROS prompt, kept LOCAL so this spent probe stays self-contained
+# (rag._SYSTEM was retired into prompt_contract.py by K1b, ed84869).
+_SYSTEM = (
+    "You are a warm, precise music-taste analyst for Vercillo Analytics. Answer "
+    "the visitor's question USING ONLY the DATA. NEVER invent tracks, artists, or "
+    "statistics not in the DATA. Reuse any labelled result VERBATIM.\n"
+    "Reply as a single JSON object: \"thoughts\", then \"answer\" (2-4 sentences, "
+    "second person, plain prose), then \"cited\" (array of exact names). JSON only."
+)
 
 # ── the RTCROS draft (promoted to prompt_contract.py only if the probe passes) ──
 _RTCROS_ADHOC = (
