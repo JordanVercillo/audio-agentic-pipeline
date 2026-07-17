@@ -1,0 +1,9 @@
+# K1 probe — gemma4:12b, live (2026-07-17)
+# FINDINGS: (1) cited-before-answer reorder is NOT a silver bullet — A01 2/3, A05 1/2;
+# (2) gemma4 paraphrases even inside cited[] (hallucinated 'statement'/'genre') → verify
+#     against the entity inventory, never trust cited[]; (3) multi-turn ok ~3 turns, T4
+#     went EMPTY on an unanswerable Q → need empty/unparseable→fallback + honor Stop;
+# (4) STORY MODE is the strongest surface (coherent, grounded, verbatim labels).
+# => verify-retry + honest fallback is the hero, not the reorder; story mode leads /chat.
+
+exit 0
