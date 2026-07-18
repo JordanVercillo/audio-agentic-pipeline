@@ -382,16 +382,25 @@
   story()/classify() now pass a "REQUEST: …" directive; it chokes on nested
   JSON → story mode is the FLAT `answer` field; it's INCONSISTENT + slow
   (~25-50s, pads to the token cap) → the deterministic fallback is the
-  reliability backbone, gemma4 enhances when it succeeds.** **➡️ NEXT ACTION —
-  K1.5 the flywheel live (Opus): `scripts/review_chat_logs.py` (stratified
-  sampler over the D-47 logs → deterministic pre-grade → write ChatLabel rows →
-  aggregates-only dated `evals/runs/` report) + the first real review session
-  (owner+Fable) → golden promotions, the K5 counter starts. THEN K2 (injection
-  evals FABLE → tool-use loop). DEFERRED: cluster_profile + online-cluster
-  (owner call, 39%); the ad-hoc-engine repoint → K2. `/chat` UX note: gemma4's
-  ~50s synchronous latency wants async/streaming eventually.** Owner item still
-  open: O2 weights sign-off. Parked: MPD-audio, Epic M, instrumentalness,
-  dupe-pruning.
+  reliability backbone, gemma4 enhances when it succeeds.** ✅ **K1.5 THE
+  REVIEW FLYWHEEL SHIPPED (2026-07-18, session 46, Opus; commit 365d929, 441
+  tests, ran live on the 23 real logs):** `src/webapp/chat_review.py` (pure:
+  stratified_sample · pre_grade the machine-checkable dims via verify_citations ·
+  render_worksheet ESCAPED · aggregate + the `k5_eligible` counter) +
+  `cache.ungraded_chat_turns`/`write_chat_label`/`all_chat_labels` +
+  `scripts/review_chat_logs.py` (`--sample` a gitignored worksheet · `--commit`
+  human grades → ChatLabel · `--report` aggregates-only dated artifact; raw
+  user text NEVER leaves the gitignored DB, rule 7). **➡️ NEXT ACTION — TWO
+  tracks: (owner) run the FIRST review session — `uv run python
+  scripts/review_chat_logs.py --sample 20`, grade accuracy/usefulness/verdict
+  in the worksheet, `--commit` it, `--report`; those grades seed golden cases +
+  the K5 counter. (build) K2 — injection evals (FABLE, security-adversarial) →
+  the tool-use loop over the semantic marts (Opus, gated on the injection set
+  100%).** DEFERRED (not blocking): cluster_profile + online-cluster (owner
+  call, 39%); the ad-hoc-engine repoint lands with K2. `/chat` UX note:
+  gemma4's ~50s synchronous latency wants async/streaming eventually. Owner
+  item still open: O2 weights sign-off. Parked: MPD-audio, Epic M,
+  instrumentalness, dupe-pruning.
 - ✅ **SECURITY + ROBUSTNESS REVIEW (2026-07-09, commits 26891b1←): whole-app
   audit via 2 review subagents + a strategic pass; 7 real fixes, all tested,
   deployed, 286 green.** **Security surface came back STRONG** — auth, session
@@ -738,6 +747,7 @@ narrative goes to `notes/engineering_journal.md`, plans to
 | `src/webapp/prompt_contract.py` | **The D-48 RTCROS contract (ONE encoding):** `PROMPT_VERSION` · `build_system(adhoc\|story\|profile)` — story is the FLAT `answer` field (gemma4 chokes on nested JSON) · `verify_citations` (checks cited[] against the grounding — gemma4 hallucinates inside cited[]) · `is_empty_reply`→fallback. gemma4 needs a user directive or returns empty (journal #37); weak on strict-label adhoc (journal #36). |
 | **ChatLog / ChatLabel** (`src/store/models.py`) | **D-47 the review flywheel's spine:** every `/ask`·`/classify`·`/chat` turn logged for the REVIEW READER (question · full grounding sent · raw+parsed output · source · cost), `chat_session_id` = a per-session uuid (NOT the auth sid). `cache.log_chat_turn`/`recent_chat_turns`. `/privacy` discloses it, 90-day retention. `ChatLabel` = the human grades (rubric-v1) that become K5's dataset. Review script = K1.5 TODO. |
 | `src/webapp/templates/chat.html` + `TasteRAG.story()` | **K1c the story-led /chat:** viewer-gated; opens with gemma4's generated data story (its strength when it engages), then PRG adhoc turns, ~20-turn history. gemma4 is inconsistent+slow → the deterministic fallback carries reliability. |
+| `src/webapp/chat_review.py` + `scripts/review_chat_logs.py` | **K1.5 the D-47 review flywheel:** sample ungraded ChatLog turns (stratified) → `pre_grade` the machine-checkable dims → a human grades accuracy/usefulness/verdict → ChatLabel rows → the `k5_eligible` counter + golden candidates. `--sample`/`--commit`/`--report`; worksheets gitignored (raw text stays local), only the aggregates report → `evals/runs/`. |
 | `docs/CASE_STUDY.md` | **P3.7: the portfolio narrative** — the API-removal origin story, architecture, $0 production, the earned doctrines (w/ journal numbers), and the AI-harness methodology. The README links it front-and-center. |
 | `LICENSE` | MIT (owner choice, P3.7). The KB was history-scrubbed pre-flip, so no license conflict with course material. |
 | `docs/AGENT_ACCESS.md` | P5 artifact: MCP registration config (Claude Desktop/Code) + security model + live demo transcript. |
@@ -1834,3 +1844,23 @@ narrative goes to `notes/engineering_journal.md`, plans to
   "Muse" answer; all turns logged). **Left off: story-led /chat + logging LIVE.
   Next = K1.5 the review flywheel (`review_chat_logs.py` + first review session)
   → K2. NEW SESSION: run `/resume` on Opus.**
+- **2026-07-18 (session 46 — K1.5 the review flywheel, Opus 4.8; no fan-out —
+  the chat-analyst consult's design carried it):** Built the D-47 flywheel in
+  1 commit (365d929). `src/webapp/chat_review.py` (pure): `stratified_sample`
+  (8 story-llm/8 adhoc-llm/4 fallback, deterministic, thin strata never block),
+  `pre_grade` (suggests only the machine-checkable dims — citation_fidelity +
+  invention via `verify_citations` over the row; accuracy/usefulness stay
+  human), `render_worksheet` (every field html-escaped — log text is
+  untrusted), `aggregate`/`format_report` (rubric means by mode/source, verdict
+  counts, the `k5_eligible` counter → D-46's 200-500). `cache.ungraded_chat_turns`
+  (rows without a ChatLabel) + `write_chat_label` + `all_chat_labels`.
+  `scripts/review_chat_logs.py`: `--sample` (gitignored worksheet) / `--commit`
+  (human grades → ChatLabel) / `--report` (aggregates-only dated `evals/runs/`
+  artifact — raw user text NEVER leaves the gitignored DB, rule 7). **Ran live
+  on the 23 real logged turns: --sample wrote a 20-card worksheet (a real
+  gemma4 answer "Your vibe is bright indie." pre-graded), --report produced the
+  artifact (0 graded — honest, the first human session fills it).** 441 tests
+  (+6), ruff clean, worksheet gitignore-verified. No journal entry (clean
+  specced execution). **Left off: the flywheel is BUILT + demonstrated on real
+  data; the first HUMAN review session is the owner's next step. Next build =
+  K2 (injection evals FABLE → tool-use loop). NEW SESSION: run `/resume`.**

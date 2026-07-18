@@ -1113,10 +1113,10 @@ superlatives. **Hence K0.5 below — the data floor ships before any chat.**
   every turn logged (D-47) → the flywheel + K5 adapters lift adhoc. Remaining:
   `golden_chat_v1` (story + adhoc + context_carry) → the viewer-gated /chat w/
   ChatLog from turn one.
-- **K1.5 — the flywheel live (Opus build, the REVIEW SESSIONS are
-  owner+Fable):** review_chat_logs.py + ChatLabel + the first real review
-  session over live logs → graded rows, golden promotions, the K5 counter
-  starts.
+- **K1.5 — ✅ TOOLING SHIPPED (2026-07-18, commit 365d929): review_chat_logs.py
+  + chat_review.py + ChatLabel, ran live on the 23 real logs.** The first
+  HUMAN review session (owner: `--sample` → grade → `--commit` → `--report`) is
+  the remaining step → graded rows, golden promotions, the K5 counter starts.
 - **K2 injection evals (FABLE) → K2 loop (Opus, gated)** → **K3 (Opus)** →
   **K4 gateway (FABLE security review, Opus plumbing)** → **K5/K6 docs
   (Fable, when gates trip).**
