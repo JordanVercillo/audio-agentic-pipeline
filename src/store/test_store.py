@@ -508,6 +508,23 @@ def test_extract_one_records_match_confidence(cache, tmp_path):
         assert s.get(TrackFeatures, "mc1").match_confidence == 1.0
 
 
+def test_chat_log_roundtrip_and_best_effort(cache):
+    # D-47: log a turn, read it back newest-first; a bad row never raises.
+    cache.log_chat_turn(chat_session_id="s1", turn_index=0, mode="adhoc",
+                        prompt_version="rtcros-v1", user_question="q1",
+                        rendered_context="ctx", parsed_answer="a1",
+                        cited_entities=["Muse"], source="llm", model="ollama:gemma4:12b",
+                        latency_ms=42)
+    cache.log_chat_turn(chat_session_id="s1", turn_index=1, mode="story",
+                        parsed_answer="a2", source="fallback", latency_ms=5)
+    rows = cache.recent_chat_turns()
+    assert [r["turn_index"] for r in rows] == [1, 0]         # newest first
+    assert rows[1]["cited_entities"] == ["Muse"] and rows[1]["source"] == "llm"
+    # best-effort: an unknown kwarg is dropped, a broken write returns -1 not raises
+    assert cache.log_chat_turn(chat_session_id="s2", mode="adhoc", source="llm",
+                               bogus_field="x") >= 0
+
+
 def test_queue_rows_running_first_then_worker_fifo(cache):
     # /queue must mirror claim_next's own order (requested_at FIFO) — session 36
     cache.remember_meta([{"spotify_track_id": f"q{i}", "track_name": f"Song {i}",

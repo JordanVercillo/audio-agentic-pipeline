@@ -14,6 +14,7 @@ Worker loop:
 
 from __future__ import annotations
 
+import logging
 import math
 import os
 import statistics
@@ -31,6 +32,7 @@ from .dedup import DedupRecord, duplicate_of_map
 from .models import (
     ArtistMeta,
     Base,
+    ChatLog,
     ExtractionJob,
     TrackFeatures,
     TrackMeta,
@@ -38,6 +40,8 @@ from .models import (
     WorkerHeartbeat,
     utcnow,
 )
+
+logger = logging.getLogger(__name__)
 
 # Feature columns used for "songs like this" (whatever's present rides along).
 _SIMILARITY_COLS = [
@@ -137,6 +141,29 @@ class FeatureCache:
         with self._Session() as s:
             rows = s.execute(select(TrackFeatures)).scalars().all()
         return {r.spotify_track_id: r.features for r in rows}
+
+    def log_chat_turn(self, **row: Any) -> int:
+        """Append one ChatLog row (D-47 — log every prompt + response). Never
+        raises: a logging failure must not fail a visitor's request. Returns the
+        new row id, or -1 on failure."""
+        try:
+            with self._Session() as s:
+                rec = ChatLog(**{k: v for k, v in row.items()
+                                 if k in ChatLog.__table__.columns})
+                s.add(rec)
+                s.commit()
+                return rec.id
+        except Exception as exc:  # noqa: BLE001 — logging is best-effort
+            logger.warning("chat log write failed (turn not recorded): %s", exc)
+            return -1
+
+    def recent_chat_turns(self, limit: int = 50) -> list[dict]:
+        """Recent ChatLog rows (newest first) for the review-session sampler."""
+        with self._Session() as s:
+            rows = s.execute(select(ChatLog).order_by(ChatLog.id.desc()).limit(limit)
+                             ).scalars().all()
+            return [{c.name: getattr(r, c.name) for c in ChatLog.__table__.columns}
+                    for r in rows]
 
     def all_meta(self) -> dict[str, dict]:
         """Every track's metadata, keyed by bridge key."""

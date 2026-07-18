@@ -218,15 +218,17 @@ class TasteRAG:
         say → ONE corrective retry against the grounding."""
         system = build_system(mode)
         user = f"<data>\n{grounding}\n</data>\n\n{tail}".rstrip()
-        parsed = _parse_llm_json(self._chat(system, user) or "")
+        raw = self._chat(system, user) or ""
+        parsed = _parse_llm_json(raw)
         if is_empty_reply(parsed, mode):
             return None
         v = verify_citations(parsed, grounding, mode)
         if not v["ok"]:
-            retry = _parse_llm_json(self._chat(system, user + retry_hint(v["missing"])) or "")
+            raw2 = self._chat(system, user + retry_hint(v["missing"])) or ""
+            retry = _parse_llm_json(raw2)
             if not is_empty_reply(retry, mode):
-                parsed = retry
-        return {"text": reply_text(parsed, mode),
+                parsed, raw = retry, raw2  # the retry is what the visitor saw
+        return {"text": reply_text(parsed, mode), "raw": raw,
                 "cited": [str(c) for c in parsed.get("cited") or []]}
 
     def answer(self, question: str, taste: dict[str, Any]) -> dict[str, Any]:
@@ -237,16 +239,18 @@ class TasteRAG:
         # call (and a possible cold-load timeout) to have it guess; the
         # deterministic fallback answers honestly from the retrieved facts (D-5).
         if grounding == _EMPTY_GROUNDING:
-            return {"answer": self._fallback(taste), "source": "fallback", "model": None}
+            return {"answer": self._fallback(taste), "source": "fallback",
+                    "model": None, "grounding": grounding}
         if self._wants_llm():
             try:
                 r = self._grounded_reply("adhoc", grounding, f"QUESTION: {question}")
                 if r is not None:
-                    return {"answer": r["text"], "source": "llm",
-                            "model": self.model, "cited": r["cited"]}
+                    return {"answer": r["text"], "source": "llm", "model": self.model,
+                            "cited": r["cited"], "grounding": grounding, "raw": r["raw"]}
             except Exception as exc:  # noqa: BLE001 — an LLM error must never fail the request
                 logger.warning("RAG LLM answer failed (%s) — deterministic fallback", exc)
-        return {"answer": self._fallback(taste), "source": "fallback", "model": None}
+        return {"answer": self._fallback(taste), "source": "fallback",
+                "model": None, "grounding": grounding}
 
     # ── Epic D: the taste-profile classification ───────────────────────────
     def classify(self, taste: dict[str, Any]) -> dict[str, Any]:
@@ -268,11 +272,12 @@ class TasteRAG:
                 r = self._grounded_reply("profile", grounding, "")
                 if r is not None:
                     return {"name": arch["name"], "narrative": r["text"],
-                            "cited": r["cited"], "source": "llm", "model": self.model}
+                            "cited": r["cited"], "source": "llm", "model": self.model,
+                            "grounding": grounding, "raw": r["raw"]}
             except Exception as exc:  # noqa: BLE001 — never fail the page
                 logger.warning("classify LLM failed (%s) — deterministic narrative", exc)
         return {"name": arch["name"], "narrative": self._archetype_narrative(taste),
-                "source": "fallback", "model": None}
+                "source": "fallback", "model": None, "grounding": grounding}
 
     def _archetype_narrative(self, taste: dict[str, Any]) -> str:
         """Deterministic profile text from the archetype evidence (D-5)."""

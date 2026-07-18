@@ -28,11 +28,19 @@
     the audio is fetched transiently, processed, and deleted; only derived
     features and the spectrogram image are kept.</p>
 
-  <h2 class="section">Optional AI answers</h2>
-  <p>If the “ask your taste” answers are LLM-written, the model receives only the
-    facts already shown on your dashboard (your session's tracks, clusters,
-    drift) to write the reply — nothing is retained by this app beyond your
-    session. Without an LLM configured, answers are template-generated locally.</p>
+  <h2 class="section">AI answers &amp; quality logging</h2>
+  <p>The AI features (“ask your taste”, the taste profile, and the chat) run on a
+    <strong>local model on the developer's own machine</strong> — your data is
+    not sent to any third-party AI service. The model receives only the facts
+    already shown on your dashboard (your session's tracks, clusters, drift) to
+    write the reply; without a model configured, answers are generated locally
+    from a template.</p>
+  <p><strong>We log AI conversations for quality review.</strong> To measure and
+    improve accuracy, each AI question and its answer are recorded — the question,
+    the data context the model was given, and the reply — tagged with a random
+    conversation id, <em>not</em> your account. These logs are kept for up to
+    <strong>90 days</strong> and used only to review answer quality; they are
+    never shared or sold.</p>
 
   <h2 class="section">Contact</h2>
   <p>Questions or want anything removed? Email

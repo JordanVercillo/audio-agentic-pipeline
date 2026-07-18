@@ -20,6 +20,7 @@ import json
 import logging
 import re
 import time
+import uuid
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Optional
@@ -70,6 +71,7 @@ from .explore import (
     window_strip,
 )
 from .featurestore import FeatureStore
+from .prompt_contract import PROMPT_VERSION
 from .rag import TasteRAG
 from .recommend import (
     apply_seed_targets,
@@ -382,6 +384,26 @@ def create_app() -> FastAPI:
         guest = bool(session.get("is_guest"))
         return {"authed": authed, "guest": guest, "viewer": authed or guest}
 
+    def _log_turn(session: dict[str, Any], *, mode: str, question: Optional[str],
+                  result: dict[str, Any], latency_ms: int,
+                  error: Optional[str] = None) -> None:
+        """Record one LLM-surface turn (D-47 — log every prompt + response).
+        `chat_session_id` is a per-browser-session uuid, NEVER the auth sid.
+        Best-effort: the cache method never raises."""
+        sid = session.get("chat_sid")
+        if not sid:
+            sid = session["chat_sid"] = uuid.uuid4().hex
+        n = session.get("chat_turn", 0)
+        _feature_cache().log_chat_turn(
+            chat_session_id=sid, turn_index=n, mode=mode,
+            prompt_version=PROMPT_VERSION, user_question=question,
+            rendered_context=result.get("grounding"),
+            raw_model_output=result.get("raw"),
+            parsed_answer=result.get("answer") or result.get("narrative"),
+            cited_entities=result.get("cited"), source=result.get("source"),
+            model=result.get("model"), latency_ms=latency_ms, error=error)
+        session["chat_turn"] = n + 1
+
     @app.get("/", response_class=HTMLResponse)
     def index(request: Request):
         authed = auth_web.is_authenticated(request.state.session)
@@ -487,7 +509,10 @@ def create_app() -> FastAPI:
         question = (q or "").strip()
         if not question:
             return RedirectResponse("/dashboard", status_code=303)
+        t0 = time.monotonic()
         result = TasteRAG(_feature_store()).answer(question, taste)
+        _log_turn(session, mode="adhoc", question=question, result=result,
+                  latency_ms=int((time.monotonic() - t0) * 1000))
         return templates.TemplateResponse(request, "ask.html", {
             "authed": True, "question": question,
             "answer": result["answer"], "source": result["source"],
@@ -608,7 +633,10 @@ def create_app() -> FastAPI:
             return RedirectResponse("/dashboard", status_code=303)
         if not ctx.get("archetype"):
             return RedirectResponse("/analytics", status_code=303)
+        t0 = time.monotonic()
         result = TasteRAG(_feature_store()).classify(session["taste"])
+        _log_turn(session, mode="profile", question=None, result=result,
+                  latency_ms=int((time.monotonic() - t0) * 1000))
         return templates.TemplateResponse(request, "profile.html", {
             "authed": True, "archetype": ctx["archetype"],
             "narrative": result["narrative"], "source": result["source"],

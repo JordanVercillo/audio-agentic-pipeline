@@ -181,3 +181,55 @@ class ArtistMeta(Base):
     popularity = Column(Integer)                     # fetched context (P3.0a)
     image_url = Column(String)
     updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
+
+
+class ChatLog(Base):
+    """One LLM-surface turn (/ask · /classify · /chat), logged for the REVIEW
+    READER (D-47): a row must let a human grade accuracy without re-running —
+    the question, the FULL grounding actually sent, the raw + parsed output, the
+    source, and cost. `chat_session_id` is a fresh uuid4 minted per chat — NEVER
+    the auth sid (that's a live credential). Disclosed on /privacy; 90-day
+    retention (owner, 2026-07-17). New table → create_all builds it; no
+    _ADDED_COLUMNS entry needed (journal #18)."""
+
+    __tablename__ = "chat_log"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    chat_session_id = Column(String, nullable=False)   # uuid4, minted per chat — not the auth sid
+    turn_index = Column(Integer, nullable=False, default=0)
+    mode = Column(String, nullable=False)              # adhoc | story | profile
+    prompt_version = Column(String)                    # "rtcros-v1" — attributes scores to a contract
+    user_question = Column(String)                     # raw, untrusted text
+    rendered_context = Column(String)                  # the FULL grounding actually sent
+    raw_model_output = Column(String)                  # pre-parse; NULL on fallback turns
+    parsed_answer = Column(String)                     # what the visitor saw (fallback text too)
+    cited_entities = Column(JSON)                      # the parsed cited[] array
+    source = Column(String, nullable=False)            # llm | fallback | none
+    model = Column(String)                             # "ollama:gemma4:12b" | NULL
+    ctx_tokens = Column(Integer)                       # Ollama prompt_eval_count (real, when available)
+    output_tokens = Column(Integer)                    # Ollama eval_count
+    latency_ms = Column(Integer)                       # wall clock — covers fallback turns too
+    error = Column(String)                             # why a turn degraded (timeout | parse | verify)
+    created_at = Column(DateTime, default=utcnow)
+
+
+class ChatLabel(Base):
+    """A human grade of a ChatLog row (D-47 flywheel). rubric-v1: the anchors
+    that become the K5 adapter labels + new golden cases. Soft `log_id`
+    reference (no FK — the duplicate_of precedent)."""
+
+    __tablename__ = "chat_labels"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    log_id = Column(Integer, nullable=False)           # soft ref → chat_log.id
+    rubric_version = Column(String, nullable=False, default="rubric-v1")
+    accuracy = Column(Integer)                         # 0-2, vs rendered_context ONLY
+    citation_fidelity = Column(Integer)                # 0-2
+    invention = Column(Integer)                        # 0/1 — the safety bit
+    usefulness = Column(Integer)                       # 0-2
+    verdict = Column(String)                           # good | fixable-prompt | fixable-context | bad
+    missing_fact = Column(String)                      # what the context lacked — the RAG seed
+    golden_proposal = Column(JSON)                     # {kind, question, must_cite[]} | NULL
+    grader = Column(String)                            # "jordan"
+    notes = Column(String)
+    graded_at = Column(DateTime, default=utcnow)

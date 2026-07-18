@@ -667,6 +667,7 @@ def test_privacy_page_public_and_honest(client):
     assert "playlist-read-private" in r.text      # Epic I access disclosed (single source)
     assert "playlist" in r.text.lower()           # playlist import access explained
     assert "never stored" in r.text.lower()       # audio posture (D-15)
+    assert "log AI conversations" in r.text and "90 days" in r.text  # D-47 disclosure
 
 
 def test_scope_gate_derives_from_config():
@@ -1236,3 +1237,21 @@ def test_ask_returns_grounded_answer(client, monkeypatch):
     r = client.post("/ask", data={"q": "what is my vibe lately?"})
     assert r.status_code == 200
     assert "vibe lately" in r.text and "Muse" in r.text  # question echoed + grounded answer
+
+
+def test_ask_logs_a_chat_turn(client, monkeypatch, tmp_path):
+    # D-47: every prompt + response is logged for the review flywheel.
+    from ..store.cache import FeatureCache
+    tc = FeatureCache(url=f"sqlite:///{tmp_path / 'log.db'}")
+    monkeypatch.setattr("src.webapp.app._feature_cache", lambda: tc)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    client.cookies.set(config.SESSION_COOKIE, _seed_session(taste=_TASTE))
+    client.post("/ask", data={"q": "what is my vibe lately?"})
+    rows = tc.recent_chat_turns()
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["mode"] == "adhoc" and row["prompt_version"] == "rtcros-v1"
+    assert row["user_question"] == "what is my vibe lately?"
+    assert row["source"] in ("llm", "fallback") and row["parsed_answer"]
+    assert row["rendered_context"] and "Muse" in row["rendered_context"]  # the real grounding
+    assert row["chat_session_id"] and len(row["chat_session_id"]) == 32   # uuid4 hex, not the auth sid
