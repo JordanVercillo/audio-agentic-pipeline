@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}Talk to your data — Vercillo Analytics{% endblock %}
+{% block content %}
+<section class="dash chat">
+  <h1>Talk to your data</h1>
+  <p class="lede">Your on-demand music data analyst — it reads your analyzed songs
+    and answers from them. It runs on a local model ({{ '$0' }}); every answer is
+    grounded in your data. Conversations are logged for quality review
+    (<a href="/privacy">why</a>).</p>
+
+  <div class="chat-log">
+    <div class="msg story">
+      <span class="who">Your data story</span>
+      <div class="a">{{ story.text }}</div>
+      {% if story.source != 'llm' %}<p class="src">assembled locally from your data</p>{% endif %}
+    </div>
+
+    {% for t in history %}
+    <div class="msg you"><span class="who">You</span><div class="a">{{ t.q }}</div></div>
+    <div class="msg bot"><span class="who">Analyst</span><div class="a">{{ t.a }}</div>
+      {% if t.source != 'llm' %}<p class="src">from your data (template)</p>{% endif %}</div>
+    {% endfor %}
+  </div>
+
+  <form class="ask" method="post" action="/chat">
+    <input type="text" name="q" required autofocus
+           placeholder="Ask about your data — “what's my fastest song?” · “how did my energy change?”"
+           aria-label="Ask a question about your data">
+    <button type="submit">Ask</button>
+  </form>
+  <p class="cap">Tip: it's sharpest on your overall sound, drift, artists, and
+    clusters. Exact-number lookups it may paraphrase — it never makes facts up.</p>
+</section>
+{% endblock %}

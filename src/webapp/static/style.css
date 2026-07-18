@@ -403,3 +403,17 @@ table.tax thead th, table.tax tbody th { font-weight: 600; padding: .3rem .5rem;
 .pl-analyze { margin: .4rem 0 0; }
 .pl-analyze .btn { margin: 0; font-size: .85rem; padding: .3rem .7rem; }
 .cap.ok { color: var(--spotify); font-size: .85rem; }
+
+/* Talk to your data (K1c) */
+.chat-log { display: flex; flex-direction: column; gap: .75rem; margin: 1rem 0; }
+.chat .msg { border: 1px solid var(--line); border-radius: 10px; padding: .8rem 1rem;
+  max-width: 46rem; }
+.chat .msg .who { display: block; font-size: .72rem; text-transform: uppercase;
+  letter-spacing: .05em; color: var(--muted); margin-bottom: .3rem; }
+.chat .msg .a { line-height: 1.6; }
+.chat .msg.story { background: var(--panel); border-color: var(--spotify); }
+.chat .msg.story .who { color: var(--spotify); }
+.chat .msg.you { align-self: flex-end; background: var(--panel-2); }
+.chat .msg.bot { background: var(--panel); }
+.chat .msg .src { color: var(--muted); font-size: .72rem; margin: .4rem 0 0; }
+.chat .ask { margin-top: 1rem; }

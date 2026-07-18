@@ -1239,6 +1239,37 @@ def test_ask_returns_grounded_answer(client, monkeypatch):
     assert "vibe lately" in r.text and "Muse" in r.text  # question echoed + grounded answer
 
 
+def test_chat_anon_redirects_and_viewer_gets_story(client, monkeypatch, tmp_path):
+    from ..store.cache import FeatureCache
+    tc = FeatureCache(url=f"sqlite:///{tmp_path / 'chat.db'}")
+    monkeypatch.setattr("src.webapp.app._feature_cache", lambda: tc)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    # anon → home
+    assert client.get("/chat", follow_redirects=False).headers["location"] == "/"
+    # a GUEST (viewer) gets the story-led page (fallback story w/o a live model)
+    client.cookies.set(config.SESSION_COOKIE, _seed_guest_session(_TASTE))
+    r = client.get("/chat")
+    assert r.status_code == 200
+    assert "Talk to your data" in r.text and "Your data story" in r.text
+    assert 'action="/chat"' in r.text                       # the ask form
+    story_rows = [x for x in tc.recent_chat_turns() if x["mode"] == "story"]
+    assert len(story_rows) == 1                              # the opening story was logged
+
+
+def test_chat_post_answers_logs_and_keeps_history(client, monkeypatch, tmp_path):
+    from ..store.cache import FeatureCache
+    tc = FeatureCache(url=f"sqlite:///{tmp_path / 'chat2.db'}")
+    monkeypatch.setattr("src.webapp.app._feature_cache", lambda: tc)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    client.cookies.set(config.SESSION_COOKIE, _seed_session(taste=_TASTE))
+    r = client.post("/chat", data={"q": "what is my vibe"}, follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "/chat"   # PRG
+    page = client.get("/chat")
+    assert "what is my vibe" in page.text and "Muse" in page.text      # Q + grounded A shown
+    adhoc = [x for x in tc.recent_chat_turns() if x["mode"] == "adhoc"]
+    assert len(adhoc) == 1 and adhoc[0]["user_question"] == "what is my vibe"
+
+
 def test_ask_logs_a_chat_turn(client, monkeypatch, tmp_path):
     # D-47: every prompt + response is logged for the review flywheel.
     from ..store.cache import FeatureCache

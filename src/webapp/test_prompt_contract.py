@@ -23,7 +23,7 @@ def test_build_system_is_one_encoding_per_mode():
         assert "ROLE:" in sys and "STOP:" in sys and "cited" in sys
         # cited is required BEFORE the answer field (copy-anchoring)
         assert sys.index('"cited"') < sys.index('"' + {
-            "adhoc": "answer", "story": "story", "profile": "narrative"}[mode] + '"')
+            "adhoc": "answer", "story": "answer", "profile": "narrative"}[mode] + '"')
     assert PROMPT_VERSION == "rtcros-v1"
 
 
@@ -49,9 +49,18 @@ def test_verify_ok_when_answer_contains_its_citations():
     assert verify_citations(parsed, _GROUND, "adhoc")["ok"] is True
 
 
-def test_story_reply_text_joins_sections():
-    parsed = {"story": [{"heading": "Sound", "text": "You run bright."},
-                        {"heading": "Drift", "text": "You are exploring."}]}
+def test_story_mode_is_flat_answer():
+    # K1c: story mode uses the FLAT "answer" field (gemma4 chokes on nested arrays)
+    from .prompt_contract import answer_field
+    assert answer_field("story") == "answer"
+    assert reply_text({"answer": "You run bright, exploring new sounds."}, "story") \
+        == "You run bright, exploring new sounds."
+
+
+def test_reply_text_tolerates_a_sectioned_list():
+    # defensive: if a reply ever comes back as sections, join rather than blank
+    parsed = {"answer": [{"heading": "Sound", "text": "You run bright."},
+                         {"heading": "Drift", "text": "You are exploring."}]}
     txt = reply_text(parsed, "story")
     assert "You run bright." in txt and "You are exploring." in txt
 

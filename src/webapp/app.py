@@ -519,6 +519,51 @@ def create_app() -> FastAPI:
             "model": result.get("model"),
         })
 
+    _CHAT_HISTORY_MAX = 20  # display turns kept (drop-oldest); D-43
+
+    @app.get("/chat", response_class=HTMLResponse)
+    def chat_page(request: Request):
+        """Talk to your data (Epic K, STORY-LED). Viewer-gated (authed + guest,
+        like /explore). Opens with gemma4's generated data STORY (its strength,
+        K1 probe); the visitor then asks ad-hoc follow-ups. Each turn is answered
+        against the frozen taste grounding (reliable > multi-turn drift) and
+        logged (D-47)."""
+        session = request.state.session
+        if not _is_viewer(session):
+            return RedirectResponse("/", status_code=303)
+        taste = session.get("taste")
+        if not taste:  # need a dashboard/guest load first
+            return RedirectResponse("/dashboard" if auth_web.is_authenticated(session)
+                                    else "/", status_code=303)
+        # the opening story — generated once per session, then cached + logged
+        if not session.get("chat_story"):
+            t0 = time.monotonic()
+            r = TasteRAG(_feature_store()).story(taste)
+            _log_turn(session, mode="story", question=None, result=r,
+                      latency_ms=int((time.monotonic() - t0) * 1000))
+            session["chat_story"] = {"text": r["answer"], "source": r["source"]}
+        return templates.TemplateResponse(request, "chat.html", {
+            **_viewer_flags(session), "story": session["chat_story"],
+            "history": session.get("chat_history") or []})
+
+    @app.post("/chat", response_class=HTMLResponse)
+    def chat_ask(request: Request, q: str = Form("")):
+        session = request.state.session
+        if not _is_viewer(session):
+            return RedirectResponse("/", status_code=303)
+        taste = session.get("taste")
+        question = (q or "").strip()
+        if not taste or not question:
+            return RedirectResponse("/chat", status_code=303)
+        t0 = time.monotonic()
+        result = TasteRAG(_feature_store()).answer(question, taste)
+        _log_turn(session, mode="adhoc", question=question, result=result,
+                  latency_ms=int((time.monotonic() - t0) * 1000))
+        history = session.get("chat_history") or []
+        history.append({"q": question, "a": result["answer"], "source": result["source"]})
+        session["chat_history"] = history[-_CHAT_HISTORY_MAX:]  # drop-oldest
+        return RedirectResponse("/chat", status_code=303)  # PRG — refresh-safe
+
     def _analytics_context(session: dict[str, Any]) -> Optional[dict[str, Any]]:
         """Build the analytics view context AND enrich the in-session taste with
         signature/clusters/archetype so /ask and /classify ground on them (Epic D).

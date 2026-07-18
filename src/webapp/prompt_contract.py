@@ -53,10 +53,14 @@ _MODES: dict[str, dict[str, str]] = {
     "story": {
         "task": ("TASK: Develop the listener's data STORY from the DATA — what defines "
                  "their sound, how it has moved, and what stands out."),
-        "answer_field": "story",
-        "output": ('  "story": up to 3 sections, each {"heading": short, "text": up to 3 '
-                   "sentences, second person, plain prose}; every string in "
-                   '"cited" must appear verbatim across the sections.'),
+        # FLAT "answer", not a nested array: gemma4:12b in JSON mode reliably
+        # produces a flat field but emits empty/unparseable output on a nested
+        # {story:[{heading,text}]} schema (verified live, K1c — the centerpiece
+        # must not fall to fallback on the demo taste).
+        "answer_field": "answer",
+        "output": ('  "answer": 3-5 sentences, second person, plain prose, no markdown '
+                   "— a flowing story of their data; it MUST contain every string in "
+                   '"cited" verbatim.'),
     },
     "profile": {
         "task": ("TASK: Write the listener's taste profile — do NOT restate the "
@@ -88,12 +92,12 @@ def build_system(mode: str) -> str:
 
 
 def reply_text(parsed: dict, mode: str) -> str:
-    """The visitor-facing text for a parsed reply, joining story sections."""
-    field = answer_field(mode)
-    val = parsed.get(field)
-    if mode == "story" and isinstance(val, list):
+    """The visitor-facing text for a parsed reply. Defensive: if the model
+    returned a list of sections (legacy/other shape), join it; else the string."""
+    val = parsed.get(answer_field(mode))
+    if isinstance(val, list):  # tolerate a sectioned reply if one ever appears
         return " ".join(f"{s.get('heading', '')}. {s.get('text', '')}".strip()
-                        for s in val if isinstance(s, dict))
+                        for s in val if isinstance(s, dict)).strip()
     return str(val or "").strip()
 
 

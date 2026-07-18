@@ -70,9 +70,14 @@ _MAX_TOKENS = 1024  # a taste answer is deliberately short — well under stream
 # grammar-constrains a thinking model's output to one JSON object (reasoning
 # lands in the schema's `thoughts` field, not as loose prose).
 _OLLAMA_NUM_CTX = 8192
-# K0.5: cap generation. gemma4 is a THINKING model — uncapped at temp 0 it can
-# grind a huge `thoughts` field and blow the timeout (the mechanism behind the
-# two classify timeouts in the 2026-07-16 baseline). A taste answer is short.
+# Cap generation so a THINKING model can't grind forever (K0.5). K1c reality:
+# gemma4:12b runs to this cap (it pads with reasoning) → ~25 s/turn at 1024, and
+# it is INCONSISTENT on the story task (sometimes a clean story, sometimes empty
+# content — even warm, even with a directive). So the deterministic fallback is
+# the reliability backbone (D-5); gemma4 enhances a turn when it succeeds fast.
+# 1024 keeps turns responsive; a truncated/empty gemma4 reply → fallback, which
+# is grounded and instant. Raising it only trades latency for marginal, still-
+# inconsistent gains. The flywheel (D-47) + adapters (K5) are the real fix.
 _OLLAMA_NUM_PREDICT = 1024
 _OLLAMA_TIMEOUT = 120  # seconds — covers a cold model load; warm calls are ~3-8 s
 
@@ -231,6 +236,27 @@ class TasteRAG:
         return {"text": reply_text(parsed, mode), "raw": raw,
                 "cited": [str(c) for c in parsed.get("cited") or []]}
 
+    def story(self, taste: dict[str, Any]) -> dict[str, Any]:
+        """The chat's opening: gemma4 develops the listener's DATA STORY (its
+        strongest surface per the K1 probe). Returns {answer, source, model, …};
+        falls back to the deterministic profile narrative if the model is absent
+        or empty. Never raises."""
+        glossary = self.fs.feature_glossary(_GLOSSARY_FEATURES) if self.fs else {}
+        grounding = _grounding_text(taste, glossary)
+        if self._wants_llm() and grounding != _EMPTY_GROUNDING:
+            try:
+                # gemma4 in chat mode returns EMPTY when the user turn is just
+                # <data> with no instruction (verified live, K1c) — a directive
+                # anchors the story task and it delivers.
+                r = self._grounded_reply("story", grounding, "REQUEST: Write my data story now.")
+                if r is not None:
+                    return {"answer": r["text"], "source": "llm", "model": self.model,
+                            "cited": r["cited"], "grounding": grounding, "raw": r["raw"]}
+            except Exception as exc:  # noqa: BLE001 — never fail the page
+                logger.warning("RAG story failed (%s) — deterministic fallback", exc)
+        return {"answer": self._fallback(taste), "source": "fallback",
+                "model": None, "grounding": grounding}
+
     def answer(self, question: str, taste: dict[str, Any]) -> dict[str, Any]:
         """Return {answer, source, model}. Never raises — falls back deterministically."""
         glossary = self.fs.feature_glossary(_GLOSSARY_FEATURES) if self.fs else {}
@@ -269,7 +295,9 @@ class TasteRAG:
         # D-48: the profile mode of the ONE contract — no second inline encoding.
         if self._wants_llm() and grounding != _EMPTY_GROUNDING:
             try:
-                r = self._grounded_reply("profile", grounding, "")
+                # a user directive anchors the task (empty user turn → empty
+                # output; verified live, K1c).
+                r = self._grounded_reply("profile", grounding, "REQUEST: Write my taste profile now.")
                 if r is not None:
                     return {"name": arch["name"], "narrative": r["text"],
                             "cited": r["cited"], "source": "llm", "model": self.model,
