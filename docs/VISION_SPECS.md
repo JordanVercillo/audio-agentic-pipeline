@@ -1103,7 +1103,9 @@ superlatives. **Hence K0.5 below — the data floor ships before any chat.**
   ad-hoc engine at the semantic marts · resolve the 2 broken extractions
   (re-extract or dead-letter — owner ratifies) · decide online cluster
   assignment in the post-drain hook (recommended) or stamp the lag honest.
-- **K1 — probe ✅ + contract ✅ (2026-07-17); next: /chat (Opus).** The probe
+- **K1 — ✅ COMPLETE (probe + contract 2026-07-17; story-led /chat + D-47
+  ChatLog 2026-07-18, commits fbf0c81/7c649f2). Next: K1.5 the review flywheel
+  (`review_chat_logs.py` + first review session).** The probe
   (af7ba68) + the RTCROS contract (ed84869) are done. **Owner decision
   (2026-07-17): /chat is STORY-LED** — it opens with gemma4's generated data
   story (its proven strength); adhoc questions work too, with the deterministic

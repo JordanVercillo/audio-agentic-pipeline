@@ -940,3 +940,38 @@ reason; here a metric was green for one.
 > disaggregate. Ask which component each pass was crediting; a failure mode
 > (a timeout, a fallback, a retry) can inflate a score by routing around the
 > thing you meant to measure. Removing the failure reveals the honest number.*
+
+### 37. The model returned nothing because I gave it data but no instruction (2026-07-18)
+
+The story-led /chat's centerpiece — gemma4 generating a data story — kept
+falling to the deterministic fallback. The logs said `source: fallback`, so
+the model returned empty; but a golden-eval case with the same model and a
+similar-size context worked fine. Hours of the wrong hypotheses followed:
+token truncation (raised num_predict — no change), a too-large grounding (it
+was 235 chars — tiny), the nested `{story:[{heading,text}]}` JSON schema (real,
+gemma4 does choke on it — but flattening it didn't fix the empties either).
+The actual cause was embarrassingly plain once isolated: the *ask* path builds
+a user turn ending `QUESTION: <the question>`, but the *story* path sent the
+user turn as just `<data>…</data>` with **no instruction after it** — the task
+lived only in the system prompt. gemma4 in chat mode, handed context and no
+user request, generated ~2048 tokens of nothing and returned empty content.
+Adding one line — `REQUEST: Write my data story now.` — and it produced a
+clean, grounded story. (It's still slow and inconsistent — that's a separate,
+real gemma4:12b limit — but the empties were the missing directive.)
+
+**The realization:** a chat model answers the USER turn; context is the
+material, not the ask. A system prompt describing the task is not the same as
+a user message requesting it — the instruct-tuned turn structure expects the
+request to arrive as the user's words, and "here is data" alone is an
+under-specified turn a small model resolves by emitting nothing. When output
+is mysteriously empty (not wrong — *empty*), check the turn shape before the
+token budget or the schema: is there an actual instruction in the user turn,
+or did the task get stranded in the system prompt? The cheap diagnostic is to
+diff the working call against the broken one field by field — the ask path
+worked and the story path didn't for exactly one reason, and it wasn't any of
+the interesting ones.
+
+> *A chat model responds to the user turn; put the request there, not only in
+> the system prompt. Context without an instruction is an under-specified turn
+> — a small model may answer it with silence. Empty output (vs wrong output)
+> points at turn STRUCTURE first; diff the working call against the broken one.*

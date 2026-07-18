@@ -367,16 +367,31 @@
   verbatim-perfect fallback, and gemma4 PARAPHRASES exact labels
   (no_invention 15/15, faithful not fabricating). 9/15 is gemma4's honest
   adhoc ceiling (~57% must_cite, below the 80% gate); it is STRONG on STORY +
-  classify.** **➡️ NEXT ACTION — K1c: STORY-LED `/chat` (Opus, owner
-  confirmed 2026-07-17):** `golden_chat_v1` (story + adhoc + context_carry) →
-  the viewer-gated `/chat` opening with gemma4's generated data STORY (its
-  strength) + adhoc w/ the honest fallback for label queries → the D-47
-  ChatLog + ChatLabel tables writing from turn one (this is the big slice: 2
-  new serving-DB tables house-style, a route, a template, session history
-  ~20 turns drop-oldest, `/ask`+`/classify` log too). **DEFERRED (not
-  blocking): cluster_profile + online-cluster-assignment (owner call, 39%);
-  the ad-hoc-engine repoint → K2.** Owner item still open: O2 weights
-  sign-off. Parked: MPD-audio, Epic M, instrumentalness, dupe-pruning.
+  classify.** ✅ **K1c SHIPPED — the story-led `/chat` + D-47 ChatLog is LIVE
+  (2026-07-18, session 45, Opus; commits fbf0c81/7c649f2, 436 tests, ruff
+  clean, deployed ALL-FALSE, curl-validated live):** **K1c-1 the ChatLog
+  spine** — `ChatLog` + `ChatLabel` tables (create_all builds them),
+  `cache.log_chat_turn`/`recent_chat_turns`, rag.answer/classify return the
+  rendered grounding + raw output, `/ask`(adhoc)+`/classify`(profile) log from
+  day one via a shared `_log_turn` (chat_session_id = a per-session uuid, NOT
+  the auth sid), `/privacy` rewritten to disclose logging + 90-day retention.
+  **K1c-2 the surface** — `GET /chat` (viewer-gated) opens with `TasteRAG.story()`
+  then `POST /chat` PRG adhoc turns, ~20-turn drop-oldest display history,
+  chat.html + a "Chat" nav item. **gemma4 live-debug findings (journal #37):
+  it returns EMPTY when the user turn is just `<data>` with no instruction →
+  story()/classify() now pass a "REQUEST: …" directive; it chokes on nested
+  JSON → story mode is the FLAT `answer` field; it's INCONSISTENT + slow
+  (~25-50s, pads to the token cap) → the deterministic fallback is the
+  reliability backbone, gemma4 enhances when it succeeds.** **➡️ NEXT ACTION —
+  K1.5 the flywheel live (Opus): `scripts/review_chat_logs.py` (stratified
+  sampler over the D-47 logs → deterministic pre-grade → write ChatLabel rows →
+  aggregates-only dated `evals/runs/` report) + the first real review session
+  (owner+Fable) → golden promotions, the K5 counter starts. THEN K2 (injection
+  evals FABLE → tool-use loop). DEFERRED: cluster_profile + online-cluster
+  (owner call, 39%); the ad-hoc-engine repoint → K2. `/chat` UX note: gemma4's
+  ~50s synchronous latency wants async/streaming eventually.** Owner item still
+  open: O2 weights sign-off. Parked: MPD-audio, Epic M, instrumentalness,
+  dupe-pruning.
 - ✅ **SECURITY + ROBUSTNESS REVIEW (2026-07-09, commits 26891b1←): whole-app
   audit via 2 review subagents + a strategic pass; 7 real fixes, all tested,
   deployed, 286 green.** **Security surface came back STRONG** — auth, session
@@ -720,7 +735,9 @@ narrative goes to `notes/engineering_journal.md`, plans to
 | `infra/cloudflare/origin-fallback-worker.js` | H5 (P3.6): the $0 origin-down fallback Worker — 502/504/521-523/530 → an honest 503 "runs on-demand" card; healthy origin untouched; /healthz keeps JSON truth. Owner deploys via dashboard paste (SELF_HOSTING §6a). |
 | `evals/runs/` | **Dated LLM-path eval artifacts (K0 convention):** `YYYY-MM-DD_<model>_<setname>.txt` — the committed numbers every D-42 gate measures against (gemma4:12b 9/15 2026-07-16 → 13/15 2026-07-17 after the K0.5 fixes). The fallback/constant anchors + a "by source" line ride in the same artifact. |
 | `src/store/semantic.py` | **The D-49 semantic layer (Talk-to-your-data data floor):** governed analyst marts materialized FROM the cache (source of truth, journal #35) via `rebuild_marts` post-drain — `feature_dictionary` (rule-3 caveat as a row), `track_card` (feature_valid gate — no broken superlatives), `artist_rollup` (by primary_artist_id). NO embeddings (SQL + entity cards). Tripwires: `test_semantic.py`. cluster_profile still TODO. |
-| `src/webapp/prompt_contract.py` | **The D-48 RTCROS contract (ONE encoding):** `PROMPT_VERSION` · `build_system(adhoc\|story\|profile)` · `verify_citations` (checks cited[] against the grounding, not the model's word — gemma4 hallucinates inside cited[]) · `is_empty_reply`→fallback guard. `rag.answer/classify` route through it. gemma4 is STRONG on story/profile, weak on strict-label adhoc (journal #36); `/chat` is story-led. |
+| `src/webapp/prompt_contract.py` | **The D-48 RTCROS contract (ONE encoding):** `PROMPT_VERSION` · `build_system(adhoc\|story\|profile)` — story is the FLAT `answer` field (gemma4 chokes on nested JSON) · `verify_citations` (checks cited[] against the grounding — gemma4 hallucinates inside cited[]) · `is_empty_reply`→fallback. gemma4 needs a user directive or returns empty (journal #37); weak on strict-label adhoc (journal #36). |
+| **ChatLog / ChatLabel** (`src/store/models.py`) | **D-47 the review flywheel's spine:** every `/ask`·`/classify`·`/chat` turn logged for the REVIEW READER (question · full grounding sent · raw+parsed output · source · cost), `chat_session_id` = a per-session uuid (NOT the auth sid). `cache.log_chat_turn`/`recent_chat_turns`. `/privacy` discloses it, 90-day retention. `ChatLabel` = the human grades (rubric-v1) that become K5's dataset. Review script = K1.5 TODO. |
+| `src/webapp/templates/chat.html` + `TasteRAG.story()` | **K1c the story-led /chat:** viewer-gated; opens with gemma4's generated data story (its strength when it engages), then PRG adhoc turns, ~20-turn history. gemma4 is inconsistent+slow → the deterministic fallback carries reliability. |
 | `docs/CASE_STUDY.md` | **P3.7: the portfolio narrative** — the API-removal origin story, architecture, $0 production, the earned doctrines (w/ journal numbers), and the AI-harness methodology. The README links it front-and-center. |
 | `LICENSE` | MIT (owner choice, P3.7). The KB was history-scrubbed pre-flip, so no license conflict with course material. |
 | `docs/AGENT_ACCESS.md` | P5 artifact: MCP registration config (Claude Desktop/Code) + security model + live demo transcript. |
@@ -1795,3 +1812,25 @@ narrative goes to `notes/engineering_journal.md`, plans to
   contract), ruff clean. No deploy (no route yet). **Left off: K1 probe +
   contract done; the eval honestly says story-led. Next = K1c the story-led
   /chat + D-47 ChatLog (the big slice). NEW SESSION: run `/resume` on Opus.**
+- **2026-07-18 (session 45 — K1c the story-led /chat + D-47 ChatLog, Opus 4.8;
+  no fan-out — the consult's schema carried it):** Shipped Epic K's chat in 2
+  commits. **fbf0c81 (the ChatLog spine):** `ChatLog`+`ChatLabel` tables
+  (house style, create_all — no _ADDED_COLUMNS, journal #18),
+  `cache.log_chat_turn`/`recent_chat_turns`; rag.answer/classify now return the
+  rendered grounding + raw model output; `/ask`+`/classify` log from day one via
+  a shared `_log_turn` (chat_session_id = per-session uuid, never the auth sid);
+  `/privacy` rewritten to disclose logging + 90-day retention (the old "nothing
+  retained" line was now false). **7c649f2 (the surface):** `TasteRAG.story()`,
+  viewer-gated `GET /chat` (story opening, cached per session) + `POST /chat`
+  (PRG adhoc), ~20-turn drop-oldest history, chat.html + Chat nav + CSS.
+  **Live gemma4 debugging (journal #37) burned real budget but found the truth:
+  (1) gemma4 returns EMPTY when the user turn is just `<data>` with no
+  instruction → a "REQUEST: …" directive fixes it; (2) it chokes on nested
+  `{story:[...]}` JSON → story is the FLAT answer field; (3) it's INCONSISTENT
+  (same config, sometimes a clean story, sometimes empty) + slow (~25-50s, pads
+  to num_predict).** So the deterministic fallback is the reliability backbone
+  (D-5); gemma4 enhances when it succeeds. 436 tests (+6), ruff clean, deployed
+  ALL-FALSE, curl-validated live (guest conversation renders story+Q+grounded
+  "Muse" answer; all turns logged). **Left off: story-led /chat + logging LIVE.
+  Next = K1.5 the review flywheel (`review_chat_logs.py` + first review session)
+  → K2. NEW SESSION: run `/resume` on Opus.**
