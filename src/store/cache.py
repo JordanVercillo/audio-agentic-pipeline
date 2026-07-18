@@ -32,6 +32,7 @@ from .dedup import DedupRecord, duplicate_of_map
 from .models import (
     ArtistMeta,
     Base,
+    ChatLabel,
     ChatLog,
     ExtractionJob,
     TrackFeatures,
@@ -163,6 +164,32 @@ class FeatureCache:
             rows = s.execute(select(ChatLog).order_by(ChatLog.id.desc()).limit(limit)
                              ).scalars().all()
             return [{c.name: getattr(r, c.name) for c in ChatLog.__table__.columns}
+                    for r in rows]
+
+    def ungraded_chat_turns(self, limit: int = 200) -> list[dict]:
+        """ChatLog rows that have no ChatLabel yet (newest first) — the review
+        sampler's pool (D-47)."""
+        with self._Session() as s:
+            graded = set(s.execute(select(ChatLabel.log_id)).scalars())
+            rows = s.execute(select(ChatLog).order_by(ChatLog.id.desc())).scalars().all()
+            out = [{c.name: getattr(r, c.name) for c in ChatLog.__table__.columns}
+                   for r in rows if r.id not in graded]
+        return out[:limit]
+
+    def write_chat_label(self, **row: Any) -> int:
+        """Write one human grade (ChatLabel, D-47 flywheel). Returns the id."""
+        with self._Session() as s:
+            rec = ChatLabel(**{k: v for k, v in row.items()
+                               if k in ChatLabel.__table__.columns})
+            s.add(rec)
+            s.commit()
+            return rec.id
+
+    def all_chat_labels(self) -> list[dict]:
+        """Every ChatLabel row — the review report aggregates over these."""
+        with self._Session() as s:
+            rows = s.execute(select(ChatLabel)).scalars().all()
+            return [{c.name: getattr(r, c.name) for c in ChatLabel.__table__.columns}
                     for r in rows]
 
     def all_meta(self) -> dict[str, dict]:

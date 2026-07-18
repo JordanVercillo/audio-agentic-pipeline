@@ -508,6 +508,20 @@ def test_extract_one_records_match_confidence(cache, tmp_path):
         assert s.get(TrackFeatures, "mc1").match_confidence == 1.0
 
 
+def test_ungraded_chat_turns_excludes_labeled(cache):
+    # D-47: the review sampler's pool = ChatLog rows without a ChatLabel.
+    a = cache.log_chat_turn(chat_session_id="s", turn_index=0, mode="adhoc",
+                            source="llm", parsed_answer="a")
+    b = cache.log_chat_turn(chat_session_id="s", turn_index=1, mode="story",
+                            source="fallback", parsed_answer="b")
+    assert {r["id"] for r in cache.ungraded_chat_turns()} == {a, b}
+    cache.write_chat_label(log_id=a, rubric_version="rubric-v1", accuracy=2,
+                           citation_fidelity=2, invention=0, verdict="good", grader="jordan")
+    assert {r["id"] for r in cache.ungraded_chat_turns()} == {b}   # a now graded
+    labels = cache.all_chat_labels()
+    assert len(labels) == 1 and labels[0]["log_id"] == a and labels[0]["verdict"] == "good"
+
+
 def test_chat_log_roundtrip_and_best_effort(cache):
     # D-47: log a turn, read it back newest-first; a bad row never raises.
     cache.log_chat_turn(chat_session_id="s1", turn_index=0, mode="adhoc",
