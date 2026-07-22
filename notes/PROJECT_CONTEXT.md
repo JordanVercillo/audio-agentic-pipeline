@@ -431,16 +431,27 @@
   `src/conftest.py` autouse fixture neutralizes ALL routes so `.env` can't
   de-calibrate the suite (journal #34 recurring); force_fallback pops it too.
   Cleared an orphaned `injection_evals.py` (truncated duplicate from the recovered
-  session). **➡️ NEXT ACTION — K2e: DEPLOY the tool loop + live browser
-  validation.** `app_control restart` (picks up the split .env), then the live
-  acceptance on vercilloanalytics.com `/chat`: "what's my top rise against songs"
-  must return real Rise Against tracks through the running app (standing
-  browser-validation practice). Then Epic K's remaining phases (K3/K4/K5).
-  DEFERRED (not blocking): (owner) the FIRST human review session
-  (`scripts/review_chat_logs.py --sample 20` → grade → `--commit` → `--report`,
-  seeds golden + the K5 counter); task #9 — the suspicious `'vibe?'` ChatLog rows
-  (0ms, source=llm — likely K1c deploy-validation traffic polluting the D-47
-  sample); cluster_profile online-cluster (owner call, 39%). RESIDUAL (honest):
+  session). ✅ **K2e DEPLOYED + VALIDATED LIVE (2026-07-22, session 48) — EPIC K2 IS
+  8/8 COMPLETE.** App was DOWN at pickup (PC reboot; on-demand runtime) →
+  `app_control start` brought webapp+worker+tunnel up healthy; the dual warm-up
+  is PROVEN: qwen3:8b (6.2 GB) + e4b (3.3 GB) sit CO-RESIDENT 100% GPU at 8K
+  ctx (9.5/12 GB — no swap thrash between the loop and the voice). Live
+  acceptance THROUGH THE PUBLIC EDGE as GUEST: /chat story = a real e4b
+  generation (cites drift 0.141, 50v50, real artists); "what's my top rise
+  against songs" → REAL Rise Against tracks (Collapse (Post-Amerika), The
+  Numbers, Swing Life Away, Satellite, Make It Stop…); ChatLog id 70 is the
+  proof: source=llm, model=ollama:qwen3:8b, depth=1, latency 87.7s (correct
+  but slow — the async/streaming UX note stands). app-verify ALL-FALSE (all 8
+  marts, 807 tracks, worker beat 12s, queue drained). **➡️ NEXT ACTION — two
+  tracks: (owner) the FIRST human review session** (`uv run python
+  scripts/review_chat_logs.py --sample 20` → grade → `--commit` → `--report`,
+  seeds golden + the K5 counter — the sample now includes real tool-loop
+  turns); **(build) K3 — LLM bucketing/labeling (additive-only, D-5), then K4
+  multimodal upload** (e4b's audio input is why the split kept it) per
+  VISION_SPECS Phase 4. DEFERRED (not blocking): task #9 — the suspicious
+  `'vibe?'` ChatLog rows (0ms, source=llm — likely K1c deploy-validation
+  traffic polluting the D-47 sample); cluster_profile online-cluster (owner
+  call, 39%). RESIDUAL (honest):
   when the tool model MUST surface a hostile import name, the render-cap (120
   chars, no newlines) bounds but doesn't erase echoed attacker text — the D-47
   chat log is the production monitor. `/chat` UX: qwen3's synchronous latency
@@ -1931,3 +1942,16 @@ narrative goes to `notes/engineering_journal.md`, plans to
   split, owner bug fixed. NEXT = K2e: deploy via `app_control restart` (picks up
   the split .env) + live browser validation on /chat. NEW SESSION: run
   `/resume`.**
+- **2026-07-22 (session 48 — K2e: deploy + live validation, Fable +
+  orchestrator):** Reconciled the owner's recovered session-47 transcript
+  against the repo — all 7 slices + the wrap are REAL at bdbbeef, nothing to
+  redo ("re-run the probe" was stale; the probe's GO is committed d36cf49).
+  App found DOWN (PC reboot; on-demand runtime) → `app_control start` brought
+  webapp+worker+tunnel healthy; dual warm-up proven (qwen3:8b 6.2 GB + e4b
+  3.3 GB co-resident 100% GPU, 8K ctx). **THE ACCEPTANCE PASSED LIVE** through
+  the public edge as guest: "what's my top rise against songs" → real Rise
+  Against tracks; ChatLog id 70 (source=llm, model=ollama:qwen3:8b, depth=1,
+  87.7s); app-verify ALL-FALSE. **Epic K2 closed 8/8.** No code changes; no
+  journal entry (clean deploy + validate). **Left off: K2 COMPLETE and live.
+  NEXT = (owner) the first review session; (build) K3 bucketing → K4 upload.
+  NEW SESSION: run `/resume`.**
