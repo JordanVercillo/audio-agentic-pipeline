@@ -238,12 +238,16 @@ def _cluster_grounding(cluster: dict) -> str:
 
 def _cluster_fallback(label: str, dims: list[dict]) -> str:
     """The deterministic floor (D-5): built FROM the dims, so it is grounded by
-    construction, names nothing, and never raises."""
-    if not dims:  # "Mixed" — no single dimension dominates
+    construction, names nothing, and never raises. A pre-K3a model has no
+    persisted dims but its LABEL is the same canonical words — use them, not
+    the Mixed wording (which would falsely claim no dimension dominates)."""
+    words = [d["word"] for d in dims] if dims else \
+        [w for w in label.split(" · ") if w and w != "Mixed"]
+    if not words:  # genuinely Mixed — no single dimension dominates
         return (f"A “{label}” bucket — no single acoustic dimension "
                 "dominates these tracks.")
-    words = " and ".join(d["word"].lower() for d in dims)
-    return (f"A “{label}” bucket — {words} relative to the rest of "
+    joined = " and ".join(w.lower() for w in words)
+    return (f"A “{label}” bucket — {joined} relative to the rest of "
             "the library.")
 
 

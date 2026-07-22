@@ -1351,6 +1351,20 @@ def test_describe_cluster_mixed_never_calls_the_llm(monkeypatch):
     assert "no single acoustic dimension" in res["description"]
 
 
+def test_describe_cluster_pre_k3a_model_uses_label_words(monkeypatch):
+    # A model trained before label_dims existed has a canonical label but
+    # dims=[] — the template must use the label's own words, NOT the Mixed
+    # wording (found live: model #3 "Noisy · Bright" got "no single acoustic
+    # dimension dominates", which is false for a named bucket).
+    from .rag import TasteRAG
+    calls = _scripted_llm(monkeypatch, [])
+    res = TasteRAG(model="ollama:fake:0b").describe_cluster(
+        {"cluster_id": "0", "label": "Noisy · Bright", "dims": []})
+    assert res["source"] == "fallback" and calls == []      # still no LLM (no z-evidence)
+    assert "noisy and bright relative" in res["description"]
+    assert "no single acoustic dimension" not in res["description"]
+
+
 def test_tools_model_defaults_to_model_when_unset(monkeypatch):
     from .rag import TasteRAG
     monkeypatch.delenv("WEBAPP_TOOLS_LLM_MODEL", raising=False)
