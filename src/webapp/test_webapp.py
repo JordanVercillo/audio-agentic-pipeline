@@ -774,6 +774,36 @@ def test_analytics_renders_clusters_signature_and_map(client, monkeypatch, tmp_p
     assert "How to read these numbers" in r.text and 'class="stat-abbr"' in r.text
 
 
+def test_analytics_renders_cluster_descriptions_when_saved(client, monkeypatch, tmp_path):
+    # K3e: saved descriptions render under the legend with the honest caption;
+    # without them the section is unchanged (additive, D-5 — covered by
+    # test_analytics_renders_clusters_signature_and_map running description-free).
+    from ..store.cache import FeatureCache
+    from ..store.clusters import latest_model, save_descriptions, train_song_clusters
+    from ..store.test_clusters import _blob_a, _blob_b
+
+    tc = FeatureCache(url=f"sqlite:///{tmp_path / 'cd2.db'}")
+    for i in range(6):
+        tc.upsert(f"a{i}", _blob_a(i))
+        tc.upsert(f"b{i}", _blob_b(i))
+    tc.remember_meta([{"spotify_track_id": f"{p}{i}", "track_name": f"T{p}{i}",
+                       "artist_names": "X"} for p in "ab" for i in range(6)])
+    assert train_song_clusters(tc, coords="pca") is not None
+    model = latest_model(tc, "song")
+    save_descriptions(tc, model.id, {
+        cid: {"text": f"Bucket {cid} sounds distinct.", "source": "fallback",
+              "prompt_version": "rtcros-cluster-v1"}
+        for cid in model.labels})
+    monkeypatch.setattr("src.webapp.app._feature_cache", lambda: tc)
+    taste = {"range_ids": {"short_term": ["b0", "a0"], "long_term": ["a1", "b1"]},
+             "drift": {"score": 0.1, "label": "Minimal Drift"}}
+    client.cookies.set(config.SESSION_COOKIE, _seed_session(taste=taste))
+    r = client.get("/analytics")
+    assert r.status_code == 200
+    assert "Bucket 0 sounds distinct." in r.text and "Bucket 1 sounds distinct." in r.text
+    assert "locally-generated read" in r.text                    # honest caption
+
+
 def test_analytics_renders_loudness_arc(client, monkeypatch, tmp_path):
     from ..store.cache import FeatureCache
     from ..store.test_clusters import _blob_a

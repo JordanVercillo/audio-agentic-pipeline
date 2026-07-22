@@ -616,8 +616,13 @@ def create_app() -> FastAPI:
             per_window = {w: [assigned[t]["cluster_id"] for t in ids if t in assigned]
                           for w, ids in range_ids.items()}
             ctx["composition"] = cluster_composition(per_window, labels)
+            # K3: grounded bucket descriptions ride the model row (additive —
+            # pre-K3 models read None and the legend renders name-only).
+            descs = getattr(model, "descriptions", None) or {}
             ctx["legend"] = [{"cluster_id": int(c), "label": lbl,
-                              "color": cluster_color(int(c))}
+                              "color": cluster_color(int(c)),
+                              "description": str((descs.get(c) or {}).get("text") or ""),
+                              "source": str((descs.get(c) or {}).get("source") or "")}
                              for c, lbl in sorted(labels.items(), key=lambda kv: int(kv[0]))]
 
             arch = derive_archetype(per_window, labels, taste.get("drift"),

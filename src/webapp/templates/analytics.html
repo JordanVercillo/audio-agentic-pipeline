@@ -116,6 +116,18 @@
       <span class="chip"><span class="dot" style="background: {{ c.color }}"></span>{{ c.label }}</span>
       {% endfor %}
     </div>
+    {% set described = legend | selectattr("description") | list %}
+    {% if described %}
+    <ul class="comp-list">
+      {% for c in described %}
+      <li><span class="dot" style="background: {{ c.color }}"></span>
+          <b>{{ c.label }}</b> — {{ c.description }}</li>
+      {% endfor %}
+    </ul>
+    <p class="cap">Bucket names are fixed from each group's most distinctive
+      acoustic features; each blurb is a locally-generated read of those same
+      features, checked against them.</p>
+    {% endif %}
     {% endif %}
 
     {% if composition %}
