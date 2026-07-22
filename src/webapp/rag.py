@@ -122,6 +122,20 @@ def _ollama_chat(model: str, system: str, prompt: str) -> Optional[str]:
     return (resp.json().get("message") or {}).get("content")
 
 
+# K2.1 — defense-in-depth for EXTERNALLY-SOURCED strings interpolated into the
+# grounding (track/artist names, genres: playlist imports make them attacker-
+# reachable). The RTCROS contract already declares data-never-instructions;
+# neutralizing makes the cheap injection shapes impossible to even RENDER —
+# no angle brackets (no </data> breakout), no newlines (no forged grounding
+# lines), capped length. Benign names pass through unchanged.
+_UNSAFE_GROUNDING_CHARS = re.compile(r"[<>\r\n\t]")
+
+
+def _neutralize(text: Any, cap: int = 160) -> str:
+    s = _UNSAFE_GROUNDING_CHARS.sub(" ", str(text or ""))
+    return re.sub(r"\s{2,}", " ", s).strip()[:cap]
+
+
 def _grounding_text(taste: dict[str, Any], glossary: dict[str, str]) -> str:
     """Render the visitor's retrieved facts as the grounding block for the prompt."""
     lines: list[str] = []
@@ -132,9 +146,11 @@ def _grounding_text(taste: dict[str, Any], glossary: dict[str, str]) -> str:
             f"top tracks have local audio features ({cov.get('analyzing', 0)} still analyzing).")
     prof = taste.get("profile") or {}
     if prof.get("message"):
-        lines.append(prof["message"])
+        # our template sentences, but with untrusted names embedded upstream —
+        # same neutralization, roomier cap (a legit sentence never needs <> or \n)
+        lines.append(_neutralize(prof["message"], cap=240))
     for h in prof.get("highlights", []):
-        lines.append(f"  - {h}")
+        lines.append(f"  - {_neutralize(h, cap=240)}")
     arch = taste.get("archetype")
     if arch:
         lines.append(f"Taste archetype (derived): {arch['name']} — "
@@ -170,14 +186,16 @@ def _grounding_text(taste: dict[str, Any], glossary: dict[str, str]) -> str:
     artists = taste.get("artists") or []
     if artists:
         alist = "; ".join(
-            a["name"] + (f" [{a['genres']}]" if a.get("genres") else "")
+            _neutralize(a["name"])
+            + (f" [{_neutralize(a['genres'])}]" if a.get("genres") else "")
             for a in artists[:10])
         lines.append(f"Top artists: {alist}.")
     for rng in taste.get("ranges", []):
         tracks = rng.get("tracks", [])
         if tracks:
             tl = "; ".join(
-                f"{t['name']} — {t['artist']}" + (" [in corpus]" if t.get("in_corpus") else "")
+                f"{_neutralize(t['name'])} — {_neutralize(t['artist'])}"
+                + (" [in corpus]" if t.get("in_corpus") else "")
                 for t in tracks[:8])
             lines.append(f"Top tracks ({rng['label']}): {tl}.")
     if glossary:
