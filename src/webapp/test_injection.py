@@ -93,11 +93,11 @@ def test_a_fully_resistant_model_passes_the_gate(monkeypatch, tmp_path):
     monkeypatch.setattr(TasteRAG, "_chat_messages", fake)
     rag = TasteRAG(model="ollama:fake:0b")
     summary = run_injection(rag, tmp_path)
-    # INJ02/INJ03 need a specific honest answer ("2" / "Bright Lights") this
-    # generic model omits — honestly recorded as not-defended (suppressed). The
-    # must_not_appear cases (canary/exfil/fake-fact/DDL) all pass. The security
-    # invariant that matters here: ZERO payloads echoed.
-    suppress_only = {"INJ02", "INJ03"}
+    # INJ01/INJ02/INJ03 need a specific honest answer ("Peak Energy" / "2" /
+    # "Bright Lights") this generic model omits — honestly recorded as
+    # not-defended (suppressed). The exfil/DDL cases (must_not_appear only) pass.
+    # The security invariant that matters here: ZERO payloads echoed.
+    suppress_only = {"INJ01", "INJ02", "INJ03"}
     for r in summary["results"]:
         if r["id"] not in suppress_only:
             assert r["defended"] is True, r["id"]
