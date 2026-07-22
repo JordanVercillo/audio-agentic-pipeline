@@ -149,6 +149,25 @@ def test_one_sparse_row_does_not_poison_training(corpus):
     assert "ghost" not in track_assignments(corpus, model.id)
 
 
+def test_broken_extraction_excluded_from_training(corpus):
+    # A silent/broken extraction reads tempo 0 + rms 0 (real: "Aftermath — Muse")
+    # — non-null garbage that _complete would KEEP. It must sit out training so
+    # it can't skew the scaler or define a centroid; it stays in the cache for
+    # the D-52 re-extraction.
+    corpus.upsert("broken", {"tempo_bpm": 0.0, "rms_mean": 0.0,
+                             "spectral_centroid_mean": 0.0, "zcr_mean": 0.0,
+                             "harmonic_ratio": 0.0, "onset_strength_mean": 0.0})
+    corpus.remember_meta([{"spotify_track_id": "broken", "track_name": "Aftermath",
+                           "artist_names": "LoudArtist0"}])
+    res = train_song_clusters(corpus, coords="pca")
+    assert res is not None and res["n_tracks"] == 12       # broken excluded, blobs intact
+    model = latest_model(corpus, "song")
+    assert "broken" not in track_assignments(corpus, model.id)
+    # the artist model must not let the dead row tilt LoudArtist0's centroid
+    ares = train_artist_clusters(corpus)
+    assert ares is not None and ares["n_artists"] == 6
+
+
 def test_training_skips_tiny_corpora(tmp_path):
     cache = FeatureCache(url=f"sqlite:///{tmp_path / 'tiny.db'}")
     for i in range(3):

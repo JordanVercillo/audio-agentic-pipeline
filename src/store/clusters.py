@@ -32,6 +32,20 @@ _MIN_TRACKS = 8       # below this a song model is noise, not signal
 _MIN_ARTISTS = 4
 _MIN_FEATURES = 3
 
+# A clearly-broken extraction reads tempo 0 and silence — mirrors the mart's
+# feature_valid gate (semantic._MIN_VALID_TEMPO). Excluded from TRAINING so a
+# dead row can't define a centroid or skew the scaler / an artist's mean; the
+# row still lives in the cache for the D-52 re-extraction.
+_MIN_VALID_TEMPO_BPM = 1.0
+
+
+def _drop_broken(feats: dict[str, dict]) -> dict[str, dict]:
+    """Exclude only explicitly-broken extractions (tempo present and ≤ the
+    floor); rows missing tempo entirely are left to the existing _complete gate."""
+    return {tid: f for tid, f in feats.items()
+            if not (isinstance(f.get("tempo_bpm"), (int, float))
+                    and f["tempo_bpm"] <= _MIN_VALID_TEMPO_BPM)}
+
 
 # ── feature selection & scaling ─────────────────────────────────────────────
 def _has(row: dict, col: str) -> bool:
@@ -131,7 +145,7 @@ def _map_coords(X: np.ndarray, method: str = "pca") -> Optional[np.ndarray]:
 def train_song_clusters(cache: FeatureCache, *, k_range: tuple[int, int] = (2, 6),
                         coords: str = "pca") -> Optional[dict[str, Any]]:
     """Cluster ALL cached tracks; persist the model + per-track assignments."""
-    feats = cache.all_features()
+    feats = _drop_broken(cache.all_features())
     if len(feats) < _MIN_TRACKS:
         logger.info("song clustering skipped: %d < %d cached tracks", len(feats), _MIN_TRACKS)
         return None
@@ -176,7 +190,7 @@ def train_song_clusters(cache: FeatureCache, *, k_range: tuple[int, int] = (2, 6
 def train_artist_clusters(cache: FeatureCache, *, k_range: tuple[int, int] = (2, 5),
                           ) -> Optional[dict[str, Any]]:
     """Cluster artists by their acoustic centroid (mean of their cached tracks)."""
-    feats = cache.all_features()
+    feats = _drop_broken(cache.all_features())
     meta = cache.all_meta()
     by_artist: dict[str, list[dict]] = {}
     for tid, f in feats.items():
