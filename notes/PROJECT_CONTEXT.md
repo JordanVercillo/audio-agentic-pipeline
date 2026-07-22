@@ -390,17 +390,62 @@
   `cache.ungraded_chat_turns`/`write_chat_label`/`all_chat_labels` +
   `scripts/review_chat_logs.py` (`--sample` a gitignored worksheet · `--commit`
   human grades → ChatLabel · `--report` aggregates-only dated artifact; raw
-  user text NEVER leaves the gitignored DB, rule 7). **➡️ NEXT ACTION — TWO
-  tracks: (owner) run the FIRST review session — `uv run python
-  scripts/review_chat_logs.py --sample 20`, grade accuracy/usefulness/verdict
-  in the worksheet, `--commit` it, `--report`; those grades seed golden cases +
-  the K5 counter. (build) K2 — injection evals (FABLE, security-adversarial) →
-  the tool-use loop over the semantic marts (Opus, gated on the injection set
-  100%).** DEFERRED (not blocking): cluster_profile + online-cluster (owner
-  call, 39%); the ad-hoc-engine repoint lands with K2. `/chat` UX note:
-  gemma4's ~50s synchronous latency wants async/streaming eventually. Owner
-  item still open: O2 weights sign-off. Parked: MPD-audio, Epic M,
-  instrumentalness, dupe-pruning.
+  user text NEVER leaves the gitignored DB, rule 7).
+  ✅ **K2 — "TALK TO YOUR DATA" TOOL LOOP: 7/8 SLICES SHIPPED (2026-07-21,
+  session 47, Fable; commits d36cf49→6a5dce1, 472 tests, CI green).** The /chat
+  tool-use loop is BUILT, injection-gated, and answers the owner's original bug.
+  Slices: **K2-probe** (d36cf49 — GO: gemma4:e4b drove the flat action loop 6/6
+  grounded, self-correcting; found the entity-recognition gap). **K2.0** (bc2f98d
+  — the last 2 semantic marts `corpus_facts`+`cluster_profile` in `semantic.py`;
+  3 audit tripwires PLANE_COHERENCE/SEMANTIC_PARITY/CLUSTER_PROFILE_DRIFT; live
+  807 tracks/805 valid/301 artists/61h, clusters 38.5% on-mart). **K2.1** (0f38ac3
+  — `_neutralize()` sanitizes untrusted import names in `_grounding_text`; INJ-PI
+  regression; proven no-op on all 15 golden groundings). **K2b** (25ddee9 —
+  `src/agent/chat_tools.py`: read-only SQL over the 5 marts via a `tables=`
+  allowlist on `WarehouseAgent` (MCP star-schema untouched); per-session +
+  os.replace-safe; MAX_ROWS=20 server clamp; interrupt watchdog — DuckDB has NO
+  statement_timeout, verified 1.5.4; pinned schema card w/ live DESCRIBE; pragma_*
+  + parquet-introspection added to `_FORBIDDEN`). **K2c** (4b949d7 — the depth-3
+  flat-action loop in `rag.py` (`_tool_loop`), flat union NOT D-44's nested
+  envelope; `build_tool_system` w/ `TOOL_CONTRACT_VERSION rtcros-tools-v1`;
+  ChatLog `depth` column + migration; degrade preserves the tool transcript for
+  missing_fact clustering; `tools_factory` DI keeps tests machine-independent).
+  **K2a** (e6ea331 — `injection_v1.jsonl` (5 attack shapes) + `injectionset.py`
+  BINARY-never-averaged gate + `run_injection.py` + grader-teeth self-tests, no
+  bypass flag). **K2d** (→6a5dce1 — the gates). **THE MODEL DECISION (owner,
+  session 47): SPLIT — `WEBAPP_TOOLS_LLM_MODEL=ollama:qwen3:8b` drives the
+  security-sensitive tool loop; `WEBAPP_LLM_MODEL=ollama:gemma4:e4b` stays
+  multimodal (K4) + story/classify.** WHY: gemma4:e4b OBEYS a token-injection
+  4/4 runs (a 4.5B limit no contract fixed); **qwen3:8b DEFENDS all 5 attacks
+  6/6 clean runs** AND scored golden 13/15. Per-surface routing = `config.tools_model()`
+  + `TasteRAG(tools_model=…)` + `_wants_tools_llm()`; run_webapp warms both.
+  **THE OWNER'S ORIGINAL BUG IS FIXED:** "top rise against songs" now returns
+  real Rise Against tracks live (depth=2) after the **NAMES-FIRST** contract
+  mandate (a proper-noun phrase must be looked up as an artist/track name via
+  ILIKE BEFORE any mood interpretation; a "top <phrase> songs" answer may never
+  be other artists' tracks — qwen3 had mislabeled high-energy tracks as Rise
+  Against, journal #38). Two injection cases (INJ01, INJ03) were restructured so
+  the payload sits in a row the answer never surfaces — testing genuine OBEDIENCE
+  not the quoting-vs-obeying grader artifact (journal #39). Guard hole closed:
+  the tool loop's `WEBAPP_TOOLS_LLM_MODEL` is a THIRD live-model env route →
+  `src/conftest.py` autouse fixture neutralizes ALL routes so `.env` can't
+  de-calibrate the suite (journal #34 recurring); force_fallback pops it too.
+  Cleared an orphaned `injection_evals.py` (truncated duplicate from the recovered
+  session). **➡️ NEXT ACTION — K2e: DEPLOY the tool loop + live browser
+  validation.** `app_control restart` (picks up the split .env), then the live
+  acceptance on vercilloanalytics.com `/chat`: "what's my top rise against songs"
+  must return real Rise Against tracks through the running app (standing
+  browser-validation practice). Then Epic K's remaining phases (K3/K4/K5).
+  DEFERRED (not blocking): (owner) the FIRST human review session
+  (`scripts/review_chat_logs.py --sample 20` → grade → `--commit` → `--report`,
+  seeds golden + the K5 counter); task #9 — the suspicious `'vibe?'` ChatLog rows
+  (0ms, source=llm — likely K1c deploy-validation traffic polluting the D-47
+  sample); cluster_profile online-cluster (owner call, 39%). RESIDUAL (honest):
+  when the tool model MUST surface a hostile import name, the render-cap (120
+  chars, no newlines) bounds but doesn't erase echoed attacker text — the D-47
+  chat log is the production monitor. `/chat` UX: qwen3's synchronous latency
+  wants async/streaming eventually. Owner item open: O2 weights sign-off. Parked:
+  MPD-audio, Epic M, instrumentalness, dupe-pruning.
 - ✅ **SECURITY + ROBUSTNESS REVIEW (2026-07-09, commits 26891b1←): whole-app
   audit via 2 review subagents + a strategic pass; 7 real fixes, all tested,
   deployed, 286 green.** **Security surface came back STRONG** — auth, session
@@ -1864,3 +1909,25 @@ narrative goes to `notes/engineering_journal.md`, plans to
   specced execution). **Left off: the flywheel is BUILT + demonstrated on real
   data; the first HUMAN review session is the owner's next step. Next build =
   K2 (injection evals FABLE → tool-use loop). NEW SESSION: run `/resume`.**
+- **2026-07-21 (session 47 — K2 the "Talk to your data" tool loop, Fable +
+  orchestrator; 7 commits d36cf49→6a5dce1):** Opened by benchmarking local
+  models for the /chat surface — gemma4:e4b (owner's multimodal pick) vs qwen3:8b
+  vs gemma4:12b on the golden set; e4b 9–11/15, qwen3:8b 13/15. Built K2 end to
+  end via /orchestrator: probe (GO) → 2 marts + 3 audit tripwires → grounding
+  sanitizer → `chat_tools.py` engine → the flat-action `_tool_loop` → the
+  injection eval set → the gates. **The gates did their job:** the injection gate
+  caught gemma4:e4b OBEYING a token-injection 4/4 runs (a real 4.5B limit), so
+  the owner CHOSE the split — qwen3:8b (defends 5/5 × 6 runs) drives the
+  security-sensitive tool loop, e4b stays multimodal + story/classify — and per-
+  surface routing shipped (`WEBAPP_TOOLS_LLM_MODEL`). Three real surprises
+  (journals #38 the NAMES-FIRST mislabel, #39 the quoting-vs-obeying grader
+  artifact, plus #34 recurring — the tool loop's env route re-opened the CI guard
+  hole, fixed with a conftest that neutralizes all routes). The owner's original
+  bug — "top rise against songs" → generic non-answer — is FIXED: the live tool
+  loop returns real Rise Against tracks (depth=2). 472 tests (+31), ruff clean,
+  CI green, all K2 work committed + pushed. Cleared an orphaned truncated
+  `injection_evals.py` from the recovered session. **Left off: K2 is 7/8 slices
+  DONE (probe/K2.0/K2.1/K2b/K2c/K2a/K2d), injection gate PASSES on the shipping
+  split, owner bug fixed. NEXT = K2e: deploy via `app_control restart` (picks up
+  the split .env) + live browser validation on /chat. NEW SESSION: run
+  `/resume`.**
