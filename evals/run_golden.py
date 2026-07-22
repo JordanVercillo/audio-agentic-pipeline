@@ -21,6 +21,11 @@ _ROOT = Path(__file__).resolve().parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
+from src.webapp.clustereval import (  # noqa: E402
+    load_golden_clusters,
+    run_cluster_baseline,
+    run_cluster_golden,
+)
 from src.webapp.evalset import (  # noqa: E402
     format_report,
     load_golden,
@@ -29,7 +34,8 @@ from src.webapp.evalset import (  # noqa: E402
 )
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Gold eval set for /ask + /classify.")
+    parser = argparse.ArgumentParser(
+        description="Gold eval sets: /ask + /classify, and K3 cluster descriptions.")
     parser.add_argument("--llm", action="store_true",
                         help="also grade the live LLM path (WEBAPP_LLM_MODEL=ollama:… or ANTHROPIC_API_KEY)")
     args = parser.parse_args()
@@ -39,6 +45,14 @@ if __name__ == "__main__":
     print(format_report("deterministic fallback", fallback))
     print()
     print(format_report("constant baseline (honesty anchor)", run_baseline(cases)))
+
+    ccases = load_golden_clusters()
+    cfallback = run_cluster_golden(ccases, force_fallback=True)
+    print()
+    print(format_report("cluster template fallback (K3)", cfallback))
+    print()
+    print(format_report("cluster name-only baseline (honesty anchor)",
+                        run_cluster_baseline(ccases)))
 
     if args.llm:
         from src.webapp.rag import TasteRAG
@@ -50,5 +64,10 @@ if __name__ == "__main__":
             print()
             llm = run_golden(cases, force_fallback=False)
             print(format_report(f"LLM path ({rag.model})", llm))
+            print()
+            cllm = run_cluster_golden(ccases, force_fallback=False)
+            print(format_report(f"cluster LLM path ({rag.model})", cllm))
 
-    sys.exit(0 if fallback["passed"] == fallback["total"] else 1)
+    ok = (fallback["passed"] == fallback["total"]
+          and cfallback["passed"] == cfallback["total"])
+    sys.exit(0 if ok else 1)
