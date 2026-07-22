@@ -1054,3 +1054,41 @@ a gradable-artifact smell than a true capability ceiling.
 > is caused only by the violation (payload reaches the model, but a correct
 > answer never surfaces it); keep the grader-teeth self-test to prove you didn't
 > just declaw it. Suspect the test before the model when a gate flaps.*
+
+## 40 — The label's evidence lived nowhere (2026-07-22, K3a)
+
+K3 needed descriptions grounded in "the top-|z| dims that produced the
+cluster's name." Obvious plan: read them from the cluster_profile mart. But
+the mart carries perceptual means (tempo, energy, danceability…) while names
+come from six RAW-DSP columns (rms_mean, zcr_mean, harmonic_ratio…) — the
+z-scores that named every cluster were computed inside _label_cluster and
+thrown away. No downstream surface could reconstruct them: grounding on the
+mart would have fed the model the WRONG features with full confidence.
+
+**The realization:** a derived label without its evidence is an orphan. The
+moment `" · ".join(words)` executed, the provenance existed only in a local
+variable; every consumer since (archetype, composition, chat grounding) used
+the name and trusted it blind.
+
+> *When a derived artifact ships, ship the evidence that produced it — in the
+> same row, at creation time. Provenance is captured where it is computed or
+> it is lost; downstream reconstruction from adjacent data silently grounds
+> on the wrong thing.*
+
+## 41 — Grounded, citing every required word — and asserting the opposite (2026-07-22, K3f)
+
+The first live K3 gate run: e4b described "Percussive · Noisy" with every
+required dim word present… and also called the tracks "harmonic." Presence
+checks all green at generation time; the eval's no_invention (which bans the
+opposite poles) caught it: a description that contradicts the centroid it
+claims to describe is invention wearing a citation.
+
+**The realization:** a grounding gate that only verifies PRESENCE can be
+passed by a contradiction. Models paid to be fluent love contrast framing
+("X, not Y") — and "not harmonic" contains "harmonic" for any substring
+grader on the wrong side of the negation.
+
+> *Verify agreement, not just presence: for every required token, know its
+> opposite and ban it. The eval found the failure mode; the fix belongs in
+> the PRODUCTION path (the opposite-pole guard), not just the eval — a gate
+> that only grades is advice, a gate that degrades is a guarantee.*

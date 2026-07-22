@@ -442,13 +442,44 @@
   Numbers, Swing Life Away, Satellite, Make It Stop…); ChatLog id 70 is the
   proof: source=llm, model=ollama:qwen3:8b, depth=1, latency 87.7s (correct
   but slow — the async/streaming UX note stands). app-verify ALL-FALSE (all 8
-  marts, 807 tracks, worker beat 12s, queue drained). **➡️ NEXT ACTION — two
-  tracks: (owner) the FIRST human review session** (`uv run python
-  scripts/review_chat_logs.py --sample 20` → grade → `--commit` → `--report`,
-  seeds golden + the K5 counter — the sample now includes real tool-loop
-  turns); **(build) K3 — LLM bucketing/labeling (additive-only, D-5), then K4
-  multimodal upload** (e4b's audio input is why the split kept it) per
-  VISION_SPECS Phase 4. DEFERRED (not blocking): task #9 — the suspicious
+  marts, 807 tracks, worker beat 12s, queue drained). ✅ **K3 COMPLETE (2026-07-22, session
+  49, Fable + orchestrator; commits b5eefd0→edcecd3, 488 tests, ruff clean):
+  grounded cluster descriptions — built, eval-gated, DEPLOYED,
+  browser-validated.** The llm-rag-expert consult's key finding shaped the
+  build: the `cluster_profile` mart CANNOT reconstruct the raw-DSP
+  `_CHARACTER_DIMS` that name a cluster → **K3a** captures `label_dims`
+  at training time (nullable JSON + `_ADDED_COLUMNS` migration; `labels`
+  byte-frozen, tie-break preserved). **K3b** the `cluster` RTCROS mode +
+  `TasteRAG.describe_cluster` — name pinned by the CALLER (never from the
+  model), grounding = numbers + dim words ONLY (zero injection surface, a
+  deliberate v1 boundary), dim-drop → template. **K3c** `golden_clusters_v1`
+  (10 cases incl. Mixed + single-dim) + 4 graders in `clustereval.py`;
+  template 10/10 = the new $0 CI guard (run_golden.py exit-gates BOTH sets);
+  name-only baseline fails ONLY grounded_in_centroid (the skill check).
+  **K3d** `describe_clusters.py` (offline batch, prompt-version idempotent) +
+  mart projection — the MODEL ROW is truth, rebuilds never regenerate.
+  **K3e** legend blurbs + honest caption on /analytics. **The gates did
+  their job twice:** ① the first live run caught e4b describing by CONTRAST
+  (CD06 "Percussive · Noisy" said "harmonic" — every dim word present, yet
+  contradicting the centroid; journal #41) → the opposite-pole guard (K3f)
+  → re-run **cluster LLM 10/10** (8 llm + CD06/CD08 honest template;
+  taste LLM 11/15 unchanged; artifact `evals/runs/2026-07-22_k3-golden_…`).
+  ② the LIVE model #3 is pre-K3a (no dims) → both clusters degraded to the
+  FALSE "Mixed" wording → K3g: templates use the label's own words. Deployed
+  via `app_control restart` (cache backed up, 807); guest /analytics through
+  the public edge renders both blurbs + caption; app-verify ALL-FALSE; audit
+  semantic flags all false. **The K3-value unlock is the cluster RETRAIN
+  (owner call — changes cluster identities/k and archetype narratives): the
+  first post-K3a retrain gets real label_dims → e4b prose replaces the
+  templates automatically via `describe_clusters.py`.** **OWNER DECISION
+  (2026-07-22): QA / human review sessions are DEFERRED until the app has
+  real testers again — do not re-suggest per-session.** **➡️ NEXT ACTION —
+  K4 multimodal upload (D-45):** the validation gateway in front of the
+  EXISTING worker path (caps 20 MB · 10 min · 10/user; `up`+content-hash
+  bridge-safe id; content-sniffed allowlist mp3/wav/flac/m4a; hardened
+  ffmpeg) — a NEW non-LLM attack surface: FABLE security review + Opus
+  plumbing per the routing table; e4b's audio input is why the split kept
+  it. DEFERRED (not blocking): the cluster-retrain unlock (above); task #9 — the suspicious
   `'vibe?'` ChatLog rows (0ms, source=llm — likely K1c deploy-validation
   traffic polluting the D-47 sample); cluster_profile online-cluster (owner
   call, 39%). RESIDUAL (honest):
@@ -1955,3 +1986,19 @@ narrative goes to `notes/engineering_journal.md`, plans to
   journal entry (clean deploy + validate). **Left off: K2 COMPLETE and live.
   NEXT = (owner) the first review session; (build) K3 bucketing → K4 upload.
   NEW SESSION: run `/resume`.**
+- **2026-07-22 (session 49 — K3 grounded cluster descriptions, Fable +
+  orchestrator; 7 commits b5eefd0→edcecd3, 488 tests):** One llm-rag-expert
+  consult (its finding — the mart can't reconstruct the naming dims — became
+  K3a, journal #40), then built K3 in commit-per-slice order: label_dims at
+  training time → the `cluster` RTCROS mode + describe_cluster (name pinned,
+  zero-injection grounding) → golden_clusters_v1 + 4 graders ($0 CI guard) →
+  offline persistence + mart projection (model row is truth) → /analytics
+  blurbs + honest caption. **The gates caught two real defects before users
+  saw either:** e4b describing a bucket by CONTRAST (→ the opposite-pole
+  guard, journal #41; re-run 10/10) and the pre-K3a live model wearing the
+  false "Mixed" template (→ label-word templates). Deployed + guest-validated
+  through the edge; app-verify ALL-FALSE; audit semantic flags false. Owner
+  decisions recorded: QA deferred until real testers; the cluster retrain is
+  the K3-value unlock (e4b prose activates on first post-K3a retrain).
+  **Left off: EPIC K3 COMPLETE. NEXT = K4 multimodal upload (D-45, Fable
+  security review first). NEW SESSION: run `/resume`.**
