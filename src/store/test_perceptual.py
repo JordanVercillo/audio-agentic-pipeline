@@ -208,11 +208,19 @@ def _write_marts(tmp_path, corpus, *, drop_stat_row=False, extra_mart_col=False)
     return marts
 
 
+# Every check_marts flag, all-clear — the exact-dict discipline (a NEW flag
+# must be added here deliberately, with its own positive test).
+_ALL_MART_FLAGS_FALSE = {
+    "CATALOG_MART_DRIFT": False, "STATS_MART_DRIFT": False,
+    "FEATURE_DISTRIBUTION": False, "PLANE_COHERENCE": False,
+    "SEMANTIC_PARITY": False, "CLUSTER_PROFILE_DRIFT": False,
+}
+
+
 def test_audit_marts_green_on_good_marts(corpus, tmp_path):
     audit = _load_audit_module()
     report, warnings, errors, flags = audit.check_marts(_write_marts(tmp_path, corpus))
-    assert flags == {"CATALOG_MART_DRIFT": False, "STATS_MART_DRIFT": False,
-                     "FEATURE_DISTRIBUTION": False}
+    assert flags == _ALL_MART_FLAGS_FALSE
     assert not errors
     assert report["track_perceptual"]["rows"] == 10
 
@@ -236,8 +244,7 @@ def test_audit_marts_catches_stats_drift(corpus, tmp_path):
 def test_audit_marts_absent_is_a_note_not_a_finding(tmp_path):
     audit = _load_audit_module()
     report, warnings, errors, flags = audit.check_marts(tmp_path / "nope")
-    assert flags == {"CATALOG_MART_DRIFT": False, "STATS_MART_DRIFT": False,
-                     "FEATURE_DISTRIBUTION": False}
+    assert flags == _ALL_MART_FLAGS_FALSE
     assert not errors and any("not built" in w for w in warnings)
 
 

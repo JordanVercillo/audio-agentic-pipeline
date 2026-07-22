@@ -82,14 +82,26 @@ def check_marts(marts_dir: Path):
                           required stat column is missing, or a histogram's
                           bin_counts don't sum to its n
 
-    Marts are an optional derived layer: an absent dir is a note, not a
-    finding. Returns (report, warnings, errors, flags).
+    K2.0 extends the same discipline to the semantic layer (D-49 — the chat's
+    analyst views must be provably the same plane the perceptual marts ride):
+
+      PLANE_COHERENCE        track_card's bridge-key set != track_perceptual's
+                             (either direction), or duplicate keys in track_card
+      SEMANTIC_PARITY        corpus_facts' totals != the marts they summarize
+      CLUSTER_PROFILE_DRIFT  cluster_profile's assignment counts/shares are
+                             impossible against the corpus (share outside [0,1],
+                             n_assigned beyond n_tracks, or an unlabeled row)
+
+    Marts are an optional derived layer: an absent dir (or an absent semantic
+    mart — they land with K2.0 rebuilds) is a note, not a finding.
+    Returns (report, warnings, errors, flags).
     """
     report: dict = {}
     warnings: list[str] = []
     errors: list[str] = []
     flags = {"CATALOG_MART_DRIFT": False, "STATS_MART_DRIFT": False,
-             "FEATURE_DISTRIBUTION": False}
+             "FEATURE_DISTRIBUTION": False, "PLANE_COHERENCE": False,
+             "SEMANTIC_PARITY": False, "CLUSTER_PROFILE_DRIFT": False}
 
     if not marts_dir.is_dir() or not any(marts_dir.glob("*.parquet")):
         warnings.append("data/marts/ not built (optional — run scripts/build_feature_marts.py)")
@@ -108,10 +120,27 @@ def check_marts(marts_dir: Path):
             continue
         frames[name] = df
         report[name] = {"rows": int(len(df)), "cols": int(df.shape[1])}
+    # Semantic marts (K2.0) are optional until first rebuilt — absent is silent
+    # here (MART_INCOMPLETE would misfire on every pre-K2.0 marts dir).
+    for name in ("track_card", "artist_rollup", "corpus_facts", "cluster_profile"):
+        path = marts_dir / f"{name}.parquet"
+        if not path.exists():
+            continue
+        try:
+            df = pd.read_parquet(path)
+        except Exception as e:
+            errors.append(f"marts/{name}.parquet: unreadable parquet: {e}")
+            continue
+        frames[name] = df
+        report[name] = {"rows": int(len(df)), "cols": int(df.shape[1])}
 
     catalog = frames.get("feature_catalog")
     perceptual = frames.get("track_perceptual")
     stats = frames.get("feature_stats")
+    track_card = frames.get("track_card")
+    artist_rollup = frames.get("artist_rollup")
+    corpus_facts = frames.get("corpus_facts")
+    cluster_profile = frames.get("cluster_profile")
 
     if catalog is not None and perceptual is not None:
         cat_cols = set(catalog["column"])
@@ -172,6 +201,54 @@ def check_marts(marts_dir: Path):
         if dist_warnings:
             warnings.extend(dist_warnings)
             flags["FEATURE_DISTRIBUTION"] = True
+
+    # ── K2.0: the semantic plane ────────────────────────────────────────────
+    if track_card is not None and perceptual is not None and BRIDGE in track_card.columns:
+        tc_ids = set(track_card[BRIDGE])
+        pc_ids = set(perceptual[BRIDGE])
+        if tc_ids != pc_ids:
+            warnings.append(
+                f"marts: track_card<->track_perceptual key sets diverge "
+                f"({len(tc_ids - pc_ids)} only in track_card, "
+                f"{len(pc_ids - tc_ids)} only in track_perceptual) — PLANE_COHERENCE")
+            flags["PLANE_COHERENCE"] = True
+        n_dup = int(track_card.duplicated(subset=[BRIDGE]).sum())
+        if n_dup:
+            errors.append(f"marts/track_card: {n_dup} duplicate {BRIDGE} — PLANE_COHERENCE")
+            flags["PLANE_COHERENCE"] = True
+
+    if corpus_facts is not None and not corpus_facts.empty:
+        cf = corpus_facts.iloc[0]
+        checks = []
+        if track_card is not None:
+            checks.append(("n_tracks", int(cf.get("n_tracks", -1)), len(track_card)))
+            if "feature_valid" in track_card.columns:
+                checks.append(("n_feature_valid", int(cf.get("n_feature_valid", -1)),
+                               int(track_card["feature_valid"].sum())))
+        if artist_rollup is not None:
+            checks.append(("n_artists", int(cf.get("n_artists", -1)), len(artist_rollup)))
+        for name, claimed, actual in checks:
+            if claimed != actual:
+                warnings.append(
+                    f"marts/corpus_facts.{name} claims {claimed} but the mart it "
+                    f"summarizes has {actual} — SEMANTIC_PARITY")
+                flags["SEMANTIC_PARITY"] = True
+
+    if cluster_profile is not None and not cluster_profile.empty:
+        n_corpus = len(track_card) if track_card is not None else None
+        bad: list[str] = []
+        if cluster_profile["label"].isna().any() or (cluster_profile["label"] == "").any():
+            bad.append("unlabeled cluster row")
+        shares = cluster_profile["share_of_corpus"]
+        if ((shares < 0) | (shares > 1)).any():
+            bad.append("share_of_corpus outside [0,1]")
+        if n_corpus is not None and int(cluster_profile["n_assigned"].sum()) > n_corpus:
+            bad.append(f"n_assigned sums past the corpus "
+                       f"({int(cluster_profile['n_assigned'].sum())} > {n_corpus})")
+        if bad:
+            warnings.append("marts/cluster_profile: " + "; ".join(bad)
+                            + " — CLUSTER_PROFILE_DRIFT")
+            flags["CLUSTER_PROFILE_DRIFT"] = True
 
     return report, warnings, errors, flags
 

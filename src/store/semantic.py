@@ -20,6 +20,7 @@ mistaken across a rebuild.
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -166,6 +167,77 @@ def build_artist_rollup(cache: Any, perceptual_df: pd.DataFrame) -> pd.DataFrame
     return pd.DataFrame(rows)
 
 
+def build_corpus_facts(track_card: pd.DataFrame,
+                       artist_rollup: pd.DataFrame) -> pd.DataFrame:
+    """One-row corpus-facts mart (K2.0): the analyst's totals, derived from the
+    frames this rebuild already built — no recompute. Acoustic stats run over
+    feature_valid rows only, so a dead extraction can't tilt a corpus mean;
+    counts report the invalid rows honestly instead of hiding them."""
+    if track_card is None or track_card.empty:
+        return pd.DataFrame()
+    valid = track_card[track_card["feature_valid"]]
+
+    def _stat(series: pd.Series, fn: str, ndigits: int) -> float | None:
+        return None if valid.empty else round(float(getattr(series, fn)()), ndigits)
+
+    return pd.DataFrame([{
+        "n_tracks": int(len(track_card)),
+        "n_feature_valid": int(track_card["feature_valid"].sum()),
+        "n_artists": 0 if artist_rollup is None or artist_rollup.empty
+        else int(len(artist_rollup)),
+        "total_hours": _stat(valid["duration_sec"] / 3600.0, "sum", 2),
+        "mean_duration_sec": _stat(valid["duration_sec"], "mean", 1),
+        "median_duration_sec": _stat(valid["duration_sec"], "median", 1),
+        "median_tempo": _stat(valid["tempo"], "median", 1),
+        "mean_energy": _stat(valid["energy"], "mean", 4),
+        "version": str(track_card["version"].iloc[0]),
+        "built_at_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+    }])
+
+
+# The per-cluster acoustic means the analyst gets — the interpretable subset,
+# not all 15 (the label already encodes the distinguishing dims).
+_CLUSTER_MEAN_COLS = ("tempo", "energy", "danceability", "brightness", "loudness_db")
+
+
+def build_cluster_profile(cache: Any, track_card: pd.DataFrame) -> pd.DataFrame:
+    """Per-cluster analyst profile from the LATEST song ClusterModel (K2.0).
+    Coverage is carried ON the mart (n_assigned vs the corpus n): clusters are
+    trained on a snapshot, so the chat can say "39% of your library is
+    clustered" instead of silently pretending full coverage. No trained model →
+    no mart (absence is honest; the audit treats it as a note)."""
+    if track_card is None or track_card.empty:
+        return pd.DataFrame()
+    from .clusters import latest_model, track_assignments
+    model = latest_model(cache, "song")
+    if model is None:
+        return pd.DataFrame()
+    assigns = track_assignments(cache, model.id)
+    tc = track_card.set_index("spotify_track_id")
+    members: dict[int, list[str]] = {}
+    for tid, a in assigns.items():
+        if tid in tc.index:                    # ignore assignments for evicted rows
+            members.setdefault(int(a["cluster_id"]), []).append(tid)
+    n_corpus = int(len(tc))
+    rows: list[dict[str, Any]] = []
+    for cid_str, label in (model.labels or {}).items():
+        cid = int(cid_str)
+        m = tc.loc[members.get(cid, [])]
+        row: dict[str, Any] = {
+            "cluster_id": cid, "label": label,
+            "n_assigned": int(len(m)),
+            "share_of_corpus": round(len(m) / n_corpus, 4),
+            "model_id": int(model.id),
+            "silhouette": None if model.silhouette is None
+            else round(float(model.silhouette), 3),
+        }
+        for col in _CLUSTER_MEAN_COLS:
+            row[f"mean_{col}"] = None if m.empty else round(float(m[col].mean()), 4)
+        rows.append(row)
+    rows.sort(key=lambda r: r["cluster_id"])
+    return pd.DataFrame(rows)
+
+
 def build_semantic_marts(cache: Any, perceptual_df: pd.DataFrame,
                          marts_dir: Path) -> dict[str, int]:
     """Write the semantic marts (atomic, idempotent). Called from rebuild_marts
@@ -175,9 +247,17 @@ def build_semantic_marts(cache: Any, perceptual_df: pd.DataFrame,
     fd = feature_dictionary_frame()
     tc = build_track_card(cache, perceptual_df)
     ar = build_artist_rollup(cache, perceptual_df)
+    cf = build_corpus_facts(tc, ar)
+    cp = build_cluster_profile(cache, tc)
     _write_atomic(fd, marts_dir / "feature_dictionary.parquet")
     if not tc.empty:
         _write_atomic(tc, marts_dir / "track_card.parquet")
     if not ar.empty:
         _write_atomic(ar, marts_dir / "artist_rollup.parquet")
-    return {"feature_dictionary": len(fd), "track_card": len(tc), "artist_rollup": len(ar)}
+    if not cf.empty:
+        _write_atomic(cf, marts_dir / "corpus_facts.parquet")
+    if not cp.empty:
+        _write_atomic(cp, marts_dir / "cluster_profile.parquet")
+    return {"feature_dictionary": len(fd), "track_card": len(tc),
+            "artist_rollup": len(ar), "corpus_facts": len(cf),
+            "cluster_profile": len(cp)}

@@ -12,6 +12,8 @@ from .cache import FeatureCache
 from .perceptual import compute_perceptual
 from .semantic import (
     build_artist_rollup,
+    build_cluster_profile,
+    build_corpus_facts,
     build_track_card,
     feature_dictionary_frame,
 )
@@ -90,3 +92,109 @@ def test_tripwire_artist_rollup_keys_resolve(corpus):
         assert paid in meta_ids                       # never an orphaned retrieval key
     loud = ar.set_index("primary_artist_id").loc["arLOUD001"]
     assert loud["n_tracks"] == 5 and loud["genres"] == "house"  # 4 club + the broken one
+
+
+# ── K2.0: corpus_facts ───────────────────────────────────────────────────────
+def _semantic_frames(corpus):
+    perc = compute_perceptual(corpus)
+    tc = build_track_card(corpus, perc)
+    ar = build_artist_rollup(corpus, perc)
+    return perc, tc, ar
+
+
+def test_corpus_facts_parity_and_valid_only_stats(corpus):
+    _, tc, ar = _semantic_frames(corpus)
+    cf = build_corpus_facts(tc, ar).iloc[0]
+    assert cf["n_tracks"] == 9 and cf["n_feature_valid"] == 8   # broken row counted, not hidden
+    assert cf["n_artists"] == 2
+    # acoustic stats over VALID rows only — the −180 dBFS dead row can't tilt them
+    valid = tc[tc["feature_valid"]]
+    assert cf["median_tempo"] == round(float(valid["tempo"].median()), 1)
+    assert cf["median_tempo"] > 1.0
+    assert cf["built_at_utc"] and cf["version"] == tc["version"].iloc[0]
+    assert build_corpus_facts(pd.DataFrame(), ar).empty          # empty in → no mart
+
+
+# ── K2.0: cluster_profile ────────────────────────────────────────────────────
+def test_cluster_profile_absent_without_a_model(corpus):
+    _, tc, _ = _semantic_frames(corpus)
+    assert build_cluster_profile(corpus, tc).empty   # no trained model → no mart
+
+
+def test_cluster_profile_from_a_trained_model(corpus):
+    from .clusters import train_song_clusters
+    trained = train_song_clusters(corpus)
+    assert trained is not None
+    _, tc, _ = _semantic_frames(corpus)
+    cp = build_cluster_profile(corpus, tc)
+    assert len(cp) == trained["k"]
+    assert (cp["label"] != "").all()                          # every cluster is named
+    assert int(cp["n_assigned"].sum()) <= len(tc)             # never past the corpus
+    assert ((cp["share_of_corpus"] >= 0) & (cp["share_of_corpus"] <= 1)).all()
+    assert (cp["model_id"] == trained["model_id"]).all()
+    # a populated cluster carries real acoustic means
+    populated = cp[cp["n_assigned"] > 0]
+    assert not populated.empty and populated["mean_tempo"].notna().all()
+
+
+# ── K2.0: the audit tripwires (positive AND negative) ────────────────────────
+def _write_semantic_marts(tmp_path, corpus, *, drop_card_row=False,
+                          wrong_fact=False, bad_share=False):
+    from .clusters import train_song_clusters
+    from .perceptual import catalog_frame, compute_feature_stats
+    train_song_clusters(corpus)
+    perc, tc, ar = _semantic_frames(corpus)
+    cf = build_corpus_facts(tc, ar)
+    cp = build_cluster_profile(corpus, tc)
+    if drop_card_row:
+        tc = tc.iloc[1:]                       # a key in perceptual but not the card
+    if wrong_fact:
+        cf.loc[0, "n_tracks"] = 999
+    if bad_share:
+        cp.loc[0, "share_of_corpus"] = 1.7
+    marts = tmp_path / "marts"
+    marts.mkdir()
+    perc.to_parquet(marts / "track_perceptual.parquet", index=False)
+    catalog_frame().to_parquet(marts / "feature_catalog.parquet", index=False)
+    compute_feature_stats(perc).to_parquet(marts / "feature_stats.parquet", index=False)
+    tc.to_parquet(marts / "track_card.parquet", index=False)
+    ar.to_parquet(marts / "artist_rollup.parquet", index=False)
+    cf.to_parquet(marts / "corpus_facts.parquet", index=False)
+    cp.to_parquet(marts / "cluster_profile.parquet", index=False)
+    return marts
+
+
+def _audit():
+    from .test_perceptual import _load_audit_module
+    return _load_audit_module()
+
+
+def test_audit_semantic_marts_green_when_coherent(corpus, tmp_path):
+    report, _, errors, flags = _audit().check_marts(_write_semantic_marts(tmp_path, corpus))
+    # the fixture's broken row trips the (independent, pre-existing)
+    # FEATURE_DISTRIBUTION check — the K2.0 flags themselves must read green
+    for flag in ("PLANE_COHERENCE", "SEMANTIC_PARITY", "CLUSTER_PROFILE_DRIFT"):
+        assert flags[flag] is False, flag
+    assert not errors
+    assert report["track_card"]["rows"] == 9 and report["corpus_facts"]["rows"] == 1
+
+
+def test_audit_catches_plane_incoherence(corpus, tmp_path):
+    marts = _write_semantic_marts(tmp_path, corpus, drop_card_row=True)
+    _, warnings, _, flags = _audit().check_marts(marts)
+    assert flags["PLANE_COHERENCE"] is True
+    assert any("PLANE_COHERENCE" in w for w in warnings)
+
+
+def test_audit_catches_semantic_parity_break(corpus, tmp_path):
+    marts = _write_semantic_marts(tmp_path, corpus, wrong_fact=True)
+    _, warnings, _, flags = _audit().check_marts(marts)
+    assert flags["SEMANTIC_PARITY"] is True
+    assert any("999" in w for w in warnings)
+
+
+def test_audit_catches_cluster_profile_drift(corpus, tmp_path):
+    marts = _write_semantic_marts(tmp_path, corpus, bad_share=True)
+    _, warnings, _, flags = _audit().check_marts(marts)
+    assert flags["CLUSTER_PROFILE_DRIFT"] is True
+    assert any("share_of_corpus" in w for w in warnings)
