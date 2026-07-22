@@ -28,6 +28,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import threading
 from pathlib import Path
 from typing import Optional, Union
 
@@ -51,14 +52,18 @@ _BLOCK_COMMENT = re.compile(r"/\*.*?\*/", re.DOTALL)
 
 # Verbs that mutate state or touch the filesystem/network, plus DuckDB's
 # file-reading table functions. Whole-word, case-insensitive. None of these
-# occur in a legitimate read query over this schema.
+# occur in a legitimate read query over this schema. K2b additions: pragma_*()
+# table functions (the \bPRAGMA\b verb check can't see `pragma_show_tables` —
+# the underscore is a word character) and the parquet-introspection family.
 _FORBIDDEN = re.compile(
     r"\b("
     r"INSERT|UPDATE|DELETE|DROP|CREATE|ALTER|TRUNCATE|REPLACE|"
     r"ATTACH|DETACH|COPY|PRAGMA|INSTALL|LOAD|SET|RESET|CALL|"
     r"EXPORT|IMPORT|VACUUM|CHECKPOINT|"
     r"read_parquet|read_csv|read_csv_auto|read_json|read_json_auto|"
-    r"read_text|read_blob|parquet_scan|csv_scan|glob"
+    r"read_text|read_blob|parquet_scan|csv_scan|glob|"
+    r"pragma_\w+|parquet_metadata|parquet_schema|parquet_file_metadata|"
+    r"parquet_kv_metadata|sniff_csv"
     r")\b",
     re.IGNORECASE,
 )
@@ -119,9 +124,15 @@ class WarehouseAgent:
         self,
         modeled_dir: Optional[Union[str, Path]] = None,
         artifacts_dir: Optional[Union[str, Path]] = None,
+        tables: Optional[list[str]] = None,
     ) -> None:
+        """``tables`` (K2b) is a hard allowlist of table stems to load — the
+        chat engine passes the 5 semantic marts so the two surfaces can share
+        this class while seeing different data. None = every parquet in the
+        dir (the MCP server's frozen-star-schema behavior, unchanged)."""
         self.modeled_dir = Path(modeled_dir or MODELED_DIR)
         self.artifacts_dir = Path(artifacts_dir or ARTIFACTS_DIR)
+        self._allowlist = None if tables is None else set(tables)
         self._tables: list[str] = []
         self._con = self._build_connection()
 
@@ -130,6 +141,10 @@ class WarehouseAgent:
         if not self.modeled_dir.is_dir():
             raise FileNotFoundError(f"Modeled dir not found: {self.modeled_dir}")
         parquets = sorted(self.modeled_dir.glob("*.parquet"))
+        if self._allowlist is not None:
+            # allowlisted-but-absent is fine (cluster_profile only exists once
+            # a model is trained) — absence shows in the schema, honestly
+            parquets = [p for p in parquets if p.stem in self._allowlist]
         if not parquets:
             raise FileNotFoundError(
                 f"No gold Parquet tables in {self.modeled_dir} — run the pipeline first.")
@@ -206,9 +221,16 @@ class WarehouseAgent:
         return {r[0]: r[1] for r in rows}
 
     # ── tool 2: query ─────────────────────────────────────────────────────
-    def query_warehouse(self, sql: str, max_rows: int = DEFAULT_MAX_ROWS) -> dict:
+    def query_warehouse(self, sql: str, max_rows: int = DEFAULT_MAX_ROWS,
+                        timeout_s: Optional[float] = None) -> dict:
         """
         Run a read-only SELECT and return structured rows.
+
+        ``timeout_s`` (K2b) arms an interrupt watchdog: DuckDB has no
+        statement-timeout setting (verified 1.5.4), and an LLM can emit a
+        `WITH RECURSIVE` that hangs forever past any regex — the watchdog
+        calls ``connection.interrupt()``, which stops the query and leaves
+        the connection usable.
 
         Returns a dict: ``{ok, columns, rows, row_count, truncated}`` on
         success, or ``{ok: False, error}`` on a rejected/failed query. Never
@@ -218,12 +240,23 @@ class WarehouseAgent:
         if not ok:
             return {"ok": False, "error": f"Query rejected: {reason}"}
 
+        timer: Optional[threading.Timer] = None
+        if timeout_s is not None:
+            timer = threading.Timer(timeout_s, self._con.interrupt)
+            timer.daemon = True
+            timer.start()
         try:
             cur = self._con.execute(sql)
             fetched = cur.fetchmany(max_rows + 1)  # +1 sentinel for truncation
             columns = [d[0] for d in cur.description] if cur.description else []
+        except duckdb.InterruptException:
+            return {"ok": False,
+                    "error": f"Query timed out after {timeout_s}s — simplify it."}
         except Exception as exc:  # noqa: BLE001 — surface DB errors to the agent
             return {"ok": False, "error": f"Query failed: {exc}"}
+        finally:
+            if timer is not None:
+                timer.cancel()
 
         truncated = len(fetched) > max_rows
         rows = [list(r) for r in fetched[:max_rows]]
