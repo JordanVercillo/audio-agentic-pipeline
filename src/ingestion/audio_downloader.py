@@ -87,10 +87,17 @@ _NEGATIVE_KEYWORDS = frozenset({"live", "cover", "karaoke", "remix", "instrument
 # O2 (D-22) duration term — the strongest wrong-version signal we have: a live
 # cut / extended mix is usually tens of seconds off the studio length, while
 # official uploads sit within a few seconds of Spotify's duration_ms.
-# HEURISTIC-V1 WEIGHTS (owner sign-off pending): selection + logging only —
-# no candidate is ever hard-REJECTED on duration; a rejection threshold is a
-# corpus-evidence judgment (journal #19/#24 class) deferred until the audit
-# can show real match-confidence distributions.
+# HEURISTIC-V1 WEIGHTS — SIGNED OFF 2026-07-22 (context-only, NO rejection
+# threshold). The corpus evidence is now in (508 tracks scored: median 0.85,
+# strong right-skew). The low tail is NOT wrong-song matches: all 26 near-zero
+# tracks spot-check as legit electronic/DJ imports — "VIP"/"Mixed"/"Remix"/
+# "Edit" versions whose non-studio duration + negative-keyword hits drive the
+# score down, while the audio is the right recording (they form the Punchy·
+# Smooth cluster). A blanket threshold at 0.5 would discard 63 real tracks and
+# gut the electronic genre. So match_confidence stays LOGGING/CONTEXT only —
+# never a gate. A future threshold must FIRST make the heuristic remix-aware
+# (recognize VIP/Mixed/Edit, relax the duration term) or it is biased against
+# electronic music.
 _DURATION_BANDS = (  # (max |delta| seconds, score adjustment)
     (3.0, 25),
     (10.0, 12),
