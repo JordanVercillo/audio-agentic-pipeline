@@ -22,13 +22,61 @@
     {% endfor %}
   </div>
 
-  <form class="ask" method="post" action="/chat">
-    <input type="text" name="q" required autofocus
+  <form class="ask" method="post" action="/chat" id="askform">
+    <input type="text" name="q" required autofocus id="askq"
            placeholder="Ask about your data — “what's my fastest song?” · “how did my energy change?”"
            aria-label="Ask a question about your data">
-    <button type="submit">Ask</button>
+    <button type="submit" id="askbtn">Ask</button>
   </form>
   <p class="cap">Tip: it's sharpest on your overall sound, drift, artists, and
     clusters. Exact-number lookups it may paraphrase — it never makes facts up.</p>
 </section>
+
+<style>
+  /* the analyst runs a LOCAL model — a turn can take up to ~90s. A pending
+     bubble on submit replaces the frozen-page wait with honest feedback. */
+  .chat .pending .a { opacity: .6; animation: chatpulse 1.2s ease-in-out infinite; }
+  @keyframes chatpulse { 0%, 100% { opacity: .35; } 50% { opacity: .85; } }
+</style>
+<script>
+  // Progressive enhancement (PRG intact): show the question + a "reading your
+  // data" placeholder immediately so the ~90s local-model wait isn't a frozen
+  // page; the POST still redirects and re-renders the real turn.
+  (function () {
+    var f = document.getElementById('askform');
+    if (!f) return;
+    f.addEventListener('submit', function () {
+      var q = document.getElementById('askq');
+      var text = (q.value || '').trim();
+      if (!text) return;                 // let native `required` handle empties
+      var log = document.querySelector('.chat-log');
+      if (log) {
+        var you = document.createElement('div');
+        you.className = 'msg you';
+        you.innerHTML = '<span class="who">You</span>';
+        var ya = document.createElement('div');
+        ya.className = 'a';
+        ya.textContent = text;           // untrusted — render inert (no XSS)
+        you.appendChild(ya);
+        var bot = document.createElement('div');
+        bot.className = 'msg bot pending';
+        bot.innerHTML = '<span class="who">Analyst</span>';
+        var ba = document.createElement('div');
+        ba.className = 'a';
+        ba.textContent = 'Reading your data…';
+        var note = document.createElement('p');
+        note.className = 'src';
+        note.textContent = 'the local model can take up to ~90 seconds';
+        bot.appendChild(ba);
+        bot.appendChild(note);
+        log.appendChild(you);
+        log.appendChild(bot);
+        bot.scrollIntoView({ block: 'end' });
+      }
+      q.readOnly = true;                 // keep the value in the POST (not disabled)
+      var b = document.getElementById('askbtn');
+      if (b) { b.disabled = true; b.textContent = 'Asking…'; }
+    });
+  })();
+</script>
 {% endblock %}

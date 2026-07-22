@@ -1550,6 +1550,8 @@ def test_chat_anon_redirects_and_viewer_gets_story(client, monkeypatch, tmp_path
     assert r.status_code == 200
     assert "Talk to your data" in r.text and "Your data story" in r.text
     assert 'action="/chat"' in r.text                       # the ask form
+    # S3: the pending-state enhancement — instant feedback for the ~90s local wait
+    assert 'id="askform"' in r.text and "Reading your data" in r.text
     story_rows = [x for x in tc.recent_chat_turns() if x["mode"] == "story"]
     assert len(story_rows) == 1                              # the opening story was logged
 
