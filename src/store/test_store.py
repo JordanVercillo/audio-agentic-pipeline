@@ -511,15 +511,33 @@ def test_extract_one_records_match_confidence(cache, tmp_path):
 def test_ungraded_chat_turns_excludes_labeled(cache):
     # D-47: the review sampler's pool = ChatLog rows without a ChatLabel.
     a = cache.log_chat_turn(chat_session_id="s", turn_index=0, mode="adhoc",
-                            source="llm", parsed_answer="a")
+                            source="llm", parsed_answer="a", latency_ms=40)
     b = cache.log_chat_turn(chat_session_id="s", turn_index=1, mode="story",
-                            source="fallback", parsed_answer="b")
+                            source="fallback", parsed_answer="b", latency_ms=5)
     assert {r["id"] for r in cache.ungraded_chat_turns()} == {a, b}
     cache.write_chat_label(log_id=a, rubric_version="rubric-v1", accuracy=2,
                            citation_fidelity=2, invention=0, verdict="good", grader="jordan")
     assert {r["id"] for r in cache.ungraded_chat_turns()} == {b}   # a now graded
     labels = cache.all_chat_labels()
     assert len(labels) == 1 and labels[0]["log_id"] == a and labels[0]["verdict"] == "good"
+
+
+def test_review_pool_excludes_synthetic_llm_turns(cache):
+    # An llm row with no positive latency is impossible for a real Ollama call —
+    # deploy-validation traffic (the live 'vibe?' 0 ms bursts). It must never
+    # reach the review sampler or the K5 counter, but stays in the DB.
+    good = cache.log_chat_turn(chat_session_id="s", turn_index=0, mode="adhoc",
+                               source="llm", parsed_answer="real", latency_ms=1200)
+    zero = cache.log_chat_turn(chat_session_id="s", turn_index=1, mode="adhoc",
+                               source="llm", parsed_answer="vibe?", latency_ms=0)
+    none = cache.log_chat_turn(chat_session_id="s", turn_index=2, mode="story",
+                               source="llm", parsed_answer="untimed")  # latency None
+    fb = cache.log_chat_turn(chat_session_id="s", turn_index=3, mode="adhoc",
+                             source="fallback", parsed_answer="fb", latency_ms=0)
+    pool = {r["id"] for r in cache.ungraded_chat_turns()}
+    assert good in pool and fb in pool          # real llm + instant fallback kept
+    assert zero not in pool and none not in pool  # synthetic llm excluded
+    assert {r["id"] for r in cache.recent_chat_turns()} == pool
 
 
 def test_chat_log_roundtrip_and_best_effort(cache):
@@ -534,7 +552,7 @@ def test_chat_log_roundtrip_and_best_effort(cache):
     # K2c: tool-loop turns record how many queries ran (depth)
     cache.log_chat_turn(chat_session_id="s1", turn_index=2, mode="adhoc",
                         parsed_answer="a3", source="llm", depth=2,
-                        prompt_version="rtcros-tools-v1")
+                        prompt_version="rtcros-tools-v1", latency_ms=1500)
     rows = cache.recent_chat_turns()
     assert [r["turn_index"] for r in rows] == [2, 1, 0]      # newest first
     assert rows[2]["cited_entities"] == ["Muse"] and rows[2]["source"] == "llm"

@@ -163,20 +163,33 @@ class FeatureCache:
             logger.warning("chat log write failed (turn not recorded): %s", exc)
             return -1
 
+    # A real LLM turn always takes measurable time; a source='llm' row with
+    # no positive latency is synthetic — deploy-validation/curl traffic that
+    # logged via a path that never timed the call (found live 2026-07-22: 36 of
+    # 41 'llm' rows were 0 ms 'vibe?' bursts). Excluded from the review pool so
+    # they can't dominate a human session or inflate the K5 counter (D-47). The
+    # rows stay in the DB (auditable); this filter is the durable guard.
+    @staticmethod
+    def _synthetic_llm_turn():
+        return (ChatLog.source == "llm") & (
+            ChatLog.latency_ms.is_(None) | (ChatLog.latency_ms <= 0))
+
     def recent_chat_turns(self, limit: int = 50) -> list[dict]:
-        """Recent ChatLog rows (newest first) for the review-session sampler."""
+        """Recent GENUINE ChatLog rows (newest first) for the review sampler —
+        synthetic (untimed) llm turns excluded."""
         with self._Session() as s:
-            rows = s.execute(select(ChatLog).order_by(ChatLog.id.desc()).limit(limit)
-                             ).scalars().all()
+            rows = s.execute(select(ChatLog).where(~self._synthetic_llm_turn())
+                             .order_by(ChatLog.id.desc()).limit(limit)).scalars().all()
             return [{c.name: getattr(r, c.name) for c in ChatLog.__table__.columns}
                     for r in rows]
 
     def ungraded_chat_turns(self, limit: int = 200) -> list[dict]:
-        """ChatLog rows that have no ChatLabel yet (newest first) — the review
-        sampler's pool (D-47)."""
+        """GENUINE ChatLog rows that have no ChatLabel yet (newest first) — the
+        review sampler's pool (D-47). Synthetic (untimed) llm turns excluded."""
         with self._Session() as s:
             graded = set(s.execute(select(ChatLabel.log_id)).scalars())
-            rows = s.execute(select(ChatLog).order_by(ChatLog.id.desc())).scalars().all()
+            rows = s.execute(select(ChatLog).where(~self._synthetic_llm_turn())
+                             .order_by(ChatLog.id.desc())).scalars().all()
             out = [{c.name: getattr(r, c.name) for c in ChatLog.__table__.columns}
                    for r in rows if r.id not in graded]
         return out[:limit]
