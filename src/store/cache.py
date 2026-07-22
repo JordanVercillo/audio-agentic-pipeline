@@ -108,7 +108,8 @@ class FeatureCache:
                       # K2c: chat_log predates the tool loop on live DBs
                       "chat_log": {"depth": "INTEGER"},
                       # K3: models trained before label_dims existed read NULL
-                      "cluster_models": {"label_dims": "JSON"}}
+                      "cluster_models": {"label_dims": "JSON",
+                                         "descriptions": "JSON"}}
 
     def _migrate_added_columns(self) -> None:
         inspector = sa_inspect(self.engine)

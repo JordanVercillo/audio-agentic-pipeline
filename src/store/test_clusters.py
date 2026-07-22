@@ -105,6 +105,26 @@ def test_label_dims_are_the_evidence_behind_the_name(corpus):
         assert zs == sorted(zs, reverse=True)
 
 
+def test_cluster_description_inputs_and_save_roundtrip(corpus):
+    # K3d: the script's input assembly + single write path.
+    from .clusters import cluster_description_inputs, save_descriptions
+    train_song_clusters(corpus, coords="pca")
+    model = latest_model(corpus, "song")
+    inputs = cluster_description_inputs(corpus, model)
+    assert [c["cluster_id"] for c in inputs] == sorted(model.labels)
+    for c in inputs:
+        assert c["label"] == model.labels[c["cluster_id"]]     # canonical, pinned
+        assert c["dims"] == model.label_dims[c["cluster_id"]]  # the K3a evidence
+        assert c["coverage"]["n_corpus"] == 12
+        assert c["coverage"]["n_assigned"] == 6                # two even blobs
+    descs = {c["cluster_id"]: {"text": f"d{c['cluster_id']}", "source": "fallback",
+                               "prompt_version": "rtcros-cluster-v1"}
+             for c in inputs}
+    assert save_descriptions(corpus, model.id, descs)
+    assert latest_model(corpus, "song").descriptions == descs
+    assert not save_descriptions(corpus, 99999, descs)         # vanished row → False
+
+
 def test_train_artist_clusters_buckets_by_sound(corpus):
     res = train_artist_clusters(corpus)
     assert res is not None and res["k"] == 2 and res["n_artists"] == 6

@@ -135,6 +135,25 @@ def test_cluster_profile_from_a_trained_model(corpus):
     # a populated cluster carries real acoustic means
     populated = cp[cp["n_assigned"] > 0]
     assert not populated.empty and populated["mean_tempo"].notna().all()
+    # K3d: description columns exist and are empty until the script writes them
+    assert (cp["description"] == "").all()
+    assert (cp["description_source"] == "").all()
+
+
+def test_cluster_profile_projects_saved_descriptions(corpus):
+    # K3d: descriptions live on the MODEL row (written once, offline); the mart
+    # only projects them — a rebuild never loses or regenerates them.
+    from .clusters import latest_model, save_descriptions, train_song_clusters
+    train_song_clusters(corpus)
+    model = latest_model(corpus, "song")
+    assert save_descriptions(corpus, model.id, {
+        "0": {"text": "Loud and fast tracks.", "source": "llm",
+              "prompt_version": "rtcros-cluster-v1"}})
+    _, tc, _ = _semantic_frames(corpus)
+    cp = build_cluster_profile(corpus, tc).set_index("cluster_id")
+    assert cp.loc[0, "description"] == "Loud and fast tracks."
+    assert cp.loc[0, "description_source"] == "llm"
+    assert cp.loc[1, "description"] == ""                     # unwritten stays empty
 
 
 # ── K2.0: the audit tripwires (positive AND negative) ────────────────────────

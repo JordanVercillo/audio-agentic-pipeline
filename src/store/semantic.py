@@ -219,10 +219,15 @@ def build_cluster_profile(cache: Any, track_card: pd.DataFrame) -> pd.DataFrame:
         if tid in tc.index:                    # ignore assignments for evicted rows
             members.setdefault(int(a["cluster_id"]), []).append(tid)
     n_corpus = int(len(tc))
+    # K3: descriptions are written ONCE offline (describe_clusters.py) onto the
+    # model row; the mart only projects them — a rebuild never calls an LLM and
+    # never loses them. Defensive getattr: pre-K3 DBs read None.
+    descs = getattr(model, "descriptions", None) or {}
     rows: list[dict[str, Any]] = []
     for cid_str, label in (model.labels or {}).items():
         cid = int(cid_str)
         m = tc.loc[members.get(cid, [])]
+        d = descs.get(cid_str) or {}
         row: dict[str, Any] = {
             "cluster_id": cid, "label": label,
             "n_assigned": int(len(m)),
@@ -230,6 +235,8 @@ def build_cluster_profile(cache: Any, track_card: pd.DataFrame) -> pd.DataFrame:
             "model_id": int(model.id),
             "silhouette": None if model.silhouette is None
             else round(float(model.silhouette), 3),
+            "description": str(d.get("text") or ""),
+            "description_source": str(d.get("source") or ""),
         }
         for col in _CLUSTER_MEAN_COLS:
             row[f"mean_{col}"] = None if m.empty else round(float(m[col].mean()), 4)

@@ -124,6 +124,10 @@ class ClusterModel(Base):
     # K3: the evidence behind each name — {"0": [{feature, word, z}, ...]}.
     # Nullable: models trained before K3 read None (descriptions degrade to none).
     label_dims = Column(JSON)
+    # K3: generated bucket descriptions — {"0": {text, source, prompt_version}}.
+    # Written ONCE by scripts/describe_clusters.py (offline batch, never in the
+    # mart-rebuild hook); the cluster_profile mart only PROJECTS this.
+    descriptions = Column(JSON)
     trained_at = Column(DateTime, default=utcnow)
 
 

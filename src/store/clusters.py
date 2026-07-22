@@ -227,6 +227,38 @@ def train_artist_clusters(cache: FeatureCache, *, k_range: tuple[int, int] = (2,
             "labels": names, "n_artists": len(artists)}
 
 
+# ── K3: cluster-description plumbing ────────────────────────────────────────
+def cluster_description_inputs(cache: FeatureCache, model: ClusterModel) -> list[dict]:
+    """The describe_cluster() input dicts for a trained model — canonical label
+    + the K3a dims + honest coverage. A pre-K3a model (label_dims None) gets
+    dims=[], so the caller degrades to the name-only template."""
+    assigns = track_assignments(cache, model.id)
+    counts: dict[int, int] = {}
+    for a in assigns.values():
+        cid = int(a["cluster_id"])
+        counts[cid] = counts.get(cid, 0) + 1
+    dims_map = getattr(model, "label_dims", None) or {}
+    out = [{"cluster_id": cid, "label": label,
+            "dims": dims_map.get(cid) or [],
+            "coverage": {"n_assigned": counts.get(int(cid), 0),
+                         "n_corpus": len(assigns)}}
+           for cid, label in (model.labels or {}).items()]
+    return sorted(out, key=lambda c: int(c["cluster_id"]))
+
+
+def save_descriptions(cache: FeatureCache, model_id: int,
+                      descriptions: dict[str, dict]) -> bool:
+    """Persist {"cid": {text, source, prompt_version}} onto the model row —
+    the single write path for scripts/describe_clusters.py."""
+    with cache._Session() as s:
+        m = s.get(ClusterModel, model_id)
+        if m is None:
+            return False
+        m.descriptions = descriptions
+        s.commit()
+    return True
+
+
 # ── reads + online assignment ───────────────────────────────────────────────
 def latest_model(cache: FeatureCache, kind: str) -> Optional[ClusterModel]:
     with cache._Session() as s:
