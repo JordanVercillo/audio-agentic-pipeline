@@ -1330,6 +1330,18 @@ def test_describe_cluster_empty_and_error_fall_back(monkeypatch):
     assert res["source"] == "fallback"  # never raises (batch script relies on it)
 
 
+def test_describe_cluster_contrast_wording_degrades_to_template(monkeypatch):
+    # The CD06 gate finding: all dim words present, but the blurb ALSO uses an
+    # opposite-pole word ("quiet" against Loud) — contradiction = invention.
+    from .rag import TasteRAG
+    reply = ('{"thoughts": "t", "cited": ["Loud", "Fast"], "description": '
+             '"Loud and Fast tracks, never quiet ones."}')
+    _scripted_llm(monkeypatch, [reply, reply])
+    res = TasteRAG(model="ollama:fake:0b").describe_cluster(_CLUSTER)
+    assert res["source"] == "fallback"
+    assert "never quiet" not in res["description"]
+
+
 def test_describe_cluster_mixed_never_calls_the_llm(monkeypatch):
     from .rag import TasteRAG
     calls = _scripted_llm(monkeypatch, [])

@@ -1,0 +1,88 @@
+﻿== deterministic fallback: 15/15 cases pass ==
+  ask       10/10
+  classify  5/5
+  per check:
+    archetype     5/5
+    must_cite     14/14
+    no_invention  15/15
+    nonempty      14/14
+    plain_prose   14/14
+  by source: fallback 14 [A01,A02,A03,A04,A05,A06,A07,A08,A09,A10,C11,C12,C13,C14] · none 1 [C15]
+
+== constant baseline (honesty anchor): 0/15 cases pass ==
+  ask       0/10
+  classify  0/5
+  per check:
+    archetype     0/5
+    must_cite     0/14
+    no_invention  15/15
+    nonempty      14/14
+    plain_prose   14/14
+  FAIL A01 (ask, None): must_cite
+  FAIL A02 (ask, None): must_cite
+  FAIL A03 (ask, None): must_cite
+  FAIL A04 (ask, None): must_cite
+  FAIL A05 (ask, None): must_cite
+  FAIL A06 (ask, None): must_cite
+  FAIL A07 (ask, None): must_cite
+  FAIL A08 (ask, None): must_cite
+  FAIL A09 (ask, None): must_cite
+  FAIL A10 (ask, None): must_cite
+  FAIL C11 (classify, None): must_cite, archetype
+  FAIL C12 (classify, None): must_cite, archetype
+  FAIL C13 (classify, None): must_cite, archetype
+  FAIL C14 (classify, None): must_cite, archetype
+  FAIL C15 (classify, None): archetype
+
+== cluster template fallback (K3): 10/10 cases pass ==
+  cluster   10/10
+  per check:
+    canonical_name_preserved 10/10
+    grounded_in_centroid 9/9
+    no_invention  10/10
+    nonempty      10/10
+    plain_prose   10/10
+  by source: fallback 10 [CD01,CD02,CD03,CD04,CD05,CD06,CD07,CD08,CD09,CD10]
+
+== cluster name-only baseline (honesty anchor): 1/10 cases pass ==
+  cluster   1/10
+  per check:
+    canonical_name_preserved 10/10
+    grounded_in_centroid 0/9
+    no_invention  10/10
+    nonempty      10/10
+    plain_prose   10/10
+  FAIL CD01 (cluster, None): grounded_in_centroid
+  FAIL CD02 (cluster, None): grounded_in_centroid
+  FAIL CD03 (cluster, None): grounded_in_centroid
+  FAIL CD04 (cluster, None): grounded_in_centroid
+  FAIL CD05 (cluster, None): grounded_in_centroid
+  FAIL CD06 (cluster, None): grounded_in_centroid
+  FAIL CD07 (cluster, None): grounded_in_centroid
+  FAIL CD09 (cluster, None): grounded_in_centroid
+  FAIL CD10 (cluster, None): grounded_in_centroid
+
+== LLM path (ollama:gemma4:e4b): 11/15 cases pass ==
+  ask       6/10
+  classify  5/5
+  per check:
+    archetype     5/5
+    must_cite     10/14
+    no_invention  15/15
+    nonempty      14/14
+    plain_prose   14/14
+  by source: fallback 2 [A04,A05] · llm 12 [A01,A02,A03,A06,A07,A08,A09,A10,C11,C12,C13,C14] · none 1 [C15]
+  FAIL A03 (ask, llm): must_cite
+  FAIL A07 (ask, llm): must_cite
+  FAIL A08 (ask, llm): must_cite
+  FAIL A09 (ask, llm): must_cite
+
+== cluster LLM path (ollama:gemma4:e4b): 10/10 cases pass ==
+  cluster   10/10
+  per check:
+    canonical_name_preserved 10/10
+    grounded_in_centroid 9/9
+    no_invention  10/10
+    nonempty      10/10
+    plain_prose   10/10
+  by source: fallback 2 [CD06,CD08] · llm 8 [CD01,CD02,CD03,CD04,CD05,CD07,CD09,CD10]

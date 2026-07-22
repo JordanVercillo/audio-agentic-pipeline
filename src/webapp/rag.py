@@ -247,6 +247,23 @@ def _cluster_fallback(label: str, dims: list[dict]) -> str:
             "the library.")
 
 
+def _opposite_words(dims: list[dict]) -> list[str]:
+    """The opposite-pole word for each dim's feature (from _CHARACTER_DIMS).
+    The K3 gate run caught e4b describing a bucket by CONTRAST — a
+    "Percussive · Noisy" blurb saying "harmonic" — which contradicts the
+    centroid it claims to describe (the eval's no_invention). This derives the
+    banned words so generation degrades that case to the template."""
+    from ..analysis.clustering import _CHARACTER_DIMS
+    pair = {col: (hi, lo) for col, hi, lo in _CHARACTER_DIMS}
+    out = []
+    for d in dims:
+        hi, lo = pair.get(d.get("feature"), (None, None))
+        opposite = lo if d.get("word") == hi else hi if d.get("word") == lo else None
+        if opposite:
+            out.append(opposite)
+    return out
+
+
 class TasteRAG:
     """Grounded taste Q&A over the visitor's own retrieved data."""
 
@@ -366,12 +383,19 @@ class TasteRAG:
                 if r is not None:
                     text = r["text"]
                     low = text.lower()
-                    if all(d["word"].lower() in low for d in dims):
+                    grounded = all(d["word"].lower() in low for d in dims)
+                    # contrast-wording guard (the CD06 gate finding): a blurb
+                    # containing the OPPOSITE pole of its own dims contradicts
+                    # the centroid it describes — that is invention, not style.
+                    contradicts = any(w.lower() in low for w in _opposite_words(dims))
+                    if grounded and not contradicts:
                         return {**base, "description": text, "source": "llm",
                                 "model": self.model, "cited": r["cited"],
                                 "grounding": grounding, "raw": r["raw"]}
-                    logger.info("cluster %s description dropped a dim word — "
-                                "template fallback", cluster.get("cluster_id"))
+                    logger.info("cluster %s description %s — template fallback",
+                                cluster.get("cluster_id"),
+                                "contradicts a dim" if contradicts
+                                else "dropped a dim word")
             except Exception as exc:  # noqa: BLE001 — batch script must not die
                 logger.warning("describe_cluster failed (%s) — template fallback", exc)
         return {**base, "description": _cluster_fallback(label, dims),
