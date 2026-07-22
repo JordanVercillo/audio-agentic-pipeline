@@ -1092,3 +1092,26 @@ grader on the wrong side of the negation.
 > opposite and ban it. The eval found the failure mode; the fix belongs in
 > the PRODUCTION path (the opposite-pole guard), not just the eval — a gate
 > that only grades is advice, a gate that degrades is a guarantee.*
+
+## 42 — Grounded, gate-passing, and unreadable (2026-07-22, K3h)
+
+The first cluster retrain gave e4b real `label_dims`, so it finally wrote LLM
+prose instead of templates. The prose: "characterized by a high
+onset_strength_mean, specifically z=+0.64 for its Punchy quality, combined
+with a low zcr_mean of z=-0.28." Every grader passed — it cited the dim words,
+invented nothing, stayed on-centroid. And no visitor should ever see it: it
+transcribed the internal feature-column names and z-scores straight out of the
+grounding I handed it.
+
+**The realization:** "grounded" and "readable" are different axes, and my
+graders only measured the first. A model handed a grounding of `Punchy
+(onset_strength_mean, z=+0.64)` will happily echo the plumbing back — faithful,
+verifiable, and useless to a human. The eval set proved correctness; it said
+nothing about whether the output was fit to show.
+
+> *A grounding payload is scaffolding, not a script — tell the model which
+> parts are for its reasoning and which are for the reader, and enforce the
+> boundary (a jargon guard that degrades a column-name leak to the clean
+> template, same shape as the opposite-pole guard). When you feed internal
+> identifiers into a prompt, assume they will surface verbatim unless something
+> stops them.*

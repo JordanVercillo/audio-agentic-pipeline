@@ -473,21 +473,53 @@
   first post-K3a retrain gets real label_dims → e4b prose replaces the
   templates automatically via `describe_clusters.py`.** **OWNER DECISION
   (2026-07-22): QA / human review sessions are DEFERRED until the app has
-  real testers again — do not re-suggest per-session.** **➡️ NEXT ACTION —
+  real testers again — do not re-suggest per-session.**
+  ✅ **CLUSTER RETRAIN + 4 SHELF ITEMS DONE (2026-07-22, session 50, Opus +
+  orchestrator; commits b5eefd0→…, 491 tests, ruff clean, deployed,
+  browser-validated).** **THE RETRAIN lit up the K3 machinery:** song model
+  #3→#5 on the FULL corpus — **coverage 311 (39%) → 805 (99.7%)**, silhouette
+  **0.146→0.172**, buckets `Noisy·Bright`/`Smooth·Dark` → **`Punchy·Smooth`
+  (428) / `Gentle·Noisy` (377)**, home sound now Gentle·Noisy 85% (still "The
+  Anchored Loyalist"). **R1 pre-flight** (the real correctness fix): training
+  read raw features with NO feature_valid gate → the 2 broken extractions
+  (Aftermath/Q&A, tempo 0) would skew the scaler/centroids; `_drop_broken()`
+  mirrors the mart's `_MIN_VALID_TEMPO` (805 = 807−2). **The retrain's payoff
+  is visible:** the electronic/DJ imports (KETTAMA, Fred again.., Sammy Virji)
+  finally cluster together (Punchy·Smooth) apart from the rock core (Muse 51,
+  Rise Against 59 in Gentle·Noisy) — invisible at 39%. **K3h jargon guard:**
+  first live e4b run transcribed the grounding literally ("high
+  onset_strength_mean, z=+0.64") → contract v2 (plain language, no column
+  names/numbers) + `_has_jargon()` degrades leaks to template → 1 clean e4b
+  blurb + 1 template live (journal #42). `/analytics` guest-validated through
+  the edge; `/chat` "what are my two sound buckets" → the two new buckets w/
+  correct 428/377 counts (retrain × tool-loop cross-check). **THE 4 SMALL
+  ITEMS:** **S1** (task #9) — 36 of 41 `source=llm` ChatLog rows are 0 ms
+  `'vibe?'` deploy-validation junk; `_synthetic_llm_turn` filter on
+  `ungraded_chat_turns`/`recent_chat_turns` (a real llm turn has positive
+  latency) keeps them out of the review pool + K5 counter, non-destructive.
+  **S2** — O2 heuristic-v1 SIGNED OFF context-only, NO rejection threshold:
+  the low-confidence tail (63 tracks <0.5) spot-checks as legit
+  electronic/remix imports (VIP/Mixed/Edit), not bad matches — a threshold
+  would gut the electronic genre; decision recorded at the weights
+  (audio_downloader.py). **S3** — `/chat` pending-state (progressive
+  enhancement, PRG intact): instant question + "Reading your data… (~90s)"
+  bubble on submit, readonly keeps `q` in the POST, XSS-safe textContent.
+  **S4** — DMARC verified still `p=quarantine` (11 days in, want ~14+;
+  reports in Cloudflare DMARC Management) — the flip to `p=reject` is the
+  OWNER's DNS action, deferred. **➡️ NEXT ACTION —
   K4 multimodal upload (D-45):** the validation gateway in front of the
   EXISTING worker path (caps 20 MB · 10 min · 10/user; `up`+content-hash
   bridge-safe id; content-sniffed allowlist mp3/wav/flac/m4a; hardened
-  ffmpeg) — a NEW non-LLM attack surface: FABLE security review + Opus
-  plumbing per the routing table; e4b's audio input is why the split kept
-  it. DEFERRED (not blocking): the cluster-retrain unlock (above); task #9 — the suspicious
-  `'vibe?'` ChatLog rows (0ms, source=llm — likely K1c deploy-validation
-  traffic polluting the D-47 sample); cluster_profile online-cluster (owner
-  call, 39%). RESIDUAL (honest):
+  ffmpeg) — a NEW non-LLM attack surface: **FABLE security review** (switch to
+  Fable at K4's front) + Opus plumbing per the routing table; e4b's audio
+  input is why the split kept it. DEFERRED (not blocking): S4 DMARC
+  reject-flip (owner); cluster_profile online-cluster (owner call — now 99.7%
+  covered, so the online-assign gap is tiny). RESIDUAL (honest):
   when the tool model MUST surface a hostile import name, the render-cap (120
   chars, no newlines) bounds but doesn't erase echoed attacker text — the D-47
-  chat log is the production monitor. `/chat` UX: qwen3's synchronous latency
-  wants async/streaming eventually. Owner item open: O2 weights sign-off. Parked:
-  MPD-audio, Epic M, instrumentalness, dupe-pruning.
+  chat log is the production monitor. `/chat` UX: the full async/streaming
+  rebuild is still the "eventually" item (S3 removed the frozen-page feel, not
+  the latency). Parked: MPD-audio, Epic M, instrumentalness, dupe-pruning.
 - ✅ **SECURITY + ROBUSTNESS REVIEW (2026-07-09, commits 26891b1←): whole-app
   audit via 2 review subagents + a strategic pass; 7 real fixes, all tested,
   deployed, 286 green.** **Security surface came back STRONG** — auth, session
@@ -2002,3 +2034,19 @@ narrative goes to `notes/engineering_journal.md`, plans to
   the K3-value unlock (e4b prose activates on first post-K3a retrain).
   **Left off: EPIC K3 COMPLETE. NEXT = K4 multimodal upload (D-45, Fable
   security review first). NEW SESSION: run `/resume`.**
+- **2026-07-22 (session 50 — cluster retrain + 4 shelf items, Opus +
+  orchestrator; commits b5eefd0→…, 491 tests):** Owner handed a batch: retrain
+  the frozen Jul-11 clusters + clear O2/task#9/`/chat`-UX/DMARC. **Retrain:**
+  coverage 39%→99.7% (805 tracks), silhouette 0.146→0.172, new buckets
+  Punchy·Smooth/Gentle·Noisy — the electronic imports finally cluster apart
+  from the rock core; the K3 machinery produced real e4b prose (after the
+  jargon guard, journal #42). Pre-flight caught that training had no
+  feature_valid gate (the 2 broken extractions would skew it → `_drop_broken`).
+  **The 4:** S1 review-pool filter for synthetic 0 ms llm rows (36/41 were
+  junk); S2 O2 signed off context-only (low-confidence tail = legit electronic
+  remixes, a threshold would gut the genre); S3 `/chat` pending-state
+  (progressive enhancement); S4 DMARC verified quarantine, reject-flip deferred
+  to owner (11 days, want 14+; owner's DNS). Deployed, guest-validated through
+  the edge, app-verify ALL-FALSE. **Left off: batch COMPLETE. NEXT = K4
+  multimodal upload (switch to Fable for its security review). NEW SESSION:
+  run `/resume`.**
