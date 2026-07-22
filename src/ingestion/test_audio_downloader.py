@@ -314,6 +314,22 @@ class TestO2MatchScoring:
         assert best["duration_delta_s"] == pytest.approx(1.0)
         assert 0.0 <= best["confidence"] <= 1.0
 
+    def test_candidate_carries_provenance_fields(self) -> None:
+        # Q1/D-51: the match record now carries what the flat entry already had
+        # (video id, channel, yt duration, candidate count) — captured, not fetched.
+        from src.ingestion.audio_downloader import pick_best_candidate
+        entries = [
+            {"title": "Song", "duration": 241.0, "url": "https://y/right",
+             "id": "vid_right", "channel": "RightVEVO"},
+            {"title": "Song (Live)", "duration": 400.0, "url": "https://y/live",
+             "id": "vid_live"},
+        ]
+        best = pick_best_candidate(entries, target_duration_s=240.0)
+        assert best["youtube_video_id"] == "vid_right"      # the WINNER's id, not the loser's
+        assert best["channel"] == "RightVEVO"
+        assert best["youtube_duration_s"] == 241.0
+        assert best["candidate_count"] == 2                 # both entries were ranked
+
     def test_scoring_degrades_gracefully_without_durations(self) -> None:
         from src.ingestion.audio_downloader import score_candidate
         # unknown candidate duration, unknown target — title keywords only

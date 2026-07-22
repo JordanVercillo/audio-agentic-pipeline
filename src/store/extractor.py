@@ -29,6 +29,9 @@ from .cache import FeatureCache
 logger = logging.getLogger(__name__)
 
 DSP_VERSION = "77dim-v1"
+# The download pipeline always produces a 192 kbps MP3 (audio_downloader's
+# ydl opts) — recorded on the provenance row as the acquired encoding (D-51).
+_AUDIO_FORMAT, _AUDIO_BITRATE_KBPS = "mp3", 192
 
 # The id becomes a FILENAME ({id}.mp3 / {id}.png) — this is the worker-side
 # twin of the webapp's path-traversal strip (defense in depth). The threat is
@@ -106,6 +109,25 @@ def another_worker_alive(heartbeat: Optional[dict], my_pid: int,
     return age <= stale_after
 
 
+def _record_provenance(cache: FeatureCache, track_id: str,
+                       match: Optional[dict]) -> None:
+    """Persist one D-51 acquisition event from the matcher's record. Everything
+    here was already returned by resolve_youtube_match — nothing is re-fetched."""
+    m = match or {}
+    cache.remember_provenance(
+        spotify_track_id=track_id,
+        youtube_url=m.get("url"), youtube_video_id=m.get("youtube_video_id"),
+        youtube_title=m.get("title"), channel=m.get("channel"),
+        youtube_duration_s=m.get("youtube_duration_s"),
+        upload_date=m.get("upload_date"), query=m.get("query"),
+        match_score=m.get("score"), match_confidence=m.get("confidence"),
+        duration_delta_s=m.get("duration_delta_s"),
+        matcher_version=m.get("matcher_version"),
+        candidate_count=m.get("candidate_count"),
+        audio_format=_AUDIO_FORMAT, audio_bitrate_kbps=_AUDIO_BITRATE_KBPS,
+        dsp_version=DSP_VERSION)
+
+
 def extract_one(cache: FeatureCache, track_id: str, *, audio_dir: Path,
                 spectrogram_dir: Path, acquire: AcquireFn = default_acquire) -> bool:
     """Acquire → DSP → spectrogram → cache one track. Returns True on success.
@@ -153,6 +175,10 @@ def extract_one(cache: FeatureCache, track_id: str, *, audio_dir: Path,
                      beat_times=tf.beat_times_list(),
                      sections=tf.sections_list(),
                      match_confidence=(match or {}).get("confidence"))
+        # Epic Q (D-51): record where this audio came from + the match quality,
+        # from what the matcher already returned (zero new fetches). Best-effort
+        # — a provenance write never fails the extraction it describes.
+        _record_provenance(cache, track_id, match)
         return True
     except Exception as exc:  # noqa: BLE001 — a bad track must never crash the worker
         logger.warning("extraction failed for %s: %s", track_id, exc)

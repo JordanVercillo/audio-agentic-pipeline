@@ -190,6 +190,37 @@ class ArtistMeta(Base):
     updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
 
 
+class TrackProvenance(Base):
+    """One ACQUISITION EVENT — where a track's audio came from + how confident
+    the match was (Epic Q / D-51). Append-only history (soft `spotify_track_id`
+    ref, NOT unique — a re-extraction appends a new row; current = the latest
+    per bridge key). Everything the yt-dlp matcher already knows, persisted
+    instead of discarded, so a visitor can validate "that's the actual song"
+    and the Q4 QA loop can audit match quality. NEVER a feature, never a gate.
+    New table → create_all builds it; no _ADDED_COLUMNS entry (journal #18)."""
+
+    __tablename__ = "track_provenance"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    spotify_track_id = Column(String, nullable=False, index=True)  # soft ref, not unique
+    youtube_url = Column(String)
+    youtube_video_id = Column(String)
+    youtube_title = Column(String)          # untrusted external text — ESCAPE on display (Q2)
+    channel = Column(String)                # uploader/channel — untrusted external text
+    youtube_duration_s = Column(Float)
+    upload_date = Column(String)            # YYYYMMDD when yt-dlp exposes it (flat search often ∅)
+    query = Column(String)                  # the exact search string used
+    match_score = Column(Integer)           # the heuristic raw score
+    match_confidence = Column(Float)        # the [0,1] map (mirrors track_features.match_confidence)
+    duration_delta_s = Column(Float)        # |yt − spotify| seconds (the wrong-version signal)
+    matcher_version = Column(String)        # "heuristic-v1" — attributes a row to a matcher
+    candidate_count = Column(Integer)       # how many search results were ranked
+    audio_format = Column(String)           # the acquired encoding (pipeline constant: mp3)
+    audio_bitrate_kbps = Column(Integer)    # 192 (the download pipeline constant)
+    dsp_version = Column(String)            # the extractor that ran (77dim-v1)
+    extracted_at = Column(DateTime, default=utcnow)
+
+
 class ChatLog(Base):
     """One LLM-surface turn (/ask · /classify · /chat), logged for the REVIEW
     READER (D-47): a row must let a human grade accuracy without re-running —

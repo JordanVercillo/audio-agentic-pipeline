@@ -38,6 +38,7 @@ from .models import (
     TrackFeatures,
     TrackMeta,
     TrackPerceptual,
+    TrackProvenance,
     WorkerHeartbeat,
     utcnow,
 )
@@ -147,6 +148,32 @@ class FeatureCache:
         with self._Session() as s:
             rows = s.execute(select(TrackFeatures)).scalars().all()
         return {r.spotify_track_id: r.features for r in rows}
+
+    # ── Epic Q: acquisition provenance (D-51) ────────────────────────────────
+    def remember_provenance(self, **row: Any) -> int:
+        """Append one TrackProvenance row (one acquisition event). Best-effort —
+        a provenance-logging failure must NEVER fail the extraction that
+        produced the (durable) features. Returns the new id, or -1 on failure."""
+        try:
+            with self._Session() as s:
+                rec = TrackProvenance(**{k: v for k, v in row.items()
+                                         if k in TrackProvenance.__table__.columns})
+                s.add(rec)
+                s.commit()
+                return rec.id
+        except Exception as exc:  # noqa: BLE001 — never fail acquisition on a log write
+            logger.warning("remember_provenance failed for %s: %s",
+                           row.get("spotify_track_id"), exc)
+            return -1
+
+    def all_provenance(self) -> list[dict]:
+        """Every acquisition event, newest first — the provenance mart's source
+        (the mart reduces to current = latest per bridge key)."""
+        with self._Session() as s:
+            rows = s.execute(select(TrackProvenance)
+                             .order_by(TrackProvenance.id.desc())).scalars().all()
+            return [{c.name: getattr(r, c.name) for c in TrackProvenance.__table__.columns}
+                    for r in rows]
 
     def log_chat_turn(self, **row: Any) -> int:
         """Append one ChatLog row (D-47 — log every prompt + response). Never

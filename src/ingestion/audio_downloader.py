@@ -108,6 +108,9 @@ _DURATION_FAR_PENALTY = -30   # |delta| beyond the last band
 # confidence = a monotone [0,1] map of the raw score for logging/analysis;
 # 0.46 ≈ "nothing known either way". Display/analysis heuristic, never a gate.
 _CONF_OFFSET, _CONF_RANGE = 30.0, 65.0
+# Stamped on each provenance row (Epic Q / D-51) so a re-tuned matcher's rows
+# are distinguishable — and it is the version the O2 sign-off (S2) applies to.
+MATCHER_VERSION = "heuristic-v1"
 
 
 def score_candidate(title: str, duration_s: Optional[float],
@@ -136,16 +139,20 @@ def score_candidate(title: str, duration_s: Optional[float],
 def pick_best_candidate(entries: list, target_duration_s: Optional[float]) -> Optional[dict]:
     """Rank flat-search entries → the best match record, or None.
 
-    Returns {url, title, score, confidence, duration_delta_s} — `confidence`
-    is the [0,1] heuristic map of the score; `duration_delta_s` is None when
-    either duration is unknown. Pure."""
+    Returns {url, title, score, confidence, duration_delta_s} plus the Epic-Q
+    provenance fields the flat entry already carries but we used to discard
+    (`youtube_video_id`, `youtube_duration_s`, `channel`, `candidate_count`) —
+    `confidence` is the [0,1] heuristic map of the score; `duration_delta_s` is
+    None when either duration is unknown. Pure."""
     best: Optional[dict] = None
+    considered = 0
     for entry in entries or []:
         if not entry:
             continue
         url = entry.get("url") or entry.get("webpage_url")
         if not url:
             continue
+        considered += 1
         title = entry.get("title") or ""
         dur = entry.get("duration")
         score = score_candidate(title, dur, target_duration_s)
@@ -154,7 +161,13 @@ def pick_best_candidate(entries: list, target_duration_s: Optional[float]) -> Op
                      if dur is not None and target_duration_s is not None else None)
             best = {"url": url, "title": title, "score": score,
                     "confidence": max(0.0, min(1.0, (score + _CONF_OFFSET) / _CONF_RANGE)),
-                    "duration_delta_s": delta}
+                    "duration_delta_s": delta,
+                    # Epic Q (D-51): captured, not fetched — already in the entry.
+                    "youtube_video_id": entry.get("id"),
+                    "youtube_duration_s": float(dur) if dur is not None else None,
+                    "channel": entry.get("channel") or entry.get("uploader")}
+    if best is not None:
+        best["candidate_count"] = considered
     return best
 
 
@@ -262,6 +275,9 @@ def resolve_youtube_match(
     if best is None:
         logger.debug("No suitable YouTube result for %r", query)
         return None
+    # Epic Q (D-51): the resolve layer knows the query + which matcher scored it.
+    best["query"] = query
+    best["matcher_version"] = MATCHER_VERSION
 
     # O2 acceptance: the match decision is always visible in the worker log.
     delta = best["duration_delta_s"]

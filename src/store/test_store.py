@@ -242,6 +242,51 @@ def test_extract_one_runs_real_dsp_on_synthetic_audio(cache, tmp_path):
     assert not (tmp_path / "audio" / "s1.wav").exists()  # audio deleted (D-15)
 
 
+def _synth_acquire_full(track_id, name, artist, dest_dir, duration_s=None):
+    """Like _synth_acquire but returns the FULL Epic-Q match record (D-51)."""
+    path, _ = _synth_acquire(track_id, name, artist, dest_dir, duration_s)
+    return path, {"url": "https://youtu.be/abc123", "title": "Test — Official Audio",
+                  "score": 35, "confidence": 0.86, "duration_delta_s": 1.4,
+                  "youtube_video_id": "abc123", "youtube_duration_s": 214.0,
+                  "channel": "TestVEVO", "candidate_count": 5,
+                  "query": "Synth Test official audio", "matcher_version": "heuristic-v1"}
+
+
+def test_extract_one_records_provenance(cache, tmp_path):
+    # Q1/D-51: a successful extraction appends ONE provenance event carrying
+    # everything the matcher already knew (zero new fetches).
+    from .extractor import DSP_VERSION, extract_one
+    cache.remember_meta([{"spotify_track_id": "p1", "track_name": "Test",
+                          "artist_names": "Synth"}])
+    cache.enqueue(["p1"])
+    tid = cache.claim_next()
+    assert extract_one(cache, tid, audio_dir=tmp_path / "a",
+                       spectrogram_dir=tmp_path / "s", acquire=_synth_acquire_full)
+    rows = cache.all_provenance()
+    assert len(rows) == 1
+    r = rows[0]
+    assert r["spotify_track_id"] == "p1"
+    assert r["youtube_url"] == "https://youtu.be/abc123" and r["youtube_video_id"] == "abc123"
+    assert r["youtube_title"] == "Test — Official Audio" and r["channel"] == "TestVEVO"
+    assert r["match_confidence"] == 0.86 and r["match_score"] == 35
+    assert r["duration_delta_s"] == 1.4 and r["candidate_count"] == 5
+    assert r["matcher_version"] == "heuristic-v1" and r["dsp_version"] == DSP_VERSION
+    assert r["audio_format"] == "mp3" and r["audio_bitrate_kbps"] == 192
+
+
+def test_provenance_is_append_only_and_best_effort(cache):
+    # Append per event (soft ref, not unique); a re-extraction adds a row.
+    a = cache.remember_provenance(spotify_track_id="x", youtube_url="u1",
+                                  match_confidence=0.5)
+    b = cache.remember_provenance(spotify_track_id="x", youtube_url="u2",
+                                  match_confidence=0.9, bogus="dropped")
+    assert a > 0 and b > a
+    rows = cache.all_provenance()
+    assert [r["youtube_url"] for r in rows] == ["u2", "u1"]   # newest first, both kept
+    # unknown kwarg silently dropped, never raises
+    assert cache.remember_provenance(spotify_track_id="y") > 0
+
+
 def test_extract_one_rejects_path_shaped_ids(cache, tmp_path):
     # The id becomes a filename — a path-shaped id must fail BEFORE acquisition.
     from .extractor import extract_one
