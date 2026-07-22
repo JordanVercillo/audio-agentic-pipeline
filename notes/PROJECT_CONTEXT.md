@@ -506,15 +506,37 @@
   bubble on submit, readonly keeps `q` in the POST, XSS-safe textContent.
   **S4** — DMARC verified still `p=quarantine` (11 days in, want ~14+;
   reports in Cloudflare DMARC Management) — the flip to `p=reject` is the
-  OWNER's DNS action, deferred. **➡️ NEXT ACTION —
-  K4 multimodal upload (D-45):** the validation gateway in front of the
-  EXISTING worker path (caps 20 MB · 10 min · 10/user; `up`+content-hash
-  bridge-safe id; content-sniffed allowlist mp3/wav/flac/m4a; hardened
-  ffmpeg) — a NEW non-LLM attack surface: **FABLE security review** (switch to
-  Fable at K4's front) + Opus plumbing per the routing table; e4b's audio
-  input is why the split kept it. DEFERRED (not blocking): S4 DMARC
-  reject-flip (owner); cluster_profile online-cluster (owner call — now 99.7%
-  covered, so the online-assign gap is tiny). RESIDUAL (honest):
+  OWNER's DNS action, deferred. ✅ **D-55 RATIFIED + ENCODED (2026-07-22,
+  session 51, Fable + agile-coach review; commit 41f3c89): the K4/K5/K6
+  re-sequence — prototype first.** Owner ratified all five open items: **(a)**
+  K4 re-homed to a new **Phase LLM-2** (after Phase 5 MPD, before Phase 6)
+  under an APPETITE gate — buildable any time, gains nothing from waiting;
+  **(b)** honest closeout wording — **Epic K's CHAT SCOPE (K0–K3) is shipped;
+  K4 is re-homed, NOT delivered** (never say "Epic K complete"); Phase 4.5's
+  entry criterion amended to match and is SATISFIED — **Phase 4.5 is OPEN**;
+  **(c)** Q4 provenance-QA is EXEMPT from the QA-until-testers deferral
+  (corpus data-quality, not tester-scoped); **(d)** Q3's feature-shift →
+  cluster-identity change is an ACCEPTED consequence (precedented by the
+  session-50 retrain); **(e)** the **"working prototype" DoD** is in the spec
+  (a stranger validates the thesis end-to-end self-serve: provenance
+  click-through Q1–Q3 + credible artists R + audits truly green + the shipped
+  chat) — it gates Phase 5. K5/K6 stay D-46 gated docs, builds single-homed
+  in Phase 6. **Split-note corrected (stale-fact fix):** e4b earns its K2d
+  residency TODAY as the story/classify/cluster voice; its audio input is a
+  held option — D-45 is DSP-over-uploads and never feeds audio to e4b.
+  **➡️ NEXT ACTION — Phase 4.5, slice Q1 (Opus): `track_provenance` captured
+  AT extraction (D-51)** — append-only table (current = latest per bridge
+  key) persisting everything the O2 matcher already knows (youtube_url/
+  video_id/title/channel/duration_delta/match score+confidence/matcher
+  version/dsp_version, zero new fetches) + the post-drain Parquet provenance
+  mart + an audit tripwire; then Q2 exposure on /song+/library (escape the
+  new external strings), Q3 the D-52 re-extraction program (**Fable signs the
+  batch plan** before the ~11h run; permanently fixes the 2 broken
+  extractions), Q4 QA tooling, then R1–R3 Artists 2.0 (MusicBrainz, $0,
+  auth-less; research-expert fences ToS/rate once). DEFERRED (not blocking):
+  S4 DMARC reject-flip (owner, ~Jul-25 after clean reports); cluster_profile
+  online-cluster (owner call — now 99.7% covered, the gap is tiny).
+  RESIDUAL (honest):
   when the tool model MUST surface a hostile import name, the render-cap (120
   chars, no newlines) bounds but doesn't erase echoed attacker text — the D-47
   chat log is the production monitor. `/chat` UX: the full async/streaming
@@ -2050,3 +2072,19 @@ narrative goes to `notes/engineering_journal.md`, plans to
   the edge, app-verify ALL-FALSE. **Left off: batch COMPLETE. NEXT = K4
   multimodal upload (switch to Fable for its security review). NEW SESSION:
   run `/resume`.**
+- **2026-07-22 (session 51 — the D-55 re-sequence, Fable + orchestrator +
+  agile-coach; commit 41f3c89, docs-only):** Owner asked whether K4/K5/K6
+  could wait behind a working prototype as an "LLM phase 2." One agile-coach
+  consult sharpened the lead's draft in three places: K4 is APPETITE-gated,
+  not welded to K5/K6's D-46 data gate; never launder "Epic K complete" —
+  amend Phase 4.5's entry criterion instead; K5/K6 builds stay single-homed
+  in Phase 6 (Phase LLM-2 = K4 only). Owner ratified all five open items →
+  D-55 encoded in VISION_SPECS: Phase 4 closes honestly (chat scope K0–K3
+  shipped), Phase 4.5 OPEN, the "working prototype" DoD now gates Phase 5,
+  the stale e4b-multimodal split note corrected, routing rows added for Q/R
+  (Opus; Q3's ~11h batch plan Fable-signed). No code changed; verification
+  stands from session 50 (491 green, ALL-FALSE). No journal entry (design
+  session, no surprise). **Left off: roadmap re-sequenced, spec + hub
+  aligned. NEXT = Phase 4.5 slice Q1 — track_provenance capture (Opus).
+  DMARC reject-flip is the owner's ~Jul-25 item. NEW SESSION: run
+  `/resume`.**
