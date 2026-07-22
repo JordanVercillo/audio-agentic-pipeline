@@ -21,10 +21,31 @@ Postures that are the point:
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any, Optional, Union
 
 from .warehouse_agent import WarehouseAgent
+
+# Defense-in-depth at the tool→model boundary (K2d): a string cell is
+# attacker-controlled (a track/artist name from a public import). Real corpus
+# names top out ~86 chars, so a 120-char cap never clips legit data but defangs
+# a name weaponized as a multi-sentence instruction paragraph; newlines are
+# stripped so a value can't forge its own result row. The CONTRACT tells the
+# model not to ACT on embedded text — this bounds how much it can carry.
+_CELL_UNSAFE = re.compile(r"[\r\n\t]")
+_CELL_CAP = 120
+
+
+def _render_cell(v: Any) -> str:
+    if v is None:
+        return "NULL"
+    if isinstance(v, float):
+        return f"{v:.3f}".rstrip("0").rstrip(".")
+    if isinstance(v, str):
+        s = _CELL_UNSAFE.sub(" ", v).strip()
+        return s if len(s) <= _CELL_CAP else s[:_CELL_CAP] + "…"
+    return str(v)
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 MARTS_DIR = _PROJECT_ROOT / "data" / "marts"
@@ -105,12 +126,6 @@ class ChatDataTools:
             head += f" (truncated to the first {MAX_ROWS})"
         if not rows:
             return head
-        def _cell(v: Any) -> str:
-            if v is None:
-                return "NULL"
-            if isinstance(v, float):
-                return f"{v:.3f}".rstrip("0").rstrip(".")
-            return str(v)
         body = [" | ".join(cols)]
-        body += [" | ".join(_cell(v) for v in r) for r in rows]
+        body += [" | ".join(_render_cell(v) for v in r) for r in rows]
         return head + "\n" + "\n".join(body)
