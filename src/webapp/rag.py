@@ -26,7 +26,9 @@ from typing import Any, Optional
 
 from . import config
 from .prompt_contract import (
+    TOOL_CONTRACT_VERSION,
     build_system,
+    build_tool_system,
     is_empty_reply,
     reply_text,
     retry_hint,
@@ -100,8 +102,9 @@ def warm_model(model: str) -> None:
         logger.info("ollama warm-up skipped (%s)", exc)
 
 
-def _ollama_chat(model: str, system: str, prompt: str) -> Optional[str]:
-    """Single-shot chat against the local Ollama server (A3, $0). Returns the
+def _ollama_chat_messages(model: str, messages: list[dict]) -> Optional[str]:
+    """Chat against the local Ollama server (A3, $0) with a full messages
+    array — the K2c tool loop grows one per action/result turn. Returns the
     raw content string, or None on an unexpected shape. HTTP errors propagate —
     the caller guards and falls back deterministically."""
     import requests
@@ -110,8 +113,7 @@ def _ollama_chat(model: str, system: str, prompt: str) -> Optional[str]:
         f"{config.ollama_host()}/api/chat",
         json={
             "model": model,
-            "messages": [{"role": "system", "content": system},
-                         {"role": "user", "content": prompt}],
+            "messages": messages,
             "format": "json", "stream": False,
             "options": {"num_ctx": _OLLAMA_NUM_CTX,
                         "num_predict": _OLLAMA_NUM_PREDICT, "temperature": 0},
@@ -120,6 +122,12 @@ def _ollama_chat(model: str, system: str, prompt: str) -> Optional[str]:
         timeout=_OLLAMA_TIMEOUT)
     resp.raise_for_status()
     return (resp.json().get("message") or {}).get("content")
+
+
+def _ollama_chat(model: str, system: str, prompt: str) -> Optional[str]:
+    """Single-shot convenience wrapper over :func:`_ollama_chat_messages`."""
+    return _ollama_chat_messages(model, [{"role": "system", "content": system},
+                                         {"role": "user", "content": prompt}])
 
 
 # K2.1 — defense-in-depth for EXTERNALLY-SOURCED strings interpolated into the
@@ -207,9 +215,15 @@ def _grounding_text(taste: dict[str, Any], glossary: dict[str, str]) -> str:
 class TasteRAG:
     """Grounded taste Q&A over the visitor's own retrieved data."""
 
-    def __init__(self, feature_store: Any = None, model: Optional[str] = None) -> None:
+    def __init__(self, feature_store: Any = None, model: Optional[str] = None,
+                 tools_factory: Any = None) -> None:
         self.fs = feature_store
         self.model = model or config.rag_model()
+        # K2c: how answer() gets its ChatDataTools. None = the real engine over
+        # data/marts; tests inject a synthetic-marts factory (or one that raises
+        # FileNotFoundError to pin the legacy single-shot path) so behavior
+        # never depends on which machine has marts built.
+        self.tools_factory = tools_factory
 
     def _wants_llm(self) -> bool:
         """True when a real model is configured: a local Ollama model (A3, no
@@ -217,11 +231,18 @@ class TasteRAG:
         return self.model.startswith("ollama:") or bool(config.anthropic_key())
 
     def _chat(self, system: str, prompt: str) -> Optional[str]:
-        """Provider-agnostic single-shot chat → the raw reply text, or None.
-        `ollama:<model>` hits the local server ($0, A3); otherwise Anthropic
-        (needs a key). May raise — callers guard and fall back."""
+        """Provider-agnostic single-shot chat → the raw reply text, or None."""
+        return self._chat_messages(system, [{"role": "user", "content": prompt}])
+
+    def _chat_messages(self, system: str, messages: list[dict]) -> Optional[str]:
+        """Provider-agnostic MULTI-TURN chat (K2c — the tool loop grows the
+        array one action/result pair per turn). `ollama:<model>` hits the local
+        server ($0, A3); otherwise Anthropic (needs a key). May raise — callers
+        guard and fall back."""
         if self.model.startswith("ollama:"):
-            return _ollama_chat(self.model.split(":", 1)[1], system, prompt)
+            return _ollama_chat_messages(
+                self.model.split(":", 1)[1],
+                [{"role": "system", "content": system}, *messages])
         key = config.anthropic_key()
         if not key:
             return None
@@ -229,7 +250,7 @@ class TasteRAG:
         client = anthropic.Anthropic(api_key=key)
         resp = client.messages.create(
             model=self.model, max_tokens=_MAX_TOKENS, system=system,
-            messages=[{"role": "user", "content": prompt}])
+            messages=messages)
         if resp.stop_reason == "refusal":
             return None
         return next((b.text for b in resp.content if b.type == "text"), "")
@@ -275,8 +296,76 @@ class TasteRAG:
         return {"answer": self._fallback(taste), "source": "fallback",
                 "model": None, "grounding": grounding}
 
+    # ── K2c: the flat JSON-action tool loop over the semantic marts ─────────
+    _TOOL_MAX_DEPTH = 3   # query turns per user question; the answer turn is free
+
+    def _tool_loop(self, question: str, grounding: str,
+                   ) -> tuple[Optional[dict[str, Any]], dict[str, Any]]:
+        """Drive the depth-3 flat-action loop (probe-validated, d36cf49).
+
+        Returns ``(reply_or_None, meta)``. ``meta`` ALWAYS carries the
+        transcript/raw/depth — a degraded turn preserves its tool transcript so
+        the D-47 flywheel can cluster which queries failed (missing_fact).
+        Raises only construction-level errors the caller treats as
+        loop-unavailable (e.g. marts not built)."""
+        from ..agent.chat_tools import MAX_ROWS, ChatDataTools
+        factory = self.tools_factory or ChatDataTools
+        meta: dict[str, Any] = {"depth": 0, "transcript": "", "raw": ""}
+        with factory() as tools:
+            card = tools.schema_card()
+            system = build_tool_system(card, max_depth=self._TOOL_MAX_DEPTH,
+                                       max_rows=MAX_ROWS)
+            msgs: list[dict] = [{"role": "user",
+                                 "content": f"<data>\n{grounding}\n</data>\n\n"
+                                            f"QUESTION: {question}"}]
+            # rendered_context for the review reader: grounding + schema + every
+            # SQL and its rendered result, in order (D-47).
+            transcript = [f"<data>\n{grounding}\n</data>", f"SCHEMA:\n{card}"]
+            raws: list[str] = []
+
+            def _meta() -> dict[str, Any]:
+                meta.update(transcript="\n\n".join(transcript),
+                            raw="\n---\n".join(raws))
+                return meta
+
+            for _ in range(self._TOOL_MAX_DEPTH + 1):
+                raw = self._chat_messages(system, msgs) or ""
+                raws.append(raw)
+                act = _parse_llm_json(raw)
+                if not isinstance(act, dict) or act.get("tool") not in ("query", "answer"):
+                    return None, _meta()               # wedged — degrade honestly
+                msgs.append({"role": "assistant", "content": raw})
+                if act["tool"] == "answer":
+                    ground_all = "\n".join(transcript)
+                    if not reply_text(act, "adhoc"):
+                        return None, _meta()
+                    v = verify_citations(act, ground_all, "adhoc")
+                    if not v["ok"]:                    # ONE corrective retry
+                        msgs.append({"role": "user",
+                                     "content": retry_hint(v["missing"])})
+                        raw2 = self._chat_messages(system, msgs) or ""
+                        raws.append(raw2)
+                        retry = _parse_llm_json(raw2)
+                        if retry and reply_text(retry, "adhoc"):
+                            act = retry
+                    return {"text": reply_text(act, "adhoc"),
+                            "cited": [str(c) for c in act.get("cited") or []]}, _meta()
+                # a query action: run guarded/clamped/watchdogged, feed back
+                if meta["depth"] >= self._TOOL_MAX_DEPTH:
+                    return None, _meta()               # budget spent — degrade
+                meta["depth"] += 1
+                rendered = tools.render_result(tools.run_query(str(act.get("sql", ""))))
+                transcript.append(f"SQL: {act.get('sql', '')}\n{rendered}")
+                msgs.append({"role": "user", "content": rendered})
+            return None, _meta()                       # depth exhausted
+
     def answer(self, question: str, taste: dict[str, Any]) -> dict[str, Any]:
-        """Return {answer, source, model}. Never raises — falls back deterministically."""
+        """Return {answer, source, model}. Never raises — falls back deterministically.
+
+        K2c: adhoc now runs the TOOL LOOP over the semantic marts (grounding
+        stays in <data> for personal facts; library facts come from SQL). The
+        loop degrades to the deterministic fallback WITH its transcript logged;
+        marts-not-built degrades to the pre-K2c single-shot grounded path."""
         glossary = self.fs.feature_glossary(_GLOSSARY_FEATURES) if self.fs else {}
         grounding = _grounding_text(taste, glossary)
         # K0.5: an empty context has nothing to ground on — don't spend an LLM
@@ -287,12 +376,34 @@ class TasteRAG:
                     "model": None, "grounding": grounding}
         if self._wants_llm():
             try:
-                r = self._grounded_reply("adhoc", grounding, f"QUESTION: {question}")
-                if r is not None:
-                    return {"answer": r["text"], "source": "llm", "model": self.model,
-                            "cited": r["cited"], "grounding": grounding, "raw": r["raw"]}
+                reply, meta = self._tool_loop(question, grounding)
+                if reply is not None:
+                    return {"answer": reply["text"], "source": "llm",
+                            "model": self.model, "cited": reply["cited"],
+                            "grounding": meta["transcript"], "raw": meta["raw"],
+                            "depth": meta["depth"],
+                            "prompt_version": TOOL_CONTRACT_VERSION}
+                # loop degraded (bad action / empty / depth) → deterministic
+                # fallback, transcript PRESERVED for the flywheel
+                return {"answer": self._fallback(taste), "source": "fallback",
+                        "model": None, "grounding": meta["transcript"],
+                        "raw": meta["raw"], "depth": meta["depth"],
+                        "prompt_version": TOOL_CONTRACT_VERSION,
+                        "error": "tool_loop_degraded"}
+            except FileNotFoundError:
+                # marts not built (fresh checkout / tests) — the pre-K2c
+                # single-shot grounded path still works
+                try:
+                    r = self._grounded_reply("adhoc", grounding,
+                                             f"QUESTION: {question}")
+                    if r is not None:
+                        return {"answer": r["text"], "source": "llm",
+                                "model": self.model, "cited": r["cited"],
+                                "grounding": grounding, "raw": r["raw"]}
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("RAG LLM answer failed (%s) — fallback", exc)
             except Exception as exc:  # noqa: BLE001 — an LLM error must never fail the request
-                logger.warning("RAG LLM answer failed (%s) — deterministic fallback", exc)
+                logger.warning("RAG tool loop failed (%s) — deterministic fallback", exc)
         return {"answer": self._fallback(taste), "source": "fallback",
                 "model": None, "grounding": grounding}
 

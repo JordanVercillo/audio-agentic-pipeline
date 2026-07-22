@@ -531,9 +531,14 @@ def test_chat_log_roundtrip_and_best_effort(cache):
                         latency_ms=42)
     cache.log_chat_turn(chat_session_id="s1", turn_index=1, mode="story",
                         parsed_answer="a2", source="fallback", latency_ms=5)
+    # K2c: tool-loop turns record how many queries ran (depth)
+    cache.log_chat_turn(chat_session_id="s1", turn_index=2, mode="adhoc",
+                        parsed_answer="a3", source="llm", depth=2,
+                        prompt_version="rtcros-tools-v1")
     rows = cache.recent_chat_turns()
-    assert [r["turn_index"] for r in rows] == [1, 0]         # newest first
-    assert rows[1]["cited_entities"] == ["Muse"] and rows[1]["source"] == "llm"
+    assert [r["turn_index"] for r in rows] == [2, 1, 0]      # newest first
+    assert rows[2]["cited_entities"] == ["Muse"] and rows[2]["source"] == "llm"
+    assert rows[0]["depth"] == 2 and rows[1]["depth"] is None  # loop vs single-shot
     # best-effort: an unknown kwarg is dropped, a broken write returns -1 not raises
     assert cache.log_chat_turn(chat_session_id="s2", mode="adhoc", source="llm",
                                bogus_field="x") >= 0

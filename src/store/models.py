@@ -210,6 +210,7 @@ class ChatLog(Base):
     output_tokens = Column(Integer)                    # Ollama eval_count
     latency_ms = Column(Integer)                       # wall clock — covers fallback turns too
     error = Column(String)                             # why a turn degraded (timeout | parse | verify)
+    depth = Column(Integer)                            # K2c: tool-loop queries run this turn (NULL = no loop)
     created_at = Column(DateTime, default=utcnow)
 
 

@@ -396,12 +396,16 @@ def create_app() -> FastAPI:
         n = session.get("chat_turn", 0)
         _feature_cache().log_chat_turn(
             chat_session_id=sid, turn_index=n, mode=mode,
-            prompt_version=PROMPT_VERSION, user_question=question,
+            # K2c: tool-loop turns stamp their own contract version and carry
+            # depth + a degrade reason; single-shot modes keep the module's.
+            prompt_version=result.get("prompt_version") or PROMPT_VERSION,
+            user_question=question,
             rendered_context=result.get("grounding"),
             raw_model_output=result.get("raw"),
             parsed_answer=result.get("answer") or result.get("narrative"),
             cited_entities=result.get("cited"), source=result.get("source"),
-            model=result.get("model"), latency_ms=latency_ms, error=error)
+            model=result.get("model"), latency_ms=latency_ms,
+            depth=result.get("depth"), error=error or result.get("error"))
         session["chat_turn"] = n + 1
 
     @app.get("/", response_class=HTMLResponse)

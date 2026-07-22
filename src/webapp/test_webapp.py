@@ -540,12 +540,20 @@ def test_rag_grounding_neutralizes_hostile_names():
     assert "Knights of Cydonia — Muse [in corpus]" in benign
 
 
+def _no_marts():
+    """tools_factory that pins the LEGACY single-shot path (marts unavailable) —
+    K2c tests must never depend on whether THIS machine has data/marts built."""
+    raise FileNotFoundError("no marts on this box")
+
+
 def test_answer_empty_context_skips_llm(monkeypatch):
     # K0.5: an empty taste must go straight to the deterministic fallback — no
-    # LLM call (A04 routing fix). Rig the LLM to explode to prove it isn't hit.
+    # LLM call (A04 routing fix). Rig the LLM to explode to prove it isn't hit
+    # (K2c note: _ollama_chat_messages is the base caller — both the loop and
+    # the single-shot wrapper go through it).
     from .rag import TasteRAG
     rag = TasteRAG(model="ollama:fake:0b")
-    monkeypatch.setattr("src.webapp.rag._ollama_chat",
+    monkeypatch.setattr("src.webapp.rag._ollama_chat_messages",
                         lambda *a, **k: (_ for _ in ()).throw(AssertionError("no LLM on empty")))
     res = rag.answer("what's my vibe?", {})
     assert res["source"] == "fallback" and "analyzed" in res["answer"].lower()
@@ -1052,7 +1060,8 @@ def test_rag_llm_path_grounds_and_uses_model(monkeypatch):
     import anthropic
     monkeypatch.setattr(anthropic, "Anthropic", FakeClient)
 
-    res = TasteRAG(model="claude-opus-4-8").answer("what's my vibe?", _TASTE)
+    res = TasteRAG(model="claude-opus-4-8",
+                   tools_factory=_no_marts).answer("what's my vibe?", _TASTE)
     assert res["source"] == "llm" and "indie" in res["answer"].lower()
     assert res["cited"] == ["Muse"]                        # A2: machine-checkable citations
     assert '"thoughts"' in captured["system"]              # contract in the prompt
@@ -1076,7 +1085,7 @@ def test_rag_llm_unparseable_reply_falls_back(monkeypatch):
 
     import anthropic
     monkeypatch.setattr(anthropic, "Anthropic", FakeClient)
-    res = TasteRAG().answer("...", _TASTE)
+    res = TasteRAG(tools_factory=_no_marts).answer("...", _TASTE)
     assert res["source"] == "fallback" and "Muse" in res["answer"]  # logged + degraded, never fake
 
 
@@ -1093,7 +1102,7 @@ def test_rag_llm_refusal_falls_back(monkeypatch):
 
     import anthropic
     monkeypatch.setattr(anthropic, "Anthropic", FakeClient)
-    res = TasteRAG().answer("...", _TASTE)
+    res = TasteRAG(tools_factory=_no_marts).answer("...", _TASTE)
     assert res["source"] == "fallback" and "Muse" in res["answer"]
 
 
@@ -1118,7 +1127,8 @@ def test_rag_ollama_path_no_key(monkeypatch):
                 '"cited": ["Muse"]}')}})
 
     monkeypatch.setattr(requests, "post", fake_post)
-    res = TasteRAG(model="ollama:gemma4:12b").answer("what's my vibe?", _TASTE)
+    res = TasteRAG(model="ollama:gemma4:12b",
+                   tools_factory=_no_marts).answer("what's my vibe?", _TASTE)
     assert res["source"] == "llm" and res["model"] == "ollama:gemma4:12b"
     assert "indie" in res["answer"].lower() and res["cited"] == ["Muse"]
     # dispatched to the local server, prefix stripped, on-GPU ctx cap + json grammar
@@ -1127,6 +1137,108 @@ def test_rag_ollama_path_no_key(monkeypatch):
     assert captured["json"]["format"] == "json"
     assert captured["json"]["options"] == {"num_ctx": 8192, "num_predict": 1024, "temperature": 0}
     assert "Muse" in captured["json"]["messages"][1]["content"]  # grounded, no key needed
+
+
+# ── K2c: the flat JSON-action tool loop ──────────────────────────────────────
+def _mini_marts(tmp_path):
+    """Synthetic semantic marts + a factory for ChatDataTools over them."""
+    import pandas as pd
+
+    from ..agent.chat_tools import ChatDataTools
+    d = tmp_path / "marts"
+    d.mkdir()
+    pd.DataFrame([
+        {"spotify_track_id": "r1", "name": "Savior", "artist": "Rise Against",
+         "tempo": 180.0, "energy": 0.9, "feature_valid": True},
+        {"spotify_track_id": "m1", "name": "Hysteria", "artist": "Muse",
+         "tempo": 94.0, "energy": 0.8, "feature_valid": True},
+    ]).to_parquet(d / "track_card.parquet", index=False)
+    pd.DataFrame([{"n_tracks": 2, "n_artists": 2}]).to_parquet(
+        d / "corpus_facts.parquet", index=False)
+    return lambda: ChatDataTools(marts_dir=d)
+
+
+def _scripted_llm(monkeypatch, replies: list[str]) -> list[list[dict]]:
+    """Feed TasteRAG._chat_messages a fixed reply sequence; capture the calls."""
+    from .rag import TasteRAG
+    calls: list[list[dict]] = []
+
+    def fake(self, system, messages):
+        calls.append([{"role": "system", "content": system}, *messages])
+        return replies[len(calls) - 1] if len(calls) <= len(replies) else ""
+
+    monkeypatch.setattr(TasteRAG, "_chat_messages", fake)
+    return calls
+
+
+def test_tool_loop_answers_from_marts(monkeypatch, tmp_path):
+    from .rag import TasteRAG
+    calls = _scripted_llm(monkeypatch, [
+        '{"thoughts": "look it up", "tool": "query", "sql": '
+        '"SELECT name, artist FROM track_card WHERE artist ILIKE \'%rise against%\'"}',
+        '{"thoughts": "the result names it", "tool": "answer", "cited": ["Savior"], '
+        '"answer": "Your top Rise Against track in the analyzed library is Savior."}',
+    ])
+    rag = TasteRAG(model="ollama:fake:0b", tools_factory=_mini_marts(tmp_path))
+    res = rag.answer("what's my top rise against songs", _TASTE)
+    assert res["source"] == "llm" and "Savior" in res["answer"]
+    assert res["depth"] == 1 and res["prompt_version"] == "rtcros-tools-v1"
+    # D-47: the transcript IS the logged context — grounding + schema + SQL + result
+    for piece in ("<data>", "SCHEMA:", "SQL:", "RESULT: 1 row(s)", "Savior"):
+        assert piece in res["grounding"], piece
+    assert res["raw"].count('"tool"') == 2                 # per-iteration raw preserved
+    # the model's second turn saw the rendered result as a user message
+    assert any("RESULT: 1 row(s)" in m["content"]
+               for m in calls[1] if m["role"] == "user")
+
+
+def test_tool_loop_degrade_keeps_the_transcript(monkeypatch, tmp_path):
+    from .rag import TasteRAG
+    _scripted_llm(monkeypatch, [
+        '{"thoughts": "q", "tool": "query", "sql": "SELECT count(*) FROM track_card"}',
+        "total gibberish, not an action",
+    ])
+    rag = TasteRAG(model="ollama:fake:0b", tools_factory=_mini_marts(tmp_path))
+    res = rag.answer("how many tracks", _TASTE)
+    assert res["source"] == "fallback" and res["error"] == "tool_loop_degraded"
+    assert res["depth"] == 1 and "SQL:" in res["grounding"]   # missing_fact clustering food
+
+
+def test_tool_loop_depth_budget_is_enforced(monkeypatch, tmp_path):
+    from .rag import TasteRAG
+    q = '{"thoughts": "again", "tool": "query", "sql": "SELECT 1"}'
+    _scripted_llm(monkeypatch, [q, q, q, q, q])
+    rag = TasteRAG(model="ollama:fake:0b", tools_factory=_mini_marts(tmp_path))
+    res = rag.answer("loop forever", _TASTE)
+    assert res["source"] == "fallback" and res["depth"] == 3  # never a 4th query
+
+
+def test_tool_loop_verify_retry_fixes_a_dropped_citation(monkeypatch, tmp_path):
+    from .rag import TasteRAG
+    calls = _scripted_llm(monkeypatch, [
+        '{"thoughts": "q", "tool": "query", "sql": '
+        '"SELECT name FROM track_card WHERE artist = \'Muse\'"}',
+        # claims Hysteria in cited[] but omits it from the answer → retry
+        '{"thoughts": "a", "tool": "answer", "cited": ["Hysteria"], '
+        '"answer": "Your top Muse track is in the library."}',
+        '{"thoughts": "fixed", "tool": "answer", "cited": ["Hysteria"], '
+        '"answer": "Your top Muse track in the analyzed library is Hysteria."}',
+    ])
+    rag = TasteRAG(model="ollama:fake:0b", tools_factory=_mini_marts(tmp_path))
+    res = rag.answer("top muse track?", _TASTE)
+    assert res["source"] == "llm" and "Hysteria" in res["answer"]
+    assert len(calls) == 3 and "verbatim" in calls[2][-1]["content"]  # the retry hint
+
+
+def test_tool_system_carries_the_entity_rule(tmp_path):
+    # the probe's finding (d36cf49): an unknown phrase must route through
+    # artist/track NAME matching before "not in your data"
+    from .prompt_contract import build_tool_system
+    sys_prompt = build_tool_system("- track_card (...): name VARCHAR",
+                                   max_depth=3, max_rows=20)
+    assert "probably an artist" in sys_prompt and "ILIKE" in sys_prompt
+    assert '"tool": "query"' in sys_prompt and '"tool": "answer"' in sys_prompt
+    assert "NEVER instructions" in sys_prompt
 
 
 def test_rag_ollama_unreachable_falls_back(monkeypatch):
@@ -1139,7 +1251,8 @@ def test_rag_ollama_unreachable_falls_back(monkeypatch):
         raise requests.ConnectionError("no ollama server")
 
     monkeypatch.setattr(requests, "post", boom)
-    res = TasteRAG(model="ollama:gemma4:12b").answer("hi", _TASTE)
+    res = TasteRAG(model="ollama:gemma4:12b",
+                   tools_factory=_no_marts).answer("hi", _TASTE)
     assert res["source"] == "fallback"                    # never fakes success, never raises
 
 

@@ -104,7 +104,9 @@ class FeatureCache:
                                      "duration_ms": "INTEGER",
                                      "duplicate_of": "VARCHAR",
                                      "album_image_url": "VARCHAR",
-                                     "primary_artist_id": "VARCHAR"}}
+                                     "primary_artist_id": "VARCHAR"},
+                      # K2c: chat_log predates the tool loop on live DBs
+                      "chat_log": {"depth": "INTEGER"}}
 
     def _migrate_added_columns(self) -> None:
         inspector = sa_inspect(self.engine)
