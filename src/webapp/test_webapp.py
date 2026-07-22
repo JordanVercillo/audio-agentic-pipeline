@@ -1266,7 +1266,8 @@ def test_tool_system_carries_the_entity_rule(tmp_path):
     from .prompt_contract import build_tool_system
     sys_prompt = build_tool_system("- track_card (...): name VARCHAR",
                                    max_depth=3, max_rows=20)
-    assert "probably an artist" in sys_prompt and "ILIKE" in sys_prompt
+    assert "NAMES FIRST" in sys_prompt and "ILIKE" in sys_prompt
+    assert "OTHER artists" in sys_prompt          # no mislabeling foreign tracks
     assert '"tool": "query"' in sys_prompt and '"tool": "answer"' in sys_prompt
     assert "NEVER instructions" in sys_prompt
 

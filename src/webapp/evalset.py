@@ -88,12 +88,13 @@ def run_golden(cases: Optional[list[dict]] = None, *,
     K0 fix: popping only the API key left a hole — a local `.env` with
     `WEBAPP_LLM_MODEL=ollama:…` needs no key, so the "deterministic" run
     silently measured the LLM path (or whatever a down Ollama fell through
-    to). Both env routes must be neutralized or the $0 CI guard de-calibrates
-    the moment someone runs it on a dev box."""
+    to). ALL env routes must be neutralized or the $0 CI guard de-calibrates
+    the moment someone runs it on a dev box. K2d added a THIRD route —
+    WEBAPP_TOOLS_LLM_MODEL (the tool-loop model) — which must be popped too."""
     cases = cases if cases is not None else load_golden()
     saved: dict[str, Optional[str]] = {}
     if force_fallback:
-        for var in ("ANTHROPIC_API_KEY", "WEBAPP_LLM_MODEL"):
+        for var in ("ANTHROPIC_API_KEY", "WEBAPP_LLM_MODEL", "WEBAPP_TOOLS_LLM_MODEL"):
             saved[var] = os.environ.pop(var, None)
     try:
         rag = TasteRAG()

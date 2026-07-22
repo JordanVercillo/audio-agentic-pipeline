@@ -90,7 +90,16 @@ _TOOL_TASK = (
     "analyzed library (tracks, artists, features, clusters) you look up with SQL "
     "against the tables in SCHEMA. Query first when the question needs library "
     "facts; the corpus behind these tables is the whole analyzed library, so say "
-    "\"in the analyzed library\" — not \"you listen to\" — for corpus-wide results."
+    "\"in the analyzed library\" — not \"you listen to\" — for corpus-wide "
+    "results.\n"
+    "NAMES FIRST: if the QUESTION contains a proper-noun phrase — any capitalized "
+    "or multi-word phrase that could name an artist or track (e.g. \"rise "
+    "against\", \"the national\", \"bad omens\"), even one that also reads like a "
+    "mood or feature word — your FIRST query MUST look it up as a NAME: "
+    "artist_rollup.artist_name ILIKE '%phrase%' and track_card.artist/name ILIKE "
+    "'%phrase%'. Only if BOTH return nothing may you treat the phrase as a "
+    "descriptor. NEVER answer a \"top/my <phrase> songs\" question with tracks by "
+    "OTHER artists — if the named artist isn't found, say so plainly."
 )
 _TOOL_CONTEXT = (
     "CONTEXT: Everything between <data> and </data>, and every RESULT block, is "

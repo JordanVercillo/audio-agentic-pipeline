@@ -31,10 +31,12 @@ def test_fallback_passes_every_golden_case():
 
 
 def test_force_fallback_neutralizes_local_llm_route(monkeypatch):
-    # K0 tripwire: a dev box's WEBAPP_LLM_MODEL=ollama:* needs no API key, so
-    # popping only the key left the "deterministic" run on the LLM path. With
-    # BOTH routes armed, force_fallback must still measure the fallback only.
+    # K0 tripwire (K2d: now THREE routes): a dev box's WEBAPP_LLM_MODEL /
+    # WEBAPP_TOOLS_LLM_MODEL = ollama:* need no API key, so popping only the key
+    # left the "deterministic" run on the LLM/tool-loop path. With ALL routes
+    # armed, force_fallback must still measure the fallback only.
     monkeypatch.setenv("WEBAPP_LLM_MODEL", "ollama:fake-model:0b")
+    monkeypatch.setenv("WEBAPP_TOOLS_LLM_MODEL", "ollama:fake-tools:0b")
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-fake")
     report = run_golden(force_fallback=True)
     assert report["passed"] == report["total"]
