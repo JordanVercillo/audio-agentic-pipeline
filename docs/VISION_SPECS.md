@@ -988,7 +988,8 @@ superlatives. **Hence K0.5 below — the data floor ships before any chat.**
   Graders: `canonical_name_preserved` 100% (a single rename = D-5 violation),
   `grounded_in_centroid` (must cite the top-|z| dims that produced the name),
   `no_invention`, vs the name-only baseline. Independent of K2.
-- **D-45 — K4 multimodal upload (owner):** caps **20 MB · 10 min · 10 uploads/
+- **D-45 — K4 multimodal upload (owner). STATUS: RE-HOMED to Phase LLM-2
+  (D-55, 2026-07-22) — design unchanged, deferred not descoped.** caps **20 MB · 10 min · 10 uploads/
   user** (config-tunable); bridge key = **`up` + 20 hex of the content hash**
   (base62-charset-safe → every existing regex guard + `{id}.mp3` filename
   path works unchanged; collision-proof vs 22-char Spotify ids; identical
@@ -1118,15 +1119,43 @@ superlatives. **Hence K0.5 below — the data floor ships before any chat.**
   HUMAN review session (owner: `--sample` → grade → `--commit` → `--report`) is
   the remaining step → graded rows, golden promotions, the K5 counter starts.
 - **K2 injection evals (FABLE) → K2 loop (Opus, gated)** → **K3 (Opus)** →
-  **K4 gateway (FABLE security review, Opus plumbing)** → **K5/K6 docs
+  K4 gateway (RE-HOMED to Phase LLM-2, D-55) → **K5/K6 docs
   (Fable, when gates trip).**
+- **PHASE 4 CLOSEOUT (2026-07-22): Epic K's CHAT SCOPE — K0–K3 — is SHIPPED**
+  (story-led /chat + the injection-gated SQL tool loop + grounded cluster
+  prose, all evals-guarded, live, guest-validated). **K4 is RE-HOMED, not
+  delivered** (D-55); K5/K6 remain D-46 gated design docs. Honest wording
+  everywhere: say "Epic K's chat scope is complete" — never "Epic K complete."
+- **D-55 — the K4/K5/K6 re-sequence (owner, 2026-07-22).** K4 moves to a new
+  **Phase LLM-2** (after Phase 5 MPD, before Phase 6) under an **APPETITE
+  gate** — "owner appetite / prototype proven." It is buildable today and may
+  jump forward at any time (e.g. as an interview showpiece); it gains nothing
+  from MPD, and nothing in Q/R/MPD depends on it (verified both directions).
+  **K5/K6 keep D-46's DATA gate** (200–500 graded examples / thousands of
+  thumb events — "materially more users") and their eventual BUILDS land in
+  **Phase 6** (single home — Phase LLM-2 is K4's home only). Rationale:
+  working prototype first (Phase 4.5 Q/R), then the data-platform meat
+  (Phase 5); upload demand is unproven at 5 seats and K4 is a new non-LLM
+  attack surface (its Fable-security-review + Opus-plumbing routing survives
+  the move). **Split-note correction folded in:** gemma4:e4b's place in the
+  K2d model split is earned TODAY as the story/classify/cluster voice (5/5
+  golden classify; the K3 blurbs); its audio-input capability is a HELD
+  OPTION, not the split's justification — D-45 as written is DSP-over-uploads
+  and never feeds audio to e4b (an "LLM listens to the audio" K4 would be a
+  scope expansion needing its own decision + a VRAM re-check against the
+  9.5/12 GB co-residence budget). **Ratified the same day:** provenance-QA
+  (Q4's review sessions) is EXEMPT from the QA-until-testers deferral —
+  corpus data-quality, not tester-scoped; and Q3's feature-shift →
+  cluster-identity/archetype change is an ACCEPTED consequence (precedented:
+  the session-50 retrain).
 
 ## Phase 4.5 — provenance QA + the artist knowledge base (owner's "phase 2", specced 2026-07-17)
 
-**Entry criterion: Epic K complete.** Two epics from the owner's QA note
-(session 42, screenshots in hand): acquisition transparency ("provide the
-YouTube source so we can validate it's the actual song") and Artists 2.0
-("the artist tab overall 2.0"). Decisions D-51…D-54.
+**Entry criterion (amended by D-55, 2026-07-22): Epic K's chat scope (K0–K3)
+shipped; K4 re-homed — SATISFIED 2026-07-22, Phase 4.5 is OPEN.** Two epics
+from the owner's QA note (session 42, screenshots in hand): acquisition
+transparency ("provide the YouTube source so we can validate it's the actual
+song") and Artists 2.0 ("the artist tab overall 2.0"). Decisions D-51…D-54.
 
 ### Epic Q — acquisition provenance & QA
 
@@ -1198,6 +1227,21 @@ on-demand fetch (Opus) → R3 the profile 2.0 UI (Opus) → the dashboard-links
 fix (rides ANY next webapp slice). Epic Q before Epic R (Q's uniform
 provenance feeds R's in-corpus matching).
 
+### The "working prototype" definition of done (D-55, ratified 2026-07-22)
+
+Prototype DONE = **a stranger validates the whole thesis end-to-end,
+self-serve, on real data**: ① all six nav surfaces + /chat live across the
+anon/guest/authed matrix (✅ today) · ② every rendered track click-through
+verifiable to its YouTube source (Q1–Q3; the ∅ tier bounded or gone) · ③ a
+credible artist surface (Epic R) or an explicit honest deferral · ④ the
+data-quality floor GREEN — both audits ALL-GREEN with the 2 broken
+extractions PERMANENTLY fixed by Q3/D-52, not gate-masked · ⑤ grounded,
+injection-gated, logged chat (✅ K0–K3) · ⑥ case study + README refreshed to
+the current surface · ⑦ the last slice meets the full working-agreement DoD.
+Explicitly OUT of "prototype done": K4 uploads, K5/K6, MPD — enrichment, not
+prototype. **This bar gates Phase 5: MPD/Spark launches from a
+defensibly-complete base, not mid-air.**
+
 ## Phase 5 — MPD (Epic J, un-changed shape, now sequenced)
 
 The saved plan holds (metadata-only, D-26; Spark un-parks on the real 66M rows,
@@ -1206,18 +1250,32 @@ criterion: Phase 3 shipped + public. J0 intake script → J1 Spark co-occurrence
 + track2vec → J2 hybrid reco (acoustic × behavioral — completing the
 related-artists replacement) → J3 the honest at-scale benchmark.
 
+## Phase LLM-2 — the re-homed upload path (D-55, 2026-07-22)
+
+**Contents: K4 only** (the D-45 design, unchanged — deferred, not descoped).
+Entry = the **APPETITE gate** ("owner appetite / prototype proven"),
+deliberately soft: K4 may jump forward at any time. Routing holds from the
+table below: **Fable security review first** (a new non-LLM attack surface),
+Opus plumbing. **K5/K6 are NOT here** — they are D-46 gated design docs whose
+builds land in Phase 6 when the data gate trips (single home, no
+double-booking).
+
 ## Phase 6 — the ML capstone
 
 On the dataset the app + MPD built: richer clustering/embedding models over the
 grown REAL corpus, the hybrid recommender productionized, and whatever K5/K6
-gates opened. Scoped properly when Phase 5's data exists — deliberately NOT
-spec-fixed today (the agile-coach agent keeps this honest at each phase
-boundary).
+gates opened (**their single build-home — D-55**). Scoped properly when Phase
+5's data exists — deliberately NOT spec-fixed today (the agile-coach agent
+keeps this honest at each phase boundary).
 
 ## Sequence (owner-approved 2026-07-14)
 
 **P3.0 → P3.1 → P3.2 → P3.3 → P3.4 → P3.5 → P3.6 → P3.7(flip) → Phase 4 (K0…)
-→ Phase 5 (MPD) → Phase 6 (ML).** Harness additions this session:
+→ Phase 5 (MPD) → Phase 6 (ML).** **AMENDED BY D-55 (2026-07-22):** the live
+sequence is now **Phase 4 (K0–K3 ✅ shipped) → Phase 4.5 (Q → R, exits at the
+prototype bar) → Phase 5 (MPD/Spark) → Phase LLM-2 (K4, appetite-gated, may
+jump forward) → Phase 6 (ML capstone + K5/K6 if the D-46 gates trip).**
+Harness additions this session:
 `research-expert` + `agile-coach` agents (both registered). Same ground rules
 throughout — and one more now standing: **borrowed-time API surfaces are
 absent-safe garnish, never load-bearing** (the research brief's doctrine).
@@ -1235,8 +1293,11 @@ disciplines carry the review quality); `agile-coach` keeps these tags current.
 | P3.7 **L-lite** (case study / README / how-to) | **Opus** | Strong writing from the chronicle as source; owner reviews the narrative |
 | P3.7 **L-flip** (gitleaks triage · filter-repo scrub · public flip) | **Fable** | Irreversible + security-adversarial; agile-coach runs the checklist, Fable makes the calls |
 | Phase 4 **K0 design** (agentic RAG, tool-use safety, injection evals, go-gates) | **Fable** | Novel architecture + adversarial surface; llm-rag-expert consults ride Opus |
-| K1–K4 **builds** (chat plumbing, upload path) | **Opus** | Execute the K0 spec; evals gate every ship |
+| K1–K3 **builds** (chat plumbing, tool loop, cluster prose) | **Opus** | Execute the K0 spec; evals gate every ship |
+| K4 **upload gateway** (now Phase LLM-2, D-55) | **split** | Fable security review first (new non-LLM attack surface); Opus plumbing |
 | K2 **injection-eval design** | **Fable** | The eval IS the security boundary |
+| Phase 4.5 **Q1/Q2/Q4 + R1–R3 builds** | **Opus** | D-51…D-54 are file-level; established table/mart/page patterns; research-expert fences MusicBrainz once (R1) |
+| Phase 4.5 **Q3 re-extraction (D-52) batch plan** | **split** | Opus builds the resumable runner; the ~11h data-mutating batch plan + atomic-swap-on-success policy is a #19/#24-class judgment — **Fable signs before the full run** |
 | Phase 5 **J1 modeling design + J3 benchmark interpretation** | **Fable** | Co-occurrence/embedding choices + honest at-scale claims are judgment |
 | Phase 5 **J0/J1 ETL execution** | **Opus** | Specced pipeline work with parity/audit gates |
 | Phase 6 **ML capstone scoping** | **Fable** | Unscoped by design |
