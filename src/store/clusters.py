@@ -85,9 +85,13 @@ def _apply_scale(vec: np.ndarray, mean: np.ndarray, std: np.ndarray) -> np.ndarr
     return (x / n if n else x).astype(np.float32)
 
 
-def _label_cluster(member: pd.DataFrame, corpus: pd.DataFrame, top_n: int = 2) -> str:
-    """Name a cluster by top-|z| interpretable dims (shared _CHARACTER_DIMS words)."""
-    scored: list[tuple[float, str]] = []
+def _label_dims(member: pd.DataFrame, corpus: pd.DataFrame, top_n: int = 2,
+                ) -> list[dict]:
+    """Ranked ``[{feature, word, z}]`` for the top-|z| interpretable dims — the
+    exact evidence that names the cluster. K3 persists this so generated
+    descriptions can be graded against the dims that produced the name
+    (the mart's perceptual means are NOT these columns)."""
+    scored: list[tuple[float, str, str, float]] = []
     for col, hi, lo in _CHARACTER_DIMS:
         if col not in corpus.columns:
             continue
@@ -95,9 +99,17 @@ def _label_cluster(member: pd.DataFrame, corpus: pd.DataFrame, top_n: int = 2) -
         if std == 0 or np.isnan(std):
             continue
         z = (float(member[col].mean()) - float(corpus[col].mean())) / std
-        scored.append((abs(z), hi if z > 0 else lo))
+        # tuple order keeps the frozen tie-break: (|z|, word) sorted reverse
+        scored.append((abs(z), hi if z > 0 else lo, col, z))
     scored.sort(reverse=True)
-    return " · ".join(w for _, w in scored[:top_n]) if scored else "Mixed"
+    return [{"feature": col, "word": word, "z": round(float(z), 4)}
+            for _, word, col, z in scored[:top_n]]
+
+
+def _label_cluster(member: pd.DataFrame, corpus: pd.DataFrame, top_n: int = 2) -> str:
+    """Name a cluster by top-|z| interpretable dims (shared _CHARACTER_DIMS words)."""
+    dims = _label_dims(member, corpus, top_n)
+    return " · ".join(d["word"] for d in dims) if dims else "Mixed"
 
 
 def _map_coords(X: np.ndarray, method: str = "pca") -> Optional[np.ndarray]:
@@ -137,15 +149,17 @@ def train_song_clusters(cache: FeatureCache, *, k_range: tuple[int, int] = (2, 6
     labels, k, silhouette = cluster_tracks(X, k_range=(k_range[0], min(k_range[1], len(ids) - 1)))
 
     corpus_df = pd.DataFrame(rows)
-    names = {str(c): _label_cluster(corpus_df[labels == c], corpus_df)
-             for c in range(k)}
+    dims = {str(c): _label_dims(corpus_df[labels == c], corpus_df)
+            for c in range(k)}
+    names = {c: (" · ".join(d["word"] for d in ds) if ds else "Mixed")
+             for c, ds in dims.items()}
     centroids = [X[labels == c].mean(axis=0).tolist() for c in range(k)]
     xy = _map_coords(X, method=coords)
 
     with cache._Session() as s:
         model = ClusterModel(kind="song", k=k, silhouette=silhouette, feature_cols=cols,
                              scaler_mean=mean.tolist(), scaler_std=std.tolist(),
-                             centroids=centroids, labels=names)
+                             centroids=centroids, labels=names, label_dims=dims)
         s.add(model)
         s.flush()  # get model.id
         for i, tid in enumerate(ids):
@@ -192,14 +206,16 @@ def train_artist_clusters(cache: FeatureCache, *, k_range: tuple[int, int] = (2,
         X, k_range=(k_range[0], min(k_range[1], len(artists) - 1)))
 
     centroid_df = pd.DataFrame(raw, columns=cols)
-    names = {str(c): _label_cluster(centroid_df[labels == c], centroid_df)
-             for c in range(k)}
+    dims = {str(c): _label_dims(centroid_df[labels == c], centroid_df)
+            for c in range(k)}
+    names = {c: (" · ".join(d["word"] for d in ds) if ds else "Mixed")
+             for c, ds in dims.items()}
     centroids = [X[labels == c].mean(axis=0).tolist() for c in range(k)]
 
     with cache._Session() as s:
         model = ClusterModel(kind="artist", k=k, silhouette=silhouette, feature_cols=cols,
                              scaler_mean=mean.tolist(), scaler_std=std.tolist(),
-                             centroids=centroids, labels=names)
+                             centroids=centroids, labels=names, label_dims=dims)
         s.add(model)
         s.flush()
         for i, a in enumerate(artists):

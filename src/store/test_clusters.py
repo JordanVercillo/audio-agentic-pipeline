@@ -86,6 +86,25 @@ def test_assign_track_online_nearest_centroid(corpus):
     assert assign_track(corpus, model, "sparse", {"tempo_bpm": 120}) is None
 
 
+def test_label_dims_are_the_evidence_behind_the_name(corpus):
+    # K3a: the persisted dims must reconstruct the label exactly — they are the
+    # grounding substrate for generated descriptions (grounded_in_centroid).
+    train_song_clusters(corpus, coords="pca")
+    model = latest_model(corpus, "song")
+    assert model.label_dims is not None
+    assert set(model.label_dims) == set(model.labels)
+    for cid, name in model.labels.items():
+        dims = model.label_dims[cid]
+        assert " · ".join(d["word"] for d in dims) == name  # dims ⇒ name, byte-exact
+        for d in dims:
+            assert set(d) == {"feature", "word", "z"}
+            assert isinstance(d["z"], float) and d["z"] != 0
+    # |z| ranking is descending — the first dim is the strongest evidence
+    for dims in model.label_dims.values():
+        zs = [abs(d["z"]) for d in dims]
+        assert zs == sorted(zs, reverse=True)
+
+
 def test_train_artist_clusters_buckets_by_sound(corpus):
     res = train_artist_clusters(corpus)
     assert res is not None and res["k"] == 2 and res["n_artists"] == 6

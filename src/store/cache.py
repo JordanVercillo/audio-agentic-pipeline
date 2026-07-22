@@ -106,7 +106,9 @@ class FeatureCache:
                                      "album_image_url": "VARCHAR",
                                      "primary_artist_id": "VARCHAR"},
                       # K2c: chat_log predates the tool loop on live DBs
-                      "chat_log": {"depth": "INTEGER"}}
+                      "chat_log": {"depth": "INTEGER"},
+                      # K3: models trained before label_dims existed read NULL
+                      "cluster_models": {"label_dims": "JSON"}}
 
     def _migrate_added_columns(self) -> None:
         inspector = sa_inspect(self.engine)

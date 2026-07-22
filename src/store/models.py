@@ -121,6 +121,9 @@ class ClusterModel(Base):
     scaler_std = Column(JSON, nullable=False)      # per-column population std
     centroids = Column(JSON, nullable=False)       # k × d, in scaled+normalized space
     labels = Column(JSON, nullable=False)          # {"0": "Loud · Fast", ...}
+    # K3: the evidence behind each name — {"0": [{feature, word, z}, ...]}.
+    # Nullable: models trained before K3 read None (descriptions degrade to none).
+    label_dims = Column(JSON)
     trained_at = Column(DateTime, default=utcnow)
 
 
