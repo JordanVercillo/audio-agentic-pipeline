@@ -75,20 +75,28 @@ _MODES: dict[str, dict[str, str]] = {
     # produced the name, so "cited" is REQUIRED to carry every dimension word.
     "cluster": {
         "task": ("TASK: Describe how this ONE sound bucket sounds, strictly from "
-                 "the DATA. Never rename the bucket or coin a new name for it; "
-                 "never name any track or artist. Your \"cited\" array MUST "
-                 "include every dimension word listed in DATA (e.g. \"Loud\", "
-                 "\"Fast\") and the description must use each one."),
+                 "the DATA, for a curious listener who does not know audio jargon. "
+                 "Never rename the bucket or coin a new name for it; never name "
+                 "any track or artist. Your \"cited\" array MUST include every "
+                 "dimension word listed in DATA (e.g. \"Loud\", \"Fast\") and the "
+                 "description must use each one — but describe them in everyday "
+                 "terms. NEVER write an internal column name (e.g. "
+                 "onset_strength_mean, zcr_mean, rms_mean) or a z-score/number in "
+                 "your description — those are for your reasoning only."),
         "answer_field": "description",
-        "output": ('  "description": 1-2 sentences, plain prose, no markdown — what '
-                   "this bucket sounds like relative to the rest of the library; it "
-                   'MUST contain every string in "cited" verbatim.'),
+        "output": ('  "description": 1-2 sentences, warm plain prose, no markdown, '
+                   "no column names, no numbers — what this bucket sounds like "
+                   "relative to the rest of the library; it MUST contain every "
+                   'string in "cited" verbatim.'),
     },
 }
 
 # Stamped beside stored descriptions so a contract change invalidates cleanly
 # and the D-47 flywheel can segment scores by contract (mirrors TOOL_CONTRACT_VERSION).
-CLUSTER_PROMPT_VERSION = "rtcros-cluster-v1"
+# v2 (2026-07-22): steer e4b off transcribing feature names / z-scores — the
+# first live retrain produced grounded-but-jargon blurbs ("high onset_strength_mean,
+# z=+0.64"); the contract + a describe_cluster jargon guard keep prose visitor-ready.
+CLUSTER_PROMPT_VERSION = "rtcros-cluster-v2"
 
 
 def answer_field(mode: str) -> str:

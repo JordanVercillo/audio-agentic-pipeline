@@ -268,6 +268,17 @@ def _opposite_words(dims: list[dict]) -> list[str]:
     return out
 
 
+def _has_jargon(text: str, dims: list[dict]) -> bool:
+    """True if a description leaked internal feature-column names or z-scores —
+    the first live retrain had e4b transcribe the grounding literally ("high
+    onset_strength_mean, z=+0.64"). Those belong in reasoning, never on the
+    visitor-facing card; a leak degrades to the clean template."""
+    low = text.lower()
+    if "z=" in low or "z-score" in low or "z score" in low:
+        return True
+    return any((d.get("feature") or "").lower() in low for d in dims)
+
+
 class TasteRAG:
     """Grounded taste Q&A over the visitor's own retrieved data."""
 
@@ -392,14 +403,17 @@ class TasteRAG:
                     # containing the OPPOSITE pole of its own dims contradicts
                     # the centroid it describes — that is invention, not style.
                     contradicts = any(w.lower() in low for w in _opposite_words(dims))
-                    if grounded and not contradicts:
+                    # jargon guard (the first-retrain finding): no column names /
+                    # z-scores on a visitor-facing card.
+                    jargon = _has_jargon(text, dims)
+                    if grounded and not contradicts and not jargon:
                         return {**base, "description": text, "source": "llm",
                                 "model": self.model, "cited": r["cited"],
                                 "grounding": grounding, "raw": r["raw"]}
-                    logger.info("cluster %s description %s — template fallback",
+                    logger.info("cluster %s description rejected (%s) — template fallback",
                                 cluster.get("cluster_id"),
-                                "contradicts a dim" if contradicts
-                                else "dropped a dim word")
+                                "contradicts a dim" if contradicts else
+                                "leaked jargon" if jargon else "dropped a dim word")
             except Exception as exc:  # noqa: BLE001 — batch script must not die
                 logger.warning("describe_cluster failed (%s) — template fallback", exc)
         return {**base, "description": _cluster_fallback(label, dims),

@@ -1298,7 +1298,7 @@ def test_describe_cluster_happy_path_cites_the_dims(monkeypatch):
     res = TasteRAG(model="ollama:fake:0b").describe_cluster(_CLUSTER)
     assert res["source"] == "llm" and res["label"] == "Loud · Fast"  # name pinned
     assert "Loud" in res["description"] and "Fast" in res["description"]
-    assert res["prompt_version"] == "rtcros-cluster-v1"
+    assert res["prompt_version"] == "rtcros-cluster-v2"
     # the grounding carried the dims + coverage, and only trusted content
     assert "rms_mean, z=+1.80" in res["grounding"] and "42 of 311" in res["grounding"]
     sys_prompt = calls[0][0]["content"]
@@ -1340,6 +1340,19 @@ def test_describe_cluster_contrast_wording_degrades_to_template(monkeypatch):
     res = TasteRAG(model="ollama:fake:0b").describe_cluster(_CLUSTER)
     assert res["source"] == "fallback"
     assert "never quiet" not in res["description"]
+
+
+def test_describe_cluster_jargon_leak_degrades_to_template(monkeypatch):
+    # The first-retrain finding: e4b transcribed the grounding literally
+    # ("high onset_strength_mean, z=+0.64"). A column name or z-score on the
+    # visitor card degrades to the clean template.
+    from .rag import TasteRAG
+    reply = ('{"thoughts": "t", "cited": ["Loud", "Fast"], "description": '
+             '"Loud and Fast, with a high rms_mean of z=+1.80."}')
+    _scripted_llm(monkeypatch, [reply, reply])
+    res = TasteRAG(model="ollama:fake:0b").describe_cluster(_CLUSTER)
+    assert res["source"] == "fallback"
+    assert "rms_mean" not in res["description"] and "z=" not in res["description"]
 
 
 def test_describe_cluster_mixed_never_calls_the_llm(monkeypatch):
