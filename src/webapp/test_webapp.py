@@ -1163,7 +1163,7 @@ def _scripted_llm(monkeypatch, replies: list[str]) -> list[list[dict]]:
     from .rag import TasteRAG
     calls: list[list[dict]] = []
 
-    def fake(self, system, messages):
+    def fake(self, system, messages, model=None):
         calls.append([{"role": "system", "content": system}, *messages])
         return replies[len(calls) - 1] if len(calls) <= len(replies) else ""
 
@@ -1228,6 +1228,36 @@ def test_tool_loop_verify_retry_fixes_a_dropped_citation(monkeypatch, tmp_path):
     res = rag.answer("top muse track?", _TASTE)
     assert res["source"] == "llm" and "Hysteria" in res["answer"]
     assert len(calls) == 3 and "verbatim" in calls[2][-1]["content"]  # the retry hint
+
+
+def test_tool_loop_runs_on_the_split_tools_model(monkeypatch, tmp_path):
+    # K2d: the tool loop must dispatch to tools_model (the injection-safe one),
+    # NOT self.model — story/classify keep self.model. Capture which model each
+    # _chat_messages call names.
+    from .rag import TasteRAG
+    seen: list[str] = []
+
+    def fake(self, system, messages, model=None):
+        seen.append(model or self.model)
+        return ('{"thoughts": "q", "tool": "query", "sql": "SELECT name FROM track_card LIMIT 1"}'
+                if len(seen) == 1 else
+                '{"thoughts": "a", "tool": "answer", "cited": ["Savior"], '
+                '"answer": "Your top track in the analyzed library is Savior."}')
+
+    monkeypatch.setattr(TasteRAG, "_chat_messages", fake)
+    rag = TasteRAG(model="ollama:gemma4:e4b", tools_model="ollama:qwen3:8b",
+                   tools_factory=_mini_marts(tmp_path))
+    res = rag.answer("top track?", _TASTE)
+    assert res["model"] == "ollama:qwen3:8b"               # the loop's model is reported
+    assert set(seen) == {"ollama:qwen3:8b"}                # every loop turn used it, not e4b
+
+
+def test_tools_model_defaults_to_model_when_unset(monkeypatch):
+    from .rag import TasteRAG
+    monkeypatch.delenv("WEBAPP_TOOLS_LLM_MODEL", raising=False)
+    monkeypatch.setenv("WEBAPP_LLM_MODEL", "ollama:solo:1b")
+    rag = TasteRAG()
+    assert rag.model == "ollama:solo:1b" and rag.tools_model == "ollama:solo:1b"
 
 
 def test_tool_system_carries_the_entity_rule(tmp_path):

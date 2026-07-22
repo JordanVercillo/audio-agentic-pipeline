@@ -105,6 +105,16 @@ def rag_model() -> str:
     return os.environ.get("WEBAPP_LLM_MODEL", "claude-opus-4-8")
 
 
+# K2d: the model that drives the /chat TOOL LOOP — a security-sensitive surface
+# (it reads back attacker-controllable import names inside tool results), so it
+# must pass the injection gate 100%. Split from rag_model() because the two
+# surfaces want different models: gemma4:e4b (rag_model) is multimodal for K4
+# but OBEYS token-injections; qwen3:8b defends them every run. Defaults to
+# rag_model() so an un-split single-model setup (tests/CI) just works.
+def tools_model() -> str:
+    return os.environ.get("WEBAPP_TOOLS_LLM_MODEL") or rag_model()
+
+
 def ollama_host() -> str:
     """Base URL of the local Ollama server (A3). Override with OLLAMA_HOST."""
     return os.environ.get("OLLAMA_HOST", "http://localhost:11434").rstrip("/")

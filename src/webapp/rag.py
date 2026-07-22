@@ -216,9 +216,14 @@ class TasteRAG:
     """Grounded taste Q&A over the visitor's own retrieved data."""
 
     def __init__(self, feature_store: Any = None, model: Optional[str] = None,
-                 tools_factory: Any = None) -> None:
+                 tools_factory: Any = None, tools_model: Optional[str] = None) -> None:
         self.fs = feature_store
         self.model = model or config.rag_model()
+        # K2d: the tool loop runs on a SEPARATE model — it must pass the
+        # injection gate (gemma4:e4b fails it; qwen3:8b passes). story/classify
+        # stay on self.model. An explicit `model=` override drives BOTH unless a
+        # tools_model is given too, so single-model tests keep one knob.
+        self.tools_model = tools_model or (model if model else config.tools_model())
         # K2c: how answer() gets its ChatDataTools. None = the real engine over
         # data/marts; tests inject a synthetic-marts factory (or one that raises
         # FileNotFoundError to pin the legacy single-shot path) so behavior
@@ -230,18 +235,26 @@ class TasteRAG:
         key) or an Anthropic model with a key. Otherwise the deterministic path."""
         return self.model.startswith("ollama:") or bool(config.anthropic_key())
 
+    def _wants_tools_llm(self) -> bool:
+        """Same test for the tool-loop model (K2d — it may differ from
+        self.model in the split config)."""
+        return self.tools_model.startswith("ollama:") or bool(config.anthropic_key())
+
     def _chat(self, system: str, prompt: str) -> Optional[str]:
         """Provider-agnostic single-shot chat → the raw reply text, or None."""
         return self._chat_messages(system, [{"role": "user", "content": prompt}])
 
-    def _chat_messages(self, system: str, messages: list[dict]) -> Optional[str]:
+    def _chat_messages(self, system: str, messages: list[dict],
+                       model: Optional[str] = None) -> Optional[str]:
         """Provider-agnostic MULTI-TURN chat (K2c — the tool loop grows the
-        array one action/result pair per turn). `ollama:<model>` hits the local
-        server ($0, A3); otherwise Anthropic (needs a key). May raise — callers
-        guard and fall back."""
-        if self.model.startswith("ollama:"):
+        array one action/result pair per turn). `model` overrides self.model so
+        the tool loop can run on the injection-safe tools_model (K2d).
+        `ollama:<model>` hits the local server ($0, A3); otherwise Anthropic
+        (needs a key). May raise — callers guard and fall back."""
+        model = model or self.model
+        if model.startswith("ollama:"):
             return _ollama_chat_messages(
-                self.model.split(":", 1)[1],
+                model.split(":", 1)[1],
                 [{"role": "system", "content": system}, *messages])
         key = config.anthropic_key()
         if not key:
@@ -249,7 +262,7 @@ class TasteRAG:
         import anthropic
         client = anthropic.Anthropic(api_key=key)
         resp = client.messages.create(
-            model=self.model, max_tokens=_MAX_TOKENS, system=system,
+            model=model, max_tokens=_MAX_TOKENS, system=system,
             messages=messages)
         if resp.stop_reason == "refusal":
             return None
@@ -329,7 +342,7 @@ class TasteRAG:
                 return meta
 
             for _ in range(self._TOOL_MAX_DEPTH + 1):
-                raw = self._chat_messages(system, msgs) or ""
+                raw = self._chat_messages(system, msgs, model=self.tools_model) or ""
                 raws.append(raw)
                 act = _parse_llm_json(raw)
                 if not isinstance(act, dict) or act.get("tool") not in ("query", "answer"):
@@ -343,7 +356,8 @@ class TasteRAG:
                     if not v["ok"]:                    # ONE corrective retry
                         msgs.append({"role": "user",
                                      "content": retry_hint(v["missing"])})
-                        raw2 = self._chat_messages(system, msgs) or ""
+                        raw2 = self._chat_messages(system, msgs,
+                                                   model=self.tools_model) or ""
                         raws.append(raw2)
                         retry = _parse_llm_json(raw2)
                         if retry and reply_text(retry, "adhoc"):
@@ -374,12 +388,12 @@ class TasteRAG:
         if grounding == _EMPTY_GROUNDING:
             return {"answer": self._fallback(taste), "source": "fallback",
                     "model": None, "grounding": grounding}
-        if self._wants_llm():
+        if self._wants_tools_llm():
             try:
                 reply, meta = self._tool_loop(question, grounding)
                 if reply is not None:
                     return {"answer": reply["text"], "source": "llm",
-                            "model": self.model, "cited": reply["cited"],
+                            "model": self.tools_model, "cited": reply["cited"],
                             "grounding": meta["transcript"], "raw": meta["raw"],
                             "depth": meta["depth"],
                             "prompt_version": TOOL_CONTRACT_VERSION}
