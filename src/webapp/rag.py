@@ -26,6 +26,7 @@ from typing import Any, Optional
 
 from . import config
 from .prompt_contract import (
+    CLUSTER_PROMPT_VERSION,
     TOOL_CONTRACT_VERSION,
     build_system,
     build_tool_system,
@@ -212,6 +213,40 @@ def _grounding_text(taste: dict[str, Any], glossary: dict[str, str]) -> str:
     return "\n".join(lines) if lines else _EMPTY_GROUNDING
 
 
+# ── K3: cluster-description grounding (internally derived ONLY) ──────────────
+# Deliberate v1 boundary: NO member track/artist names in this grounding — every
+# field is a number or a canonical dim word, so there is no attacker-reachable
+# string and no injection surface. Adding exemplars later requires _neutralize
+# AND a dedicated cluster-injection eval case first.
+def _cluster_grounding(cluster: dict) -> str:
+    lines = [f"Sound bucket (canonical name, never change it): {cluster['label']}"]
+    dims = cluster.get("dims") or []
+    if dims:
+        dl = "; ".join(f"{d['word']} ({d['feature']}, z={d['z']:+.2f})" for d in dims)
+        lines.append(f"Distinguishing dimensions (top |z| vs the corpus): {dl}")
+    means = cluster.get("means") or {}
+    if means:
+        ml = "; ".join(f"{k} {v}" for k, v in means.items())
+        lines.append(f"Acoustic means: {ml}")
+    cov = cluster.get("coverage") or {}
+    if cov.get("n_assigned") and cov.get("n_corpus"):
+        share = 100.0 * cov["n_assigned"] / cov["n_corpus"]
+        lines.append(f"Coverage: {cov['n_assigned']} of {cov['n_corpus']} "
+                     f"clustered tracks ({share:.0f}%).")
+    return "\n".join(lines)
+
+
+def _cluster_fallback(label: str, dims: list[dict]) -> str:
+    """The deterministic floor (D-5): built FROM the dims, so it is grounded by
+    construction, names nothing, and never raises."""
+    if not dims:  # "Mixed" — no single dimension dominates
+        return (f"A “{label}” bucket — no single acoustic dimension "
+                "dominates these tracks.")
+    words = " and ".join(d["word"].lower() for d in dims)
+    return (f"A “{label}” bucket — {words} relative to the rest of "
+            "the library.")
+
+
 class TasteRAG:
     """Grounded taste Q&A over the visitor's own retrieved data."""
 
@@ -308,6 +343,39 @@ class TasteRAG:
                 logger.warning("RAG story failed (%s) — deterministic fallback", exc)
         return {"answer": self._fallback(taste), "source": "fallback",
                 "model": None, "grounding": grounding}
+
+    def describe_cluster(self, cluster: dict[str, Any]) -> dict[str, Any]:
+        """K3: a grounded 1-2 sentence description of ONE sound bucket.
+
+        `cluster` = {cluster_id, label, dims: [{feature, word, z}], means?,
+        coverage?} — label/dims come from the trained model (K3a), so the
+        canonical name is pinned by construction: the LLM writes prose, never
+        the name. Generation-side teeth beyond _grounded_reply's verify-retry:
+        a description that drops ANY dim word degrades to the deterministic
+        template (which is built from the dims and passes every grader).
+        Never raises; offline batch callers rely on that."""
+        label = str(cluster.get("label") or "Mixed")
+        dims = [d for d in (cluster.get("dims") or []) if d.get("word")]
+        base = {"cluster_id": cluster.get("cluster_id"), "label": label,
+                "prompt_version": CLUSTER_PROMPT_VERSION}
+        if self._wants_llm() and dims:  # Mixed: the template IS the honest text
+            grounding = _cluster_grounding({**cluster, "label": label, "dims": dims})
+            try:
+                r = self._grounded_reply("cluster", grounding,
+                                         "REQUEST: Describe this sound bucket now.")
+                if r is not None:
+                    text = r["text"]
+                    low = text.lower()
+                    if all(d["word"].lower() in low for d in dims):
+                        return {**base, "description": text, "source": "llm",
+                                "model": self.model, "cited": r["cited"],
+                                "grounding": grounding, "raw": r["raw"]}
+                    logger.info("cluster %s description dropped a dim word — "
+                                "template fallback", cluster.get("cluster_id"))
+            except Exception as exc:  # noqa: BLE001 — batch script must not die
+                logger.warning("describe_cluster failed (%s) — template fallback", exc)
+        return {**base, "description": _cluster_fallback(label, dims),
+                "source": "fallback", "model": None}
 
     # ── K2c: the flat JSON-action tool loop over the semantic marts ─────────
     _TOOL_MAX_DEPTH = 3   # query turns per user question; the answer turn is free

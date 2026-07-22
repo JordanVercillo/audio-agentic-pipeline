@@ -69,7 +69,26 @@ _MODES: dict[str, dict[str, str]] = {
         "output": ('  "narrative": 3-5 sentences, second person, warm but specific, '
                    'plain prose, no markdown — containing every string in "cited" verbatim.'),
     },
+    # K3: cluster descriptions — additive only (D-5). The bucket name is
+    # canonical and pinned by the CALLER (describe_cluster never takes a name
+    # from the model); the description must be grounded in the exact dims that
+    # produced the name, so "cited" is REQUIRED to carry every dimension word.
+    "cluster": {
+        "task": ("TASK: Describe how this ONE sound bucket sounds, strictly from "
+                 "the DATA. Never rename the bucket or coin a new name for it; "
+                 "never name any track or artist. Your \"cited\" array MUST "
+                 "include every dimension word listed in DATA (e.g. \"Loud\", "
+                 "\"Fast\") and the description must use each one."),
+        "answer_field": "description",
+        "output": ('  "description": 1-2 sentences, plain prose, no markdown — what '
+                   "this bucket sounds like relative to the rest of the library; it "
+                   'MUST contain every string in "cited" verbatim.'),
+    },
 }
+
+# Stamped beside stored descriptions so a contract change invalidates cleanly
+# and the D-47 flywheel can segment scores by contract (mirrors TOOL_CONTRACT_VERSION).
+CLUSTER_PROMPT_VERSION = "rtcros-cluster-v1"
 
 
 def answer_field(mode: str) -> str:

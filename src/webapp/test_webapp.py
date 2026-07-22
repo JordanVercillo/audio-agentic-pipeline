@@ -1252,6 +1252,63 @@ def test_tool_loop_runs_on_the_split_tools_model(monkeypatch, tmp_path):
     assert set(seen) == {"ollama:qwen3:8b"}                # every loop turn used it, not e4b
 
 
+# ── K3b: describe_cluster — grounded descriptions, template floor ───────────
+_CLUSTER = {"cluster_id": "0", "label": "Loud · Fast",
+            "dims": [{"feature": "rms_mean", "word": "Loud", "z": 1.8},
+                     {"feature": "tempo_bpm", "word": "Fast", "z": 1.2}],
+            "means": {"tempo": "148 bpm", "energy": 0.81},
+            "coverage": {"n_assigned": 42, "n_corpus": 311}}
+
+
+def test_describe_cluster_happy_path_cites_the_dims(monkeypatch):
+    from .rag import TasteRAG
+    calls = _scripted_llm(monkeypatch, [
+        '{"thoughts": "loud and fast", "cited": ["Loud", "Fast"], "description": '
+        '"These tracks run Loud and Fast compared with the rest of the library."}'])
+    res = TasteRAG(model="ollama:fake:0b").describe_cluster(_CLUSTER)
+    assert res["source"] == "llm" and res["label"] == "Loud · Fast"  # name pinned
+    assert "Loud" in res["description"] and "Fast" in res["description"]
+    assert res["prompt_version"] == "rtcros-cluster-v1"
+    # the grounding carried the dims + coverage, and only trusted content
+    assert "rms_mean, z=+1.80" in res["grounding"] and "42 of 311" in res["grounding"]
+    sys_prompt = calls[0][0]["content"]
+    assert "Never rename the bucket" in sys_prompt
+
+
+def test_describe_cluster_dropped_dim_word_degrades_to_template(monkeypatch):
+    from .rag import TasteRAG
+    # both attempts (initial + the verify retry) paraphrase "Loud" away
+    reply = ('{"thoughts": "t", "cited": ["Fast"], "description": '
+             '"These tracks feel powerful and Fast."}')
+    _scripted_llm(monkeypatch, [reply, reply])
+    res = TasteRAG(model="ollama:fake:0b").describe_cluster(_CLUSTER)
+    assert res["source"] == "fallback"
+    assert res["description"] == ("A “Loud · Fast” bucket — loud and fast "
+                                  "relative to the rest of the library.")
+
+
+def test_describe_cluster_empty_and_error_fall_back(monkeypatch):
+    from .rag import TasteRAG
+    _scripted_llm(monkeypatch, ["", ""])
+    res = TasteRAG(model="ollama:fake:0b").describe_cluster(_CLUSTER)
+    assert res["source"] == "fallback" and "loud and fast" in res["description"]
+
+    def boom(self, system, messages, model=None):
+        raise RuntimeError("server gone")
+    monkeypatch.setattr(TasteRAG, "_chat_messages", boom)
+    res = TasteRAG(model="ollama:fake:0b").describe_cluster(_CLUSTER)
+    assert res["source"] == "fallback"  # never raises (batch script relies on it)
+
+
+def test_describe_cluster_mixed_never_calls_the_llm(monkeypatch):
+    from .rag import TasteRAG
+    calls = _scripted_llm(monkeypatch, [])
+    res = TasteRAG(model="ollama:fake:0b").describe_cluster(
+        {"cluster_id": "2", "label": "Mixed", "dims": []})
+    assert res["source"] == "fallback" and calls == []      # no LLM spend on Mixed
+    assert "no single acoustic dimension" in res["description"]
+
+
 def test_tools_model_defaults_to_model_when_unset(monkeypatch):
     from .rag import TasteRAG
     monkeypatch.delenv("WEBAPP_TOOLS_LLM_MODEL", raising=False)
