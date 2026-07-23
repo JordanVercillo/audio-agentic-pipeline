@@ -192,12 +192,34 @@ def repair_from_link(cache: FeatureCache, track_id: str, url: str, *,
                 pass
 
 
+def owner_audio_path(audio_dir: Path, track_id: str, fmt: str) -> Path:
+    """Where a KEPT owner upload lives. `.name` strips any traversal attempt —
+    the id is base62-guarded upstream, this is defense in depth."""
+    return Path(audio_dir) / f"{Path(track_id).name}.{fmt}"
+
+
+def find_owner_audio(audio_dir: Path, track_id: str) -> Optional[Path]:
+    """The retained upload for a track, if any (V2 playback)."""
+    for fmt in ("mp3", "wav", "flac", "m4a"):
+        p = owner_audio_path(audio_dir, track_id, fmt)
+        if p.exists():
+            return p
+    return None
+
+
 def repair_from_upload(cache: FeatureCache, track_id: str, stream: BinaryIO, *,
                        audio_dir: Path, spectrogram_dir: Path,
-                       max_bytes: int = MAX_UPLOAD_BYTES) -> tuple[bool, str]:
+                       max_bytes: int = MAX_UPLOAD_BYTES,
+                       keep_dir: Optional[Path] = None) -> tuple[bool, str]:
     """Owner-uploaded audio file → validated swap. The stream is read in
     chunks against the cap (never buffer-then-check); the container is
-    sniffed from magic bytes; duration is validated BEFORE decode. Never raises."""
+    sniffed from magic bytes; duration is validated BEFORE decode.
+
+    V2 — `keep_dir` RETAINS the accepted file. D-15 makes audio transient
+    because YouTube is the durable source; an owner upload has NO external
+    source, so deleting it would destroy the only copy (no future
+    re-extraction, and nothing to play back for verification). Rejected
+    uploads are still deleted. Never raises."""
     audio_path: Optional[Path] = None
     try:
         meta = cache.get_meta(track_id)
@@ -229,10 +251,24 @@ def repair_from_upload(cache: FeatureCache, track_id: str, stream: BinaryIO, *,
         if implausible_duration(probed, expected_s):
             return False, (f"rejected: file is {probed or 0:.0f}s but this track "
                            f"is {expected_s or 0:.0f}s on Spotify — wrong version")
-        return _swap(cache, track_id, audio_path, spectrogram_dir, expected_s, {
+        ok, msg = _swap(cache, track_id, audio_path, spectrogram_dir, expected_s, {
             "source": "upload", "matcher_version": "manual-upload",
             "youtube_title": _UPLOAD_TITLE, "audio_format": fmt,
             "youtube_duration_s": probed})
+        if ok and keep_dir is not None:
+            # V2: keep the ONLY copy (see the docstring) — copy, don't move, so
+            # the finally-cleanup below stays a single unconditional rule.
+            try:
+                kept = owner_audio_path(keep_dir, track_id, fmt)
+                kept.parent.mkdir(parents=True, exist_ok=True)
+                for other in (keep_dir / f"{Path(track_id).name}.{f}"
+                              for f in ("mp3", "wav", "flac", "m4a")):
+                    if other != kept:
+                        other.unlink(missing_ok=True)   # a re-upload replaces
+                kept.write_bytes(audio_path.read_bytes())
+            except OSError as exc:
+                logger.warning("could not retain upload for %s: %s", track_id, exc)
+        return ok, msg
     except Exception as exc:  # noqa: BLE001 — a repair must never 500 the app
         logger.warning("repair_from_upload failed for %s: %s", track_id, exc)
         return False, f"repair failed: {exc}"

@@ -110,6 +110,8 @@ _DEMO_PROFILE_PATH = _BASE.parent.parent / "data" / "demo_profile.json"
 # and a repair-scratch dir SEPARATE from the runner's (no file collisions).
 _LEDGER_PATH = _BASE.parent.parent / "data" / "re_extract_ledger.json"
 _REPAIR_AUDIO_DIR = _BASE.parent.parent / "data" / "tmp_repair"
+# V2: RETAINED owner uploads — the only copy of tracks with no external source.
+_OWNER_AUDIO_DIR = _BASE.parent.parent / "data" / "owner_audio"
 _UPLOAD_FILE = File(...)  # module-level singleton (B008 — the FastAPI idiom)
 
 
@@ -1267,6 +1269,9 @@ def create_app() -> FastAPI:
         if ctx["is_owner"]:
             ctx["repair_msg"] = session.pop("repair_msg", None)
             ctx["needs_source_reason"] = _needs_source(cache, track_id)
+            from ..store.repair import find_owner_audio
+            ctx["has_owner_audio"] = find_owner_audio(
+                _OWNER_AUDIO_DIR, track_id) is not None
         if features is not None:
             ctx["summary"] = track_summary(features)
             ctx["radar"] = radar_svg(features)
@@ -1284,6 +1289,24 @@ def create_app() -> FastAPI:
                 for sid, _dist in cache.similar(track_id, k=6)
             ]
         return templates.TemplateResponse(request, "song.html", ctx)
+
+    @app.get("/audio/{track_id}")
+    def owner_audio(request: Request, track_id: str):
+        """V2: stream a RETAINED owner upload so it can be played back and
+        verified. OWNER-ONLY by deliberate choice — a YouTube-sourced track is
+        verifiable via its public link (YouTube hosts it, we only link), but an
+        uploaded file is hosted by US, and serving full copyrighted audio to
+        the public is a licensing exposure this project won't take. Visitors
+        still get the spectrogram + the honest 'owner-supplied' label."""
+        if not _TRACK_ID_RE.fullmatch(track_id or ""):
+            return RedirectResponse("/library", status_code=303)
+        if not _is_owner(request.state.session):
+            return RedirectResponse(f"/song/{track_id}", status_code=303)
+        from ..store.repair import find_owner_audio
+        path = find_owner_audio(_OWNER_AUDIO_DIR, track_id)
+        if path is None:
+            return HTMLResponse("no retained audio for this track", status_code=404)
+        return FileResponse(path)
 
     @app.post("/song/{track_id}/repair-link")
     def song_repair_link(request: Request, track_id: str, url: str = Form("")):
@@ -1315,7 +1338,8 @@ def create_app() -> FastAPI:
         from ..store.repair import repair_from_upload
         ok, msg = repair_from_upload(_feature_cache(), track_id, file.file,
                                      audio_dir=_REPAIR_AUDIO_DIR,
-                                     spectrogram_dir=_SPECTROGRAM_DIR)
+                                     spectrogram_dir=_SPECTROGRAM_DIR,
+                                     keep_dir=_OWNER_AUDIO_DIR)
         session["repair_msg"] = ("✓ " if ok else "✗ ") + msg
         return RedirectResponse(f"/song/{track_id}", status_code=303)
 

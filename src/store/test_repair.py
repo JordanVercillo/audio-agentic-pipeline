@@ -155,6 +155,35 @@ def test_upload_happy_path_real_wav_runs_real_dsp(cache, tmp_path, monkeypatch):
     assert (tmp_path / "s" / "trk.png").exists()            # spectrogram rendered
 
 
+def test_accepted_upload_is_RETAINED_rejected_is_not(cache, tmp_path):
+    # V2: an owner upload is the ONLY copy (no external source), so an accepted
+    # file is kept for playback + future re-extraction; a rejected one is not.
+    from .repair import find_owner_audio
+    keep = tmp_path / "owner_audio"
+    cache.remember_meta([{"spotify_track_id": "trk", "track_name": "Roots",
+                          "artist_names": "WILDS", "duration_ms": 5_000}])
+    ok, msg = repair_from_upload(cache, "trk", io.BytesIO(_wav_bytes(5.0)),
+                                 audio_dir=tmp_path / "a",
+                                 spectrogram_dir=tmp_path / "s", keep_dir=keep)
+    assert ok, msg
+    kept = find_owner_audio(keep, "trk")
+    assert kept is not None and kept.suffix == ".wav" and kept.stat().st_size > 0
+    assert not list((tmp_path / "a").glob("trk.*"))     # scratch still cleaned
+
+    # a rejected upload leaves nothing behind
+    ok2, _ = repair_from_upload(cache, "trk", io.BytesIO(b"MZ\x90\x00" + b"E" * 64),
+                                audio_dir=tmp_path / "a",
+                                spectrogram_dir=tmp_path / "s",
+                                keep_dir=tmp_path / "owner_audio2")
+    assert not ok2 and find_owner_audio(tmp_path / "owner_audio2", "trk") is None
+
+
+def test_owner_audio_path_resists_traversal():
+    from .repair import owner_audio_path
+    p = owner_audio_path(Path("/keep"), "../../etc/passwd", "mp3")
+    assert p.parent == Path("/keep") and "passwd" in p.name
+
+
 def test_upload_duration_mismatch_hard_rejects(cache, tmp_path):
     # track says 200s; the uploaded tone is 5s*… make the FILE long instead:
     # a 5s file against a 200s track is SHORT (allowed — implausible only when

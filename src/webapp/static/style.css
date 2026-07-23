@@ -401,6 +401,15 @@ table.tax thead th, table.tax tbody th { font-weight: 600; padding: .3rem .5rem;
   letter-spacing: .03em; }
 .prov dd { margin: .1rem 0 0; font-size: .9rem; }
 .prov a { color: var(--ink); }
+/* the verify-it-yourself affordances (V1): an unmissable open-source button
+   and the raw URL, so provenance is checkable at a glance, not just claimed */
+.prov-open { display: inline-block; margin: .35rem .5rem .1rem 0;
+  padding: .2rem .55rem; font-size: .78rem; }
+.prov-url { display: block; color: var(--muted); font-size: .7rem;
+  word-break: break-all; }
+a.prov-glyph { text-decoration: none; }
+a.prov-glyph:hover { text-decoration: underline; }
+.audio-verify { width: 100%; max-width: 22rem; margin: .4rem 0 .2rem; }
 
 /* Landing access tiers (H6 / P3.6) */
 .tiers { display: grid; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));

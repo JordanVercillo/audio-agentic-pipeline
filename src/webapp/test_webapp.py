@@ -410,6 +410,51 @@ def test_repair_refuses_non_owner_and_accepts_owner(client, monkeypatch, tmp_pat
     assert "✓ repaired" in page and "Repair source" in page
 
 
+def test_owner_audio_is_owner_gated(client, monkeypatch, tmp_path):
+    # V2: retained upload playback is OWNER-ONLY — we host this file, and
+    # serving full copyrighted audio publicly is a licensing exposure.
+    monkeypatch.setenv("WEBAPP_OWNER_SPOTIFY_ID", "jordan_id")
+    tc = _repair_cache(tmp_path)
+    monkeypatch.setattr("src.webapp.app._feature_cache", lambda: tc)
+    owner_dir = tmp_path / "owner_audio"
+    owner_dir.mkdir()
+    (owner_dir / "fixme.wav").write_bytes(b"RIFF0000WAVEfmt fake")
+    monkeypatch.setattr("src.webapp.app._OWNER_AUDIO_DIR", owner_dir)
+    # anon → redirected away, never served
+    r = client.get("/audio/fixme", follow_redirects=False)
+    assert r.status_code == 303
+    # authed non-owner → same
+    client.cookies.set(config.SESSION_COOKIE,
+                       _seed_session(taste=_TASTE, extra={"me_id": "someone_else"}))
+    assert client.get("/audio/fixme", follow_redirects=False).status_code == 303
+    # owner → the bytes, and the play control renders on /song
+    client.cookies.set(config.SESSION_COOKIE,
+                       _seed_session(taste=_TASTE, extra={"me_id": "jordan_id"}))
+    ok = client.get("/audio/fixme")
+    assert ok.status_code == 200 and ok.content.startswith(b"RIFF")
+    assert '<audio' in client.get("/song/fixme").text
+    # a traversal-shaped id never reaches the filesystem
+    assert client.get("/audio/..%2F..%2Fsecret", follow_redirects=False).status_code in (303, 404)
+
+
+def test_library_source_glyph_links_to_youtube(rclient_unused=None):
+    # V1: the Src glyph is the verify-it-yourself affordance — a recorded
+    # source renders as a real anchor to the exact recording.
+    from .app import templates
+    html = templates.env.get_template("library.html").render(
+        rows=[{"id": "a", "name": "S", "artist": "A", "analyzed": True,
+               "provenance": "ok", "source_url": "https://youtu.be/xyz",
+               "tempo": 120.0, "popularity": 50},
+              {"id": "b", "name": "T", "artist": "A", "analyzed": True,
+               "provenance": None, "source_url": None,
+               "tempo": 100.0, "popularity": 40}],
+        tab="all", q="", sort="name", order="asc", sort_options=["name"],
+        shown=2, total=2, analyzed=2, my_count=0, viewer=False, authed=False)
+    assert 'href="https://youtu.be/xyz"' in html and 'rel="noopener nofollow"' in html
+    assert "click a ✓ or ~ to open the" in html            # the verify-it-yourself caption
+    assert ">∅<" in html                                   # the ∅ row stays inert
+
+
 def test_owner_gate_forgives_case_and_padding_only(client, monkeypatch, tmp_path):
     # Spotify ids aren't case-sensitive and a pasted value picks up whitespace
     # — but this stays an EXACT identity check: a different id never passes.

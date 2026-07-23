@@ -58,8 +58,10 @@
       <div><dt>Acquired from</dt><dd>
         {# youtube_url is external — only link an http(s) scheme, and NEVER |safe #}
         {% if provenance.youtube_url and provenance.youtube_url.startswith('http') %}
-        <a href="{{ provenance.youtube_url }}" target="_blank" rel="noopener nofollow">
-          {{ provenance.youtube_title or 'YouTube source' }}</a>
+        {{ provenance.youtube_title or 'YouTube source' }}
+        <a class="btn ghost prov-open" href="{{ provenance.youtube_url }}"
+           target="_blank" rel="noopener nofollow">▶ Open source on YouTube</a>
+        <span class="prov-url">{{ provenance.youtube_url }}</span>
         {% else %}{{ provenance.youtube_title or '—' }}{% endif %}</dd></div>
       {% if provenance.channel %}<div><dt>Channel</dt><dd>{{ provenance.channel }}</dd></div>{% endif %}
       {% if provenance.duration_delta_s is not none %}
@@ -73,12 +75,22 @@
         {% if provenance.matcher_version %}<small>({{ provenance.matcher_version }})</small>{% endif %}
       </dd></div>{% endif %}
     </dl>
-    <p class="cap">The YouTube recording this track's local features were extracted
-      from — open it to validate it's the actual song. Match confidence is a
+    <p class="cap">The recording this track's local features were extracted from —
+      open it to validate it's the actual song. Match confidence is a
       selection heuristic (title + duration), not a measure of the music; a low
       score is common for remixes/edits, not proof of a wrong match.</p>
   </div>
-  {% else %}
+  {% endif %}
+  {# V2: retained owner upload — renders regardless of provenance state, so a
+     kept file is always playable/verifiable by the owner. #}
+  {% if has_owner_audio %}
+  <div class="prov-card">
+    <p class="cap"><b>Owner-supplied audio</b> — play it to confirm it's the right
+      recording (visible to you only; we host this file, so it isn't public):</p>
+    <audio class="audio-verify" controls preload="none" src="/audio/{{ track_id }}"></audio>
+  </div>
+  {% endif %}
+  {% if not provenance and not has_owner_audio %}
   <p class="cap muted">Source not recorded for this track yet — it was analyzed
     before provenance capture, and will populate on re-extraction.</p>
   {% endif %}

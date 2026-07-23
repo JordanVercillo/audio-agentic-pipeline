@@ -187,17 +187,22 @@ class FeatureCache:
                 return None
             return {c.name: getattr(r, c.name) for c in TrackProvenance.__table__.columns}
 
-    def _provenance_glyph_map(self, s: Any) -> dict[str, str]:
-        """{track_id → "ok"|"low"} for tracks with a provenance event (current
-        per key). Absent = ∅. "low" flags the match_confidence < 0.5 tail (the
-        S2 electronic-remix band) — DISPLAY context, never a gate."""
-        out: dict[str, str] = {}
-        for tid, conf in s.execute(
-                select(TrackProvenance.spotify_track_id, TrackProvenance.match_confidence)
+    def _provenance_glyph_map(self, s: Any) -> dict[str, dict]:
+        """{track_id → {state, url}} for tracks with a provenance event (current
+        per key). Absent = ∅. state "low" flags the match_confidence < 0.5 tail
+        (the S2 electronic-remix band) — DISPLAY context, never a gate. `url` is
+        the source link so /library can make the glyph CLICKABLE (verify the
+        audio yourself); None for owner-uploaded audio, which has no public URL."""
+        out: dict[str, dict] = {}
+        for tid, conf, url in s.execute(
+                select(TrackProvenance.spotify_track_id,
+                       TrackProvenance.match_confidence,
+                       TrackProvenance.youtube_url)
                 .order_by(TrackProvenance.id.desc())).all():
             if tid in out:
                 continue  # newest-first → first sighting is current
-            out[tid] = "low" if (conf is not None and conf < 0.5) else "ok"
+            out[tid] = {"state": "low" if (conf is not None and conf < 0.5) else "ok",
+                        "url": url if (url or "").startswith("http") else None}
         return out
 
     def log_chat_turn(self, **row: Any) -> int:
@@ -297,7 +302,8 @@ class FeatureCache:
                     "tempo": fr.tempo_bpm if fr else None,
                     "energy": fr.rms_mean if fr else None,
                     "brightness": fr.spectral_centroid_mean if fr else None,
-                    "provenance": prov.get(m.spotify_track_id),  # "ok" | "low" | None (∅)
+                    "provenance": (prov.get(m.spotify_track_id) or {}).get("state"),
+                    "source_url": (prov.get(m.spotify_track_id) or {}).get("url"),
                 })
         return rows
 

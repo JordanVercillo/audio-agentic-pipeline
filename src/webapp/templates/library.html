@@ -58,19 +58,23 @@
       <td class="tartist">{{ r.artist }}</td>
       <td class="num">{{ r.popularity if r.popularity is not none else '—' }}</td>
       <td class="num">{{ r.tempo|round|int if r.tempo is not none else '—' }}</td>
-      <td class="num">{% if r.provenance == 'ok' %}<span class="prov-glyph ok" title="Source recorded">✓</span>
-        {% elif r.provenance == 'low' %}<span class="prov-glyph low" title="Source recorded — low match confidence">~</span>
+      <td class="num">{% if r.provenance and r.source_url %}<a class="prov-glyph {{ r.provenance }}"
+           href="{{ r.source_url }}" target="_blank" rel="noopener nofollow"
+           title="Open the source audio on YouTube and check it yourself{{ ' — low match confidence' if r.provenance == 'low' else '' }}">{{ '✓' if r.provenance == 'ok' else '~' }}</a>
+        {% elif r.provenance %}<span class="prov-glyph {{ r.provenance }}" title="Owner-supplied audio file (no public link)">⏏</span>
         {% else %}<span class="prov-glyph none" title="Source not recorded yet">∅</span>{% endif %}</td>
       <td>{% if not r.analyzed %}<a class="cap" href="/queue">analyzing…</a>{% endif %}</td>
     </tr>
     {% endfor %}
     </tbody>
   </table>
-  <p class="cap"><b>Src</b> = audio-source provenance: <span class="prov-glyph ok">✓</span> recorded ·
+  <p class="cap"><b>Src</b> = audio-source provenance — <b>click a ✓ or ~ to open the
+    exact YouTube recording the features were measured from</b> and judge it yourself:
+    <span class="prov-glyph ok">✓</span> recorded ·
     <span class="prov-glyph low">~</span> recorded, low match confidence ·
-    <span class="prov-glyph none">∅</span> not yet recorded (tracks analyzed before
-    provenance capture — they populate on re-extraction). Open a song to see its
-    YouTube source.</p>
+    <span class="prov-glyph none">⏏</span> owner-supplied file (no public link) ·
+    <span class="prov-glyph none">∅</span> not yet recorded (analyzed before
+    provenance capture — populates on re-extraction).</p>
   {% else %}
   <p class="cap">{% if tab == 'mine' %}No analyzed songs yet — they appear here as extraction finishes.{% else %}No songs match.{% endif %}</p>
   {% endif %}
