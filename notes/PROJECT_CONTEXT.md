@@ -560,18 +560,42 @@
   files/conventions: `TrackProvenance` (models), `remember_provenance`/
   `all_provenance`/`provenance_for` (cache), `build_provenance_mart` (semantic),
   `PROVENANCE_ORPHAN` (audit), `_record_provenance` (extractor), the `.prov-*`
-  CSS. **➡️ NEXT ACTION — Phase 4.5, slice Q3: the D-52 re-extraction program**
-  (**Fable signs the batch plan FIRST** — irreversible ~11h data-mutating run;
-  Opus builds the resumable runner). Uniformly re-acquire+re-extract all ~807
-  through the D-51 schema + duration-aware matcher; **per-track atomic swap on
-  SUCCESS only** (a failed re-extract keeps old features + a flagged row);
-  resumable, rate-limited, capped batches; frozen 77-dim contract untouched;
-  ends with post-drain rebuild + cluster retrain + plane-coherence green.
-  **This permanently fixes the 2 broken extractions (Aftermath/Q&A, still
-  tempo-0 live) + retires the interim feature_valid gate, and populates ALL
-  provenance (∅→✓ across the corpus).** Owner-ratified consequence: feature
-  shift → cluster/archetype may change (precedented, D-55). Then Q4 QA tooling
-  (exempt from the QA-deferral), then R1–R3 Artists 2.0 (MusicBrainz, $0,
+  CSS. ✅ **Q3 BUILT + DRY-RUN PROVEN (2026-07-23, session 54, Fable +
+  data-platform red-team; 513 tests, audits green, app-verify ALL-FALSE):
+  the D-52 re-extraction program is READY and its first 3 tracks are LIVE.**
+  The Fable-signed batch plan survived a red-team that found **3 verified
+  ship-blockers** (journal #43): **F1** `_write_atomic`'s FIXED tmp name let
+  the worker's and runner's concurrent mart rebuilds os.replace each other's
+  half-written files (→ per-pid tmp); **F2** `upsert`'s preserve-on-None (the
+  #22 fix, right for features-only re-writes) would silently mix an OLD
+  audio's curve/meter with NEW features on re-acquisition (→
+  `replace_display=True`, a true swap); **F3** the CLI pointed downloads at
+  `data/raw_audio` where the transient-delete would destroy pre-existing
+  owner MP3s (→ `data/tmp_reextract` scratch; sentinel test). Also folded:
+  provenance write VERIFIED (the resume marker must not lie), ledger
+  temp+replace + provenance-wins reconciliation, still-broken-after-swap →
+  ledger FLAG for Q4 (never auto-dead-letter — a deletion is the owner's
+  call), coverage denominator = canonical analyzed (796 = 807 − 11 twins).
+  Key files: `src/store/re_extract.py` (Ledger/select_targets/re_extract_one/
+  run, 12 invariant tests) + `scripts/re_extract.py` (CLI: --limit/--all/
+  --retry-failed, post-run checklist). **THE DRY-RUN (--limit 3, 57s): 3/3
+  swapped — the 2 permanently-broken extractions are HEALED: Q&A 0→129.2 bpm,
+  Aftermath 0→143.6 bpm (matched to the official Muse video, duration delta
+  0.003s) — Aftermath's /song went from dead-zero stats to real features +
+  fade-in + 7-section ribbon + the populated provenance card, verified live
+  through the public edge. FEATURE_DISTRIBUTION's breakage warnings are GONE
+  (only the documented legit DJ-mix duration tail remains). Provenance
+  coverage: 3/796 canonical.** **➡️ NEXT ACTION — (owner) SCHEDULE THE FULL
+  RUN:** `uv run python scripts/re_extract.py --all` (~12-16 h,
+  interrupt-safe at any moment, resumable by construction; or bite-size
+  `--limit 100` evenings). Take a backup first if running with the app up
+  (`uv run python scripts/backup_cache.py`; stop_app also snapshots). When
+  it prints COVERAGE COMPLETE, follow its checklist: train_clusters →
+  describe_clusters --force → build marts → both audits → restart + browser
+  check (cluster/archetype WILL shift — ratified, D-55). **(build) next
+  slice = Q4 QA tooling** (`review_provenance.py` — stratified sample over
+  the provenance mart + duration audit → aggregates-only health artifact;
+  exempt from the QA-deferral), then R1–R3 Artists 2.0 (MusicBrainz, $0,
   auth-less; research-expert fences ToS/rate once). DEFERRED (not blocking):
   S4 DMARC reject-flip (owner, ~Jul-25 after clean reports); cluster_profile
   online-cluster (owner call — now 99.7% covered, the gap is tiny).
@@ -2157,3 +2181,24 @@ narrative goes to `notes/engineering_journal.md`, plans to
   execution; the auto-escape default made the flagged XSS risk a non-event).
   **Left off: Q2 shipped, verified. NEXT = Q3 — the D-52 re-extraction program
   (Fable signs the batch plan first). NEW SESSION: run `/resume`.**
+- **2026-07-23 (session 54 — Phase 4.5 Q3, Fable + data-platform red-team;
+  513 tests):** Signed the D-52 batch plan, red-teamed it, built the runner,
+  proved it live. The red-team probed the live DB and found **3 verified
+  ship-blockers in a plan the author had already self-checked** (journal
+  #43): the shared `.tmp` mart-rebuild collision (F1 → per-pid tmp), the
+  preserve-on-None merge that becomes cross-source contamination on
+  re-acquisition (F2 → `upsert(replace_display=True)`), and the CLI's
+  audio_dir violating the plan's own raw_audio rule (F3 → scratch dir +
+  sentinel test). `src/store/re_extract.py` + `scripts/re_extract.py`
+  (atomic-swap-on-success, provenance-verified resume marker, durable
+  provenance-wins ledger, still-broken→flag-not-dead-letter, 796-canonical
+  scope, 3-tier value-first order); 12 invariant tests incl. the F1/F2/F3
+  catchers. **The dry-run (--limit 3, 57 s) HEALED the 2 permanently-broken
+  extractions** — Q&A 0→129.2 bpm, Aftermath 0→143.6 bpm (official Muse
+  video, Δ0.003 s), the provenance card live on the public edge, and
+  FEATURE_DISTRIBUTION's breakage warnings gone (only the documented DJ-mix
+  duration tail remains). Coverage note now 3/796 canonical (red-team #6).
+  **Left off: Q3 READY — the full ~12-16 h `--all` run is the OWNER's to
+  schedule (interrupt-safe, resumable); its completion checklist is printed
+  by the runner. Next build slice = Q4 `review_provenance.py`. NEW SESSION:
+  run `/resume`.**

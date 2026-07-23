@@ -1115,3 +1115,32 @@ nothing about whether the output was fit to show.
 > template, same shape as the opposite-pole guard). When you feed internal
 > identifiers into a prompt, assume they will surface verbatim unless something
 > stops them.*
+
+## 43 — Three ship-blockers in a plan the author had already verified (2026-07-23, Q3)
+
+The D-52 re-extraction batch plan felt solid: I had personally verified the
+runner/worker row-disjointness in the code (`enqueue` can't touch analyzed
+tracks), reused the battle-tested extract_one write path, and stated the
+invariants explicitly. The data-platform red-team then found three VERIFIED
+ship-blockers anyway — each in a dimension I hadn't thought to state a claim
+about: a fixed `.tmp` filename that let two concurrent mart rebuilds
+os.replace each other's half-written files; `upsert`'s preserve-on-None (the
+CORRECT fix for features-only re-writes since #22) silently mixing an old
+audio's loudness curve into a new audio's row the moment the write's INTENT
+changed from re-write to re-acquisition; and my own CLI pointing downloads at
+data/raw_audio, where the plan's own transient-delete rule would have
+destroyed the owner's pre-existing MP3s.
+
+**The realization:** an author verifies the claims they thought to make. The
+row-disjointness claim was true — and irrelevant to the mart-rebuild
+collision, because "disjoint rows" and "disjoint files" are different
+theorems. And a reused code path carries the SEMANTICS of its original
+intent: preserve-if-absent is idempotence for a re-write and cross-source
+contamination for a re-acquisition — same code, opposite correctness,
+depending on WHY you're writing.
+
+> *Before an irreversible batch program, buy the adversarial pass — and aim
+> it at the plan, not just the code. Check every reused write path against
+> the NEW intent, not the intent it was built for; and treat "I verified X"
+> as evidence only about X, never about the neighboring claims you didn't
+> think to state.*
