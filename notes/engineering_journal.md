@@ -1169,3 +1169,30 @@ because the flag lived beside the data instead of in front of it.
 > that FAILS when any population bypasses the filter (TWIN_LEAKAGE). A flag
 > without an enforcement choke-point decays into decoration as the codebase
 > grows around it.*
+
+## 45 — A ranker with no floor becomes an acceptor of garbage (2026-07-23, the D-52 run)
+
+heuristic-v1's "never reject, only rank" was a deliberate, signed-off design
+— and it was correct for the corpus it grew up on: popular top-tracks whose
+YouTube results always contained the real song. The full re-extraction run
+pointed the same ranker at the corpus's obscure tail, where the candidate
+pool often contains NO true answer — and ranking's contract quietly
+inverted: the least-bad of five DJ sets is still a DJ set (19 tracks, up to
+37x too long), and when every candidate is the wrong song, the one whose
+LENGTH matches wins the +25 duration bonus with zero title overlap (7 of the
+first 71 swaps were the wrong song entirely). The spot-check caught it at 71
+rows, not 796.
+
+**The realization:** rank-don't-reject is only safe when the pool reliably
+contains truth. And the two rejections we later added are NOT the rejection
+threshold we'd rightly declined at the O2 sign-off — that one gated on the
+heuristic's own SCORE (which would have discarded legitimate remixes); these
+gate on CONTRADICTION WITH GROUND TRUTH (Spotify's own duration; the track's
+own title). Rejecting by self-doubt is timidity; rejecting by external
+contradiction is integrity.
+
+> *When a selection heuristic moves to a population whose candidate pools
+> may contain no true answer, add floors that test candidates against
+> GROUND TRUTH, not against the heuristic's own confidence — and spot-check
+> the first N outputs of any long batch before letting it run: the cost of
+> the check is minutes, the cost of its absence is the whole run.*

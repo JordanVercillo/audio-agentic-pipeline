@@ -618,19 +618,50 @@
   table pruned 807→796.** Corrections: the O3b commit message says "530
   tests" — the truth is 522 (miscount; this line wins). Interim residue: the
   /analytics scatter plots ~11 twin dots until the next retrain (cosmetic).
-  **➡️ NEXT ACTION — (owner) SCHEDULE THE FULL
-  RUN:** `uv run python scripts/re_extract.py --all` (~12-16 h,
-  interrupt-safe at any moment, resumable by construction; or bite-size
-  `--limit 100` evenings). Take a backup first if running with the app up
-  (`uv run python scripts/backup_cache.py`; stop_app also snapshots). When
-  it prints COVERAGE COMPLETE, follow its checklist: train_clusters →
-  describe_clusters --force → build marts → both audits → restart + browser
-  check (cluster/archetype WILL shift — ratified D-55, and that retrain now
-  ALSO materializes O3's twin-free training in the same pass). **(build) next
-  slice = Q4 QA tooling** (`review_provenance.py` — stratified sample over
-  the provenance mart + duration audit → aggregates-only health artifact;
-  exempt from the QA-deferral), then R1–R3 Artists 2.0 (MusicBrainz, $0,
-  auth-less; research-expert fences ToS/rate once). DEFERRED (not blocking):
+  ✅ **THE FULL D-52 RUN IS LIVE + D-56 OWNER-REPAIR SHIPPED (2026-07-23,
+  session 56, Opus launch → Fable spot-check/design; commits
+  3d1c38a→2779a13, 542 tests, app-verify ALL-FALSE).** Owner authorized the
+  run; launched DETACHED (survives sessions; `scripts/re_extract_status.py`
+  = the read-only progress view; backup taken first). **The spot-check
+  discipline caught TWO live traps mid-flight** (journal #45): ① the DJ-SET
+  trap — heuristic-v1 never rejects, so for obscure tracks the least-bad
+  candidate is a 2-hour set (19 queued tracks carried mix-length audio up
+  to 37x; the run was re-downloading them at 173 MB + ~9 GB RAM each) →
+  duration guard (>2x AND >120 s vs Spotify's own length; pre-download via
+  the Q1a youtube_duration_s + a post-load backstop); ② the WRONG-SONG trap
+  — duration-match scores +25 with NO title requirement, so "any song of
+  the same length" wins: **7 of the first 71 swaps were the wrong song**
+  ("Alone" ← Anti-Up "Shake") → the title-affinity gate (≥1 meaningful
+  TITLE-token overlap or squashed-title containment; artist-only is NOT
+  enough; owner-ratified safe mode: reject to a human). Run relaunched
+  healthy: guards firing correctly, ~24% at wrap, ledger ~33 = the repair
+  queue. **D-56 BUILT SAME-DAY (owner specced + ratified: owner-only,
+  hard-reject, build now):** `src/store/repair.py` (link repair:
+  YouTube-host ALLOWLIST pre-yt-dlp (no SSRF) + duration HARD-REJECT
+  pre-download; upload repair: streamed 20 MB cap, MAGIC-BYTE sniffing
+  (never extension), ffprobe duration pre-decode, constant display title —
+  the full D-45 posture; both end in the Q3 swap discipline + manual-link/
+  manual-upload provenance w/ NULL confidence; never writes the runner's
+  ledger — provenance-wins reconciliation clears entries) + the surfaces
+  (`/library?filter=needs-source` owner tab w/ reasons; /song owner repair
+  card w/ both forms + PRG flash). Gate: `WEBAPP_OWNER_SPOTIFY_ID` (.env)
+  vs the session /me id — **FAIL-CLOSED, verified live (no forms render;
+  the env var is NOT SET YET — owner step below)**. KNOWN FOLLOW-UP: the
+  LIVE WORKER's default_acquire still lacks both guards (how the 19 DJ-set
+  tracks got in) — adopting them for new-track ingestion is a separate
+  owner-ratified change. The 7+ wrong-song swaps from round 1 keep their
+  (honest) provenance and await D-56 repair.
+  **➡️ NEXT ACTION — three tracks: ① (owner, 1 min) add
+  `WEBAPP_OWNER_SPOTIFY_ID=<your Spotify user id>` to `.env` + `app_control
+  restart` — the repair tools appear (Spotify id: account page or your
+  profile URL). ② let the run finish (observed pace ≈ 2.4 tracks/min →
+  ~4-5 h; check `uv run python scripts/re_extract_status.py`), then the
+  post-run checklist it prints (retrain materializes Q3-uniform + O3
+  twin-free in ONE archetype shift; re-run the wrong-song sweep at
+  completion). ③ drain the needs-source queue via D-56 (paste links /
+  upload files — Roots by WILDS et al). (build) next slice = Q4 QA tooling
+  (`review_provenance.py`), then R1–R3 Artists 2.0.** DEFERRED (not
+  blocking): worker adoption of the acquisition guards (owner call);
   O3d — the acoustic recall miner (cross-name same-audio candidates from the
   77-dim vectors, review-report-only, after Q3's uniform re-extraction);
   S4 DMARC reject-flip (owner, ~Jul-25 after clean reports); cluster_profile
@@ -2258,3 +2289,22 @@ narrative goes to `notes/engineering_journal.md`, plans to
   unchanged = (owner) the Q3 `--all` full run — its post-run retrain now
   materializes twin-free training too; (build) Q4. NEW SESSION: run
   `/resume`.**
+- **2026-07-23 (session 56 — the full D-52 run + two mid-flight traps +
+  D-56, Opus → Fable; commits 3d1c38a→2779a13, 542 tests):** Owner said go;
+  launched detached w/ backup + a status script. **The spot-check found the
+  run reproducing garbage 4 min in** (journal #45): the DJ-set trap (never-
+  reject ranking → a 2-h set for a 3.5-min song, 19 queued; stopped, duration
+  guard, relaunch) then at 71 swaps the wrong-SONG trap (duration +25 with
+  no title requirement → 7 confirmed wrong songs; stopped, title-affinity
+  gate w/ the live failures as test fixtures, relaunch — healthy, guards
+  firing, ~24% at wrap, ledger 33 = the repair queue). **Mid-flight the
+  owner specced D-56** (paste-a-link + upload-own-audio for unfindable
+  tracks, e.g. Roots by WILDS; ratified owner-only + hard-reject + build
+  now): engine (SSRF allowlist, magic bytes, streamed cap, ffprobe
+  pre-decode, Q3 swap discipline, manual provenance) + surfaces
+  (needs-source library tab, /song repair card), FAIL-CLOSED verified live
+  (env unset — owner adds WEBAPP_OWNER_SPOTIFY_ID). Known follow-up: the
+  live worker still lacks both guards (how the 19 got in). **Left off: run
+  HEALTHY mid-flight (~4-5 h at observed pace); D-56 deployed fail-closed.
+  NEXT = owner env var → run finishes → post-run checklist → drain the
+  repair queue; build = Q4. NEW SESSION: run `/resume`.**
