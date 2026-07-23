@@ -388,6 +388,20 @@ table.tax thead th, table.tax tbody th { font-weight: 600; padding: .3rem .5rem;
 .art-sm.art-ph { display: grid; place-items: center; background: var(--panel-2); color: var(--muted); }
 .dup { display: block; color: var(--muted); }
 
+/* Acquisition provenance (Q1/Q2 · D-51) */
+.prov-glyph { display: inline-block; font-weight: 700; width: 1.1em; text-align: center; }
+.prov-glyph.ok { color: var(--spotify); }
+.prov-glyph.low { color: #d9a441; }        /* amber — recorded, low match confidence */
+.prov-glyph.none { color: var(--muted); font-weight: 400; }
+.prov-card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+  padding: .8rem .9rem; margin: .25rem 0 1rem; }
+.prov { display: grid; grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: .5rem .9rem; margin: 0; }
+.prov dt { color: var(--muted); font-size: .72rem; text-transform: uppercase;
+  letter-spacing: .03em; }
+.prov dd { margin: .1rem 0 0; font-size: .9rem; }
+.prov a { color: var(--ink); }
+
 /* Landing access tiers (H6 / P3.6) */
 .tiers { display: grid; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
   gap: .75rem; margin: 1.25rem 0 .5rem; text-align: left; }

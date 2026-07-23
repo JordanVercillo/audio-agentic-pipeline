@@ -40,7 +40,7 @@
 
   {% if rows %}
   <table class="lib-table">
-    <thead><tr><th></th><th>Song</th><th>Artist</th><th class="num">Pop.</th><th class="num">BPM</th><th></th></tr></thead>
+    <thead><tr><th></th><th>Song</th><th>Artist</th><th class="num">Pop.</th><th class="num">BPM</th><th class="num" title="Audio source recorded (Q1/D-51)">Src</th><th></th></tr></thead>
     <tbody>
     {% for r in rows %}
     <tr>
@@ -50,11 +50,19 @@
       <td class="tartist">{{ r.artist }}</td>
       <td class="num">{{ r.popularity if r.popularity is not none else '—' }}</td>
       <td class="num">{{ r.tempo|round|int if r.tempo is not none else '—' }}</td>
+      <td class="num">{% if r.provenance == 'ok' %}<span class="prov-glyph ok" title="Source recorded">✓</span>
+        {% elif r.provenance == 'low' %}<span class="prov-glyph low" title="Source recorded — low match confidence">~</span>
+        {% else %}<span class="prov-glyph none" title="Source not recorded yet">∅</span>{% endif %}</td>
       <td>{% if not r.analyzed %}<a class="cap" href="/queue">analyzing…</a>{% endif %}</td>
     </tr>
     {% endfor %}
     </tbody>
   </table>
+  <p class="cap"><b>Src</b> = audio-source provenance: <span class="prov-glyph ok">✓</span> recorded ·
+    <span class="prov-glyph low">~</span> recorded, low match confidence ·
+    <span class="prov-glyph none">∅</span> not yet recorded (tracks analyzed before
+    provenance capture — they populate on re-extraction). Open a song to see its
+    YouTube source.</p>
   {% else %}
   <p class="cap">{% if tab == 'mine' %}No analyzed songs yet — they appear here as extraction finishes.{% else %}No songs match.{% endif %}</p>
   {% endif %}

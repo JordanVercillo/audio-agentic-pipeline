@@ -158,6 +158,20 @@ def test_library_search_filters(rclient, monkeypatch, tmp_path):
     assert "Anthem" in r.text and "Zephyr" not in r.text
 
 
+def test_library_provenance_glyph_and_legend(rclient, monkeypatch, tmp_path):
+    # Q2/D-51: the Src column shows ✓ for a recorded source and the legend renders;
+    # the seed cache has no provenance for Anthem → its ∅ glyph appears too.
+    def _cache():
+        tc = _seed_route_cache(tmp_path)
+        tc.remember_provenance(spotify_track_id="aaaaaaaa", match_confidence=0.86)
+        return tc
+    monkeypatch.setattr("src.webapp.app._feature_cache", _cache)
+    r = rclient.get("/library")
+    assert r.status_code == 200
+    assert "prov-glyph" in r.text and ">Src<" in r.text          # column + glyph rendered
+    assert "audio-source provenance" in r.text                   # the legend caption
+
+
 def test_song_public_and_bad_id_redirects(rclient, monkeypatch, tmp_path):
     monkeypatch.setattr("src.webapp.app._feature_cache",
                         lambda: _seed_route_cache(tmp_path))

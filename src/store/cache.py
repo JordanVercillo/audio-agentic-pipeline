@@ -175,6 +175,31 @@ class FeatureCache:
             return [{c.name: getattr(r, c.name) for c in TrackProvenance.__table__.columns}
                     for r in rows]
 
+    def provenance_for(self, track_id: str) -> Optional[dict]:
+        """The CURRENT acquisition event for one track (latest by id) — the
+        /song "Source & provenance" section (Q2/D-51). None when the track
+        predates Q1 (∅ until the Q3 backfill)."""
+        with self._Session() as s:
+            r = s.execute(select(TrackProvenance)
+                          .where(TrackProvenance.spotify_track_id == track_id)
+                          .order_by(TrackProvenance.id.desc()).limit(1)).scalars().first()
+            if r is None:
+                return None
+            return {c.name: getattr(r, c.name) for c in TrackProvenance.__table__.columns}
+
+    def _provenance_glyph_map(self, s: Any) -> dict[str, str]:
+        """{track_id → "ok"|"low"} for tracks with a provenance event (current
+        per key). Absent = ∅. "low" flags the match_confidence < 0.5 tail (the
+        S2 electronic-remix band) — DISPLAY context, never a gate."""
+        out: dict[str, str] = {}
+        for tid, conf in s.execute(
+                select(TrackProvenance.spotify_track_id, TrackProvenance.match_confidence)
+                .order_by(TrackProvenance.id.desc())).all():
+            if tid in out:
+                continue  # newest-first → first sighting is current
+            out[tid] = "low" if (conf is not None and conf < 0.5) else "ok"
+        return out
+
     def log_chat_turn(self, **row: Any) -> int:
         """Append one ChatLog row (D-47 — log every prompt + response). Never
         raises: a logging failure must not fail a visitor's request. Returns the
@@ -256,6 +281,7 @@ class FeatureCache:
             feats = {r.spotify_track_id: r
                      for r in s.execute(select(TrackFeatures)).scalars()}
             metas = s.execute(select(TrackMeta)).scalars().all()
+            prov = self._provenance_glyph_map(s)  # Q2/D-51: ✓/~ glyph (∅ = absent)
             rows = []
             for m in metas:
                 fr = feats.get(m.spotify_track_id)
@@ -271,6 +297,7 @@ class FeatureCache:
                     "tempo": fr.tempo_bpm if fr else None,
                     "energy": fr.rms_mean if fr else None,
                     "brightness": fr.spectral_centroid_mean if fr else None,
+                    "provenance": prov.get(m.spotify_track_id),  # "ok" | "low" | None (∅)
                 })
         return rows
 

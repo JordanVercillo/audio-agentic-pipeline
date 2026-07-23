@@ -310,6 +310,47 @@ def test_song_deep_dive_renders_features_and_similar(client, monkeypatch, tmp_pa
     assert "chorus/verse" in r.text                                  # the honesty caption
 
 
+def test_song_provenance_section_renders_and_escapes(client, monkeypatch, tmp_path):
+    # Q2/D-51: /song shows the source card when a provenance event exists, and
+    # the ∅ note when it doesn't — and the external youtube_title is UNTRUSTED,
+    # so a <script>-shaped title must render inert (Jinja auto-escape, no |safe).
+    from ..store.cache import FeatureCache
+    tc = FeatureCache(url=f"sqlite:///{tmp_path / 'p.db'}")
+    tc.upsert("has", _feat(120))
+    tc.upsert("none", _feat(120))
+    tc.remember_meta([{"spotify_track_id": "has", "track_name": "Has", "artist_names": "A"},
+                      {"spotify_track_id": "none", "track_name": "None", "artist_names": "A"}])
+    tc.remember_provenance(spotify_track_id="has",
+                           youtube_url="https://youtu.be/xyz",
+                           youtube_title="<script>alert(1)</script> Live",
+                           channel="RealVEVO", match_confidence=0.86,
+                           duration_delta_s=1.4, matcher_version="heuristic-v1")
+    monkeypatch.setattr("src.webapp.app._feature_cache", lambda: tc)
+    r = client.get("/song/has")
+    assert r.status_code == 200
+    assert "Source" in r.text and "provenance" in r.text
+    assert "https://youtu.be/xyz" in r.text and "RealVEVO" in r.text and "86%" in r.text
+    assert "<script>alert(1)</script>" not in r.text        # escaped — no raw script tag
+    assert "&lt;script&gt;" in r.text                        # …rendered inert
+    # the ∅ track shows the honest "not recorded" note, no source card
+    r2 = client.get("/song/none")
+    assert r2.status_code == 200 and "Source not recorded" in r2.text
+
+
+def test_song_provenance_url_scheme_guarded(client, monkeypatch, tmp_path):
+    # A non-http(s) youtube_url must NOT become a clickable link (javascript:).
+    from ..store.cache import FeatureCache
+    tc = FeatureCache(url=f"sqlite:///{tmp_path / 'p2.db'}")
+    tc.upsert("js", _feat(120))
+    tc.remember_meta([{"spotify_track_id": "js", "track_name": "JS", "artist_names": "A"}])
+    tc.remember_provenance(spotify_track_id="js", youtube_url="javascript:alert(1)",
+                           youtube_title="Trap", match_confidence=0.7)
+    monkeypatch.setattr("src.webapp.app._feature_cache", lambda: tc)
+    r = client.get("/song/js")
+    assert r.status_code == 200 and "Trap" in r.text
+    assert 'href="javascript:' not in r.text                 # scheme-guarded, not linked
+
+
 def test_spectrogram_public_404_when_absent(client):
     # D-18: spectrograms are public corpus display data (the catalog already
     # reveals which tracks are analyzed). Absent file → honest 404, not a gate.

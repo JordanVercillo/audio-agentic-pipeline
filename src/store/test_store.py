@@ -287,6 +287,27 @@ def test_provenance_is_append_only_and_best_effort(cache):
     assert cache.remember_provenance(spotify_track_id="y") > 0
 
 
+def test_provenance_for_returns_current_event(cache):
+    # Q2/D-51: /song reads the LATEST event for a track.
+    assert cache.provenance_for("nope") is None            # ∅ until extracted
+    cache.remember_provenance(spotify_track_id="t", youtube_url="old", match_confidence=0.3)
+    cache.remember_provenance(spotify_track_id="t", youtube_url="new", match_confidence=0.9)
+    cur = cache.provenance_for("t")
+    assert cur["youtube_url"] == "new" and cur["match_confidence"] == 0.9
+
+
+def test_library_rows_carry_provenance_glyph(cache):
+    # Q2/D-51: ✓ (conf≥0.5) / ~ (conf<0.5, the S2 remix band) / ∅ (no event).
+    cache.remember_meta([{"spotify_track_id": t, "track_name": t, "artist_names": "A"}
+                         for t in ("good", "low", "none")])
+    cache.remember_provenance(spotify_track_id="good", match_confidence=0.86)
+    cache.remember_provenance(spotify_track_id="low", match_confidence=0.2)
+    by_id = {r["id"]: r for r in cache.library_rows()}
+    assert by_id["good"]["provenance"] == "ok"
+    assert by_id["low"]["provenance"] == "low"
+    assert by_id["none"]["provenance"] is None
+
+
 def test_extract_one_rejects_path_shaped_ids(cache, tmp_path):
     # The id becomes a filename — a path-shaped id must fail BEFORE acquisition.
     from .extractor import extract_one

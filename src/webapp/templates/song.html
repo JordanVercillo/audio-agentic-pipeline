@@ -46,6 +46,38 @@
     </div>
   </div>
 
+  <h2 class="section">Source &amp; provenance</h2>
+  {% if provenance %}
+  <div class="prov-card">
+    <dl class="prov">
+      <div><dt>Acquired from</dt><dd>
+        {# youtube_url is external — only link an http(s) scheme, and NEVER |safe #}
+        {% if provenance.youtube_url and provenance.youtube_url.startswith('http') %}
+        <a href="{{ provenance.youtube_url }}" target="_blank" rel="noopener nofollow">
+          {{ provenance.youtube_title or 'YouTube source' }}</a>
+        {% else %}{{ provenance.youtube_title or '—' }}{% endif %}</dd></div>
+      {% if provenance.channel %}<div><dt>Channel</dt><dd>{{ provenance.channel }}</dd></div>{% endif %}
+      {% if provenance.duration_delta_s is not none %}
+      <div><dt>Length vs Spotify</dt>
+        <dd>{{ provenance.duration_delta_s|round(1) }} s off</dd></div>{% endif %}
+      {% if provenance.match_confidence is not none %}
+      <div><dt>Match confidence</dt><dd>
+        <span class="prov-glyph {{ 'ok' if provenance.match_confidence >= 0.5 else 'low' }}">
+          {{ '✓' if provenance.match_confidence >= 0.5 else '~' }}</span>
+        {{ (provenance.match_confidence * 100)|round|int }}%
+        {% if provenance.matcher_version %}<small>({{ provenance.matcher_version }})</small>{% endif %}
+      </dd></div>{% endif %}
+    </dl>
+    <p class="cap">The YouTube recording this track's local features were extracted
+      from — open it to validate it's the actual song. Match confidence is a
+      selection heuristic (title + duration), not a measure of the music; a low
+      score is common for remixes/edits, not proof of a wrong match.</p>
+  </div>
+  {% else %}
+  <p class="cap muted">Source not recorded for this track yet — it was analyzed
+    before provenance capture, and will populate on re-extraction.</p>
+  {% endif %}
+
   <p><a class="btn ghost" href="/recommend?seed={{ track_id }}">More like this — tune it →</a></p>
 
   {% if similar %}

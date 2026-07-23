@@ -1135,6 +1135,11 @@ def create_app() -> FastAPI:
             "name": meta.get("track_name") or track_id,
             "artist": meta.get("artist_names") or "",
             "analyzed": features is not None,
+            # Q2/D-51: where this track's audio came from. None until the Q3
+            # backfill (the honest ∅ tier). youtube_title/channel are UNTRUSTED
+            # external strings — the template renders them WITHOUT |safe so
+            # Jinja auto-escapes (the |safe SVG XSS lesson, security review).
+            "provenance": cache.provenance_for(track_id),
         }
         if features is not None:
             ctx["summary"] = track_summary(features)
