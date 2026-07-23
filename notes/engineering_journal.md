@@ -1196,3 +1196,27 @@ contradiction is integrity.
 > GROUND TRUTH, not against the heuristic's own confidence — and spot-check
 > the first N outputs of any long batch before letting it run: the cost of
 > the check is minutes, the cost of its absence is the whole run.*
+
+## 46 — The resume marker faithfully preserved the mistakes too (2026-07-23, DQ)
+
+The re-extraction runner's resume marker — "a track has a provenance row, so
+it's done" — is what made an 11-hour job interrupt-safe and idempotent, and
+it worked perfectly. Too perfectly: the first ~71 swaps happened in rounds
+1-2 BEFORE the title-affinity gate existed, so ~27 of them were the wrong
+song — and once each wrong swap wrote its provenance row, the marker declared
+it done and every subsequent `--all` pass skipped it. The fix that made later
+runs safe could never reach back and re-judge the rows written before it. The
+bad data sat wearing a valid-looking heuristic-v1 provenance card, invisible
+to a re-run, until a title-affinity sweep over the whole table found it.
+
+**The realization:** an idempotency/resume marker records THAT work happened,
+not that it was CORRECT — so tightening the acceptance criteria mid-batch
+silently grandfathers everything already accepted under the looser rule. A
+resume key is a completion claim, not a quality claim.
+
+> *When you tighten a batch job's acceptance rule partway through a long run,
+> the already-processed rows are now under-validated by construction — you owe
+> a re-audit of everything written before the rule changed, using the NEW
+> rule, not just correct behavior going forward. Make "recheck existing rows
+> against the current bar" a first-class operation (reuse the gate's own
+> function so the audit and the gate can never disagree), never a one-off.*

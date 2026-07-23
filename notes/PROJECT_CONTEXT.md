@@ -651,17 +651,48 @@
   tracks got in) — adopting them for new-track ingestion is a separate
   owner-ratified change. The 7+ wrong-song swaps from round 1 keep their
   (honest) provenance and await D-56 repair.
-  **➡️ NEXT ACTION — three tracks: ① (owner, 1 min) add
-  `WEBAPP_OWNER_SPOTIFY_ID=<your Spotify user id>` to `.env` + `app_control
-  restart` — the repair tools appear (Spotify id: account page or your
-  profile URL). ② let the run finish (observed pace ≈ 2.4 tracks/min →
-  ~4-5 h; check `uv run python scripts/re_extract_status.py`), then the
-  post-run checklist it prints (retrain materializes Q3-uniform + O3
-  twin-free in ONE archetype shift; re-run the wrong-song sweep at
-  completion). ③ drain the needs-source queue via D-56 (paste links /
-  upload files — Roots by WILDS et al). (build) next slice = Q4 QA tooling
-  (`review_provenance.py`), then R1–R3 Artists 2.0.** DEFERRED (not
-  blocking): worker adoption of the acquisition guards (owner call);
+  ✅ **Q3 CLOSED + VERIFY-LINKS + DATA-QUALITY QUARANTINE
+  (2026-07-23, session 56 cont'd, Opus + Fable; commits 871d000→228b7ad,
+  548 tests, app-verify ALL-FALSE, full audit clean, browser-validated).**
+  **The full D-52 run finished (750 swapped, 2.9 h, 96% clean).** **V1+V2
+  (f9bd9ca) made provenance VERIFIABLE:** /library's Src glyph is now a
+  clickable link straight to the exact YouTube recording (proven live —
+  clicking Sanctuary's ✓ landed on "Welshly Arms - Sanctuary"), /song got a
+  "▶ Open source" button + visible URL, and owner UPLOADS are now RETAINED
+  (`data/owner_audio/`, gitignored — an upload is the only copy) with an
+  OWNER-ONLY HTML5 player at `/audio/{id}` (public playback = a licensing
+  exposure; the YouTube link covers public trust). Owner gate hardened:
+  self-diagnosing mismatch log (13a4498) + case/whitespace-insensitive
+  compare (6e0a437 — owner id is the legacy `jordan_vercillo`, now set in
+  .env). **DATA-QUALITY QUARANTINE (228b7ad — journal #46):** the run's
+  pre-affinity-gate swaps (rounds 1-2) locked in **27 wrong-song
+  acquisitions** via the resume marker (wrong features wearing heuristic-v1
+  provenance — "Alone" ← Anti-Up "Shake"); `cache.quarantine_tracks` +
+  `scripts/quarantine_wrong_songs.py` (detection REUSES `title_affinity` so
+  "not confident" = "the gate would reject it"; dry-run-first, backup, then
+  delete wrong analysis + dead-letter + file in needs-source) cleared all 27,
+  bridge key kept, reversible by D-56 repair. **THE FINISH: retrain on 770
+  CLEAN tracks** (broken/twin/wrong-song pollution gone; **0 tempo-0 left —
+  the 2 broken extractions stay HEALED**) → e4b descriptions (clean prose,
+  no jargon this time) → marts → audit: all semantic flags FALSE
+  (FEATURE_DISTRIBUTION = only the 6 legit >1h DJ-mix duration tail;
+  DUPLICATE_TRACKS = the frozen star-schema advisory). **Archetype shifted
+  ONCE on clean data (ratified D-55): "The Anchored Loyalist" → "The
+  Drifting Loyalist"** (σ 0.141→0.163, crossing the 0.15 band). New key
+  files: `scripts/re_extract_status.py`, `scripts/quarantine_wrong_songs.py`,
+  `src/store/repair.py` owner_audio retention, `cache.quarantine_tracks`.
+  **➡️ NEXT ACTION — ① (owner, at leisure) DRAIN THE NEEDS-SOURCE QUEUE (73
+  tracks):** `/library?filter=needs-source` → per song, paste the correct
+  YouTube link or upload the audio (Roots by WILDS et al) — validation still
+  runs (host allowlist, duration hard-reject). The 73 = 46 guard-rejected
+  (no findable source) + 27 quarantined wrong-songs. **② (build) next slice =
+  Q4 QA tooling** (`review_provenance.py` — stratified sample over the
+  provenance mart + duration audit → aggregates-only health artifact; the
+  needs-source queue is now real input), then R1–R3 Artists 2.0 (MusicBrainz,
+  $0). **③ (owner call, RECOMMENDED soon) adopt the two acquisition guards in
+  the LIVE WORKER** (`default_acquire`) — it still lacks them, which is how
+  the 19 DJ-sets + wrong-songs entered; new logins re-introduce the bug
+  otherwise. DEFERRED (not blocking):
   O3d — the acoustic recall miner (cross-name same-audio candidates from the
   77-dim vectors, review-report-only, after Q3's uniform re-extraction);
   S4 DMARC reject-flip (owner, ~Jul-25 after clean reports); cluster_profile
@@ -2308,3 +2339,19 @@ narrative goes to `notes/engineering_journal.md`, plans to
   HEALTHY mid-flight (~4-5 h at observed pace); D-56 deployed fail-closed.
   NEXT = owner env var → run finishes → post-run checklist → drain the
   repair queue; build = Q4. NEW SESSION: run `/resume`.**
+- **2026-07-23 (session 56 cont'd — Q3 closed + verify-links + DQ quarantine,
+  Opus + Fable; commits 871d000→228b7ad, 548 tests):** The full run finished
+  (750 swapped, 96% clean). Built V1+V2 (verifiable provenance: clickable
+  source links proven live, owner upload-retention + owner-only playback);
+  hardened the D-56 gate (self-diagnosing + case-insensitive; owner id
+  `jordan_vercillo` set). Then a data-quality pass: the run's pre-gate swaps
+  had locked in 27 wrong-song acquisitions via the resume marker (journal
+  #46) → `quarantine_wrong_songs.py` (detection reuses `title_affinity`,
+  dry-run-first, backup) cleared all 27 into the needs-source queue, bridge
+  key kept. Finish: retrain on 770 CLEAN tracks → archetype shifted once
+  (Anchored→Drifting Loyalist, ratified D-55) → full audit clean (0 tempo-0,
+  broken extractions stay healed). Needs-source queue = 73 for owner repair.
+  **Left off: Q3 fully CLOSED and verified; corpus clean; the app serves
+  clickable-verifiable provenance. NEXT = (owner) drain the 73-track repair
+  queue at leisure; (build) Q4. Recommended: adopt the acquisition guards in
+  the live worker. NEW SESSION: run `/resume`.**
