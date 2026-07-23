@@ -515,6 +515,22 @@ class FeatureCache:
             return row.sections if row is not None else None
 
     # ── perceptual-v1 layer (VISION_SPECS F1) ────────────────────────────────
+    def prune_perceptual(self, track_ids: set[str]) -> int:
+        """Delete track_perceptual rows for the given ids (O3b, red-team #2:
+        excluding twins at compute never reached the TABLE that /explore and
+        /recommend read — merge-only persistence left stale twin rows).
+        DERIVED data only — recomputed from features on any rebuild, so a
+        cleared flag re-admits the row automatically. Returns rows deleted."""
+        if not track_ids:
+            return 0
+        with self._Session() as s:
+            rows = s.execute(select(TrackPerceptual).where(
+                TrackPerceptual.spotify_track_id.in_(list(track_ids)))).scalars().all()
+            for r in rows:
+                s.delete(r)
+            s.commit()
+            return len(rows)
+
     def upsert_perceptual(self, track_id: str, features: dict, *,
                           version: str, computed_at=None) -> None:
         with self._Session() as s:
@@ -879,12 +895,18 @@ class FeatureCache:
         Portable (works on SQLite + Postgres). Loads the cached population and
         computes distance in Python — fine at pilot scale; prod swaps in pgvector
         (`ORDER BY vector <-> :target`) over the Epic-B Vector(77) column.
+        O3b: flagged twins sit out of the CANDIDATE pool (a track's nearest
+        neighbor is otherwise literally itself under another id); a twin can
+        still be the QUERY (its /song page keeps working).
         """
+        twins = self.twin_ids()
         with self._Session() as s:
             target = s.get(TrackFeatures, track_id)
             if target is None:
                 return []
-            pop = s.execute(select(TrackFeatures)).scalars().all()
+            pop = [r for r in s.execute(select(TrackFeatures)).scalars().all()
+                   if r.spotify_track_id not in twins
+                   or r.spotify_track_id == track_id]
         if len(pop) < 2:
             return []
 

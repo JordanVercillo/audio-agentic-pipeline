@@ -140,7 +140,9 @@ def build_artist_rollup(cache: Any, perceptual_df: pd.DataFrame) -> pd.DataFrame
     groups: dict[str, dict[str, Any]] = {}
     for m in rows_meta:
         paid = m.get("primary_artist_id")
-        if not paid:
+        if not paid or m.get("duplicate_of"):
+            # O3b: a twin release must not inflate an artist's n_tracks (the
+            # analyzed join was already twin-free via the perceptual frame)
             continue
         g = groups.setdefault(paid, {"tracks": 0, "analyzed": 0,
                                      "energy": [], "tempo": [],
@@ -168,11 +170,15 @@ def build_artist_rollup(cache: Any, perceptual_df: pd.DataFrame) -> pd.DataFrame
 
 
 def build_corpus_facts(track_card: pd.DataFrame,
-                       artist_rollup: pd.DataFrame) -> pd.DataFrame:
+                       artist_rollup: pd.DataFrame,
+                       n_duplicates_flagged: int = 0,
+                       n_analyzed_twins: int = 0) -> pd.DataFrame:
     """One-row corpus-facts mart (K2.0): the analyst's totals, derived from the
     frames this rebuild already built — no recompute. Acoustic stats run over
     feature_valid rows only, so a dead extraction can't tilt a corpus mean;
-    counts report the invalid rows honestly instead of hiding them."""
+    counts report the invalid rows honestly instead of hiding them.
+    O3b honesty: the card is twin-free, so n_tracks = UNIQUE recordings; the
+    duplicate counts ride along so "N analyzed · M unique" is stateable."""
     if track_card is None or track_card.empty:
         return pd.DataFrame()
     valid = track_card[track_card["feature_valid"]]
@@ -182,6 +188,9 @@ def build_corpus_facts(track_card: pd.DataFrame,
 
     return pd.DataFrame([{
         "n_tracks": int(len(track_card)),
+        "n_unique_recordings": int(len(track_card)),   # the card is twin-free (O3b)
+        "n_analyzed_incl_duplicates": int(len(track_card)) + int(n_analyzed_twins),
+        "n_duplicates_flagged": int(n_duplicates_flagged),
         "n_feature_valid": int(track_card["feature_valid"].sum()),
         "n_artists": 0 if artist_rollup is None or artist_rollup.empty
         else int(len(artist_rollup)),
@@ -250,19 +259,37 @@ def build_provenance_mart(cache: Any) -> pd.DataFrame:
     where each track's audio came from + the match quality. The analytic table
     the /song provenance section (Q2) and the QA loop (Q4) read. Empty when
     nothing's been extracted-with-provenance yet (honest ∅ — coverage grows as
-    new extractions land + the Q3 backfill runs)."""
+    new extractions land + the Q3 backfill runs).
+    O3b (red-team #1): twins are excluded so prov_keys ⊆ canonical ⊆ track_card
+    — a track provenanced first and flagged a twin LATER must not false-fire
+    PROVENANCE_ORPHAN. The twin's /song still reads its row via provenance_for
+    (a DB read, not this mart)."""
     rows = cache.all_provenance()  # newest-first
     if not rows:
         return pd.DataFrame()
+    twins = cache.twin_ids()
     seen: set = set()
     current: list[dict] = []
     for r in rows:  # newest-first → the first sighting of a key IS its latest event
         tid = r.get("spotify_track_id")
-        if tid in seen:
+        if tid in seen or tid in twins:
             continue
         seen.add(tid)
         current.append({k: v for k, v in r.items() if k != "id"})  # drop the internal event id
     return pd.DataFrame(current)
+
+
+def build_duplicate_flags_mart(cache: Any) -> pd.DataFrame:
+    """The authoritative twin set as a mart (O3b, red-team #8): the audit is
+    standalone (stdlib + parquet) and cannot read the serving DB — without this
+    it would re-derive dedup from metadata only, which differs from the stored
+    cosine-refined flags, and TWIN_LEAKAGE would false-fire or miss."""
+    flags = cache.duplicate_flags()
+    if not flags:
+        return pd.DataFrame()
+    return pd.DataFrame(sorted(
+        ({"duplicate_id": d, "canonical_id": c} for d, c in flags.items()),
+        key=lambda r: r["duplicate_id"]))
 
 
 def build_semantic_marts(cache: Any, perceptual_df: pd.DataFrame,
@@ -271,12 +298,16 @@ def build_semantic_marts(cache: Any, perceptual_df: pd.DataFrame,
     with the perceptual frame it already computed — no recompute."""
     marts_dir = Path(marts_dir)
     marts_dir.mkdir(parents=True, exist_ok=True)
+    flags = cache.duplicate_flags()
+    n_analyzed_twins = len(cache.cached_ids(list(flags))) if flags else 0
     fd = feature_dictionary_frame()
     tc = build_track_card(cache, perceptual_df)
     ar = build_artist_rollup(cache, perceptual_df)
-    cf = build_corpus_facts(tc, ar)
+    cf = build_corpus_facts(tc, ar, n_duplicates_flagged=len(flags),
+                            n_analyzed_twins=n_analyzed_twins)
     cp = build_cluster_profile(cache, tc)
     pv = build_provenance_mart(cache)
+    dfm = build_duplicate_flags_mart(cache)
     _write_atomic(fd, marts_dir / "feature_dictionary.parquet")
     if not tc.empty:
         _write_atomic(tc, marts_dir / "track_card.parquet")
@@ -288,6 +319,9 @@ def build_semantic_marts(cache: Any, perceptual_df: pd.DataFrame,
         _write_atomic(cp, marts_dir / "cluster_profile.parquet")
     if not pv.empty:
         _write_atomic(pv, marts_dir / "track_provenance.parquet")
+    if not dfm.empty:
+        _write_atomic(dfm, marts_dir / "duplicate_flags.parquet")
     return {"feature_dictionary": len(fd), "track_card": len(tc),
             "artist_rollup": len(ar), "corpus_facts": len(cf),
-            "cluster_profile": len(cp), "track_provenance": len(pv)}
+            "cluster_profile": len(cp), "track_provenance": len(pv),
+            "duplicate_flags": len(dfm)}

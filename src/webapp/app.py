@@ -620,7 +620,9 @@ def create_app() -> FastAPI:
                                "drift": taste.get("drift"),
                                "taxonomy": archetype_taxonomy()}  # N2: static reference grid
         # Signature works even before any model is trained (population stats only).
-        population = list(cache.all_features().values())
+        # O3b: twins sit out of the population (one recording, one vote).
+        twins = cache.twin_ids()
+        population = [f for tid, f in cache.all_features().items() if tid not in twins]
         ctx["signature"] = acoustic_signature(list(cached.values()), population)
 
         # Taste vs popularity (slice P) — fetched context, absent-safe: renders
@@ -940,7 +942,11 @@ def create_app() -> FastAPI:
             t["analyzed"] = t["id"] in analyzed_ids
 
         # "similar in your library" — acoustic centroids, links where ids known
-        sim = nearest_artists(name, cache.all_features(), metas)
+        # (O3b: twin-free features so a double-release can't tilt a centroid)
+        _tw = cache.twin_ids()
+        sim = nearest_artists(name,
+                              {t: f for t, f in cache.all_features().items()
+                               if t not in _tw}, metas)
         name_to_id = {(a.get("artist_name") or "").lower(): a["artist_id"]
                       for a in cache.all_artist_meta().values()}
         for s_row in sim:

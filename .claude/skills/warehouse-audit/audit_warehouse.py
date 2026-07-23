@@ -94,7 +94,13 @@ def check_marts(marts_dir: Path):
       PROVENANCE_ORPHAN      track_provenance (Q1/D-51) carries a bridge key
                              that is NOT an analyzed track — the only real
                              invariant (coverage of OLD tracks is ∅ until the
-                             Q3 backfill, so under-coverage is a NOTE, not a flag)
+                             Q3 backfill, so under-coverage is a NOTE, not a
+                             flag). O3b: the reference set is track_card ∪ the
+                             flagged twins — a track provenanced first and
+                             flagged a twin later is analyzed, not an orphan.
+      TWIN_LEAKAGE           a flagged duplicate (duplicate_flags mart, O3b)
+                             leaked into a canonical-only population —
+                             track_perceptual, track_card, or track_provenance
 
     Marts are an optional derived layer: an absent dir (or an absent semantic
     mart — they land with K2.0 rebuilds) is a note, not a finding.
@@ -106,7 +112,7 @@ def check_marts(marts_dir: Path):
     flags = {"CATALOG_MART_DRIFT": False, "STATS_MART_DRIFT": False,
              "FEATURE_DISTRIBUTION": False, "PLANE_COHERENCE": False,
              "SEMANTIC_PARITY": False, "CLUSTER_PROFILE_DRIFT": False,
-             "PROVENANCE_ORPHAN": False}
+             "PROVENANCE_ORPHAN": False, "TWIN_LEAKAGE": False}
 
     if not marts_dir.is_dir() or not any(marts_dir.glob("*.parquet")):
         warnings.append("data/marts/ not built (optional — run scripts/build_feature_marts.py)")
@@ -128,7 +134,7 @@ def check_marts(marts_dir: Path):
     # Semantic marts (K2.0) are optional until first rebuilt — absent is silent
     # here (MART_INCOMPLETE would misfire on every pre-K2.0 marts dir).
     for name in ("track_card", "artist_rollup", "corpus_facts", "cluster_profile",
-                 "track_provenance"):
+                 "track_provenance", "duplicate_flags"):
         path = marts_dir / f"{name}.parquet"
         if not path.exists():
             continue
@@ -148,6 +154,9 @@ def check_marts(marts_dir: Path):
     corpus_facts = frames.get("corpus_facts")
     cluster_profile = frames.get("cluster_profile")
     provenance = frames.get("track_provenance")
+    dupe_flags = frames.get("duplicate_flags")
+    twin_set: set = (set(dupe_flags["duplicate_id"])
+                     if dupe_flags is not None and not dupe_flags.empty else set())
 
     if catalog is not None and perceptual is not None:
         cat_cols = set(catalog["column"])
@@ -261,8 +270,23 @@ def check_marts(marts_dir: Path):
     # ONLY hard invariant is no orphan (a provenance key must be an analyzed
     # track); coverage of the pre-Q1 corpus is ∅ until the Q3 backfill, so we
     # report under-coverage as a note, never a flag.
+    # O3b (red-team #8): flagged twins must be ABSENT from every canonical-only
+    # population — presence means the one shared filter drifted somewhere.
+    if twin_set:
+        for name in ("track_perceptual", "track_card", "track_provenance"):
+            frame = frames.get(name)
+            if frame is None or frame.empty or BRIDGE not in frame.columns:
+                continue
+            leaked = twin_set & set(frame[BRIDGE])
+            if leaked:
+                warnings.append(f"marts/{name}: {len(leaked)} flagged twin(s) "
+                                "leaked into a canonical-only mart — TWIN_LEAKAGE")
+                flags["TWIN_LEAKAGE"] = True
+
     if provenance is not None and not provenance.empty and track_card is not None:
-        analyzed = set(track_card[BRIDGE])
+        # O3b (red-team #1): twins are analyzed tracks too — a track that got
+        # provenance FIRST and its twin flag LATER is no orphan.
+        analyzed = set(track_card[BRIDGE]) | twin_set
         prov_keys = set(provenance[BRIDGE])
         orphans = prov_keys - analyzed
         if provenance[BRIDGE].duplicated().any():
@@ -279,7 +303,7 @@ def check_marts(marts_dir: Path):
         if "duplicate_of" in track_card.columns:
             canonical = set(track_card.loc[track_card["duplicate_of"].isna(), BRIDGE])
         else:
-            canonical = analyzed
+            canonical = set(track_card[BRIDGE])  # card is twin-free post-O3b
         covered = len(prov_keys & canonical)
         report["track_provenance"] = {**report.get("track_provenance", {}),
                                       "coverage": f"{covered}/{len(canonical)} canonical analyzed"}

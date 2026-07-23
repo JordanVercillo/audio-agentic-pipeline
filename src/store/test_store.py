@@ -287,6 +287,23 @@ def test_provenance_is_append_only_and_best_effort(cache):
     assert cache.remember_provenance(spotify_track_id="y") > 0
 
 
+def test_similar_excludes_twin_candidates(cache):
+    # O3b: a twin must not be its canonical's "similar song" (it IS the song).
+    for tid, tempo in (("c1", 120.0), ("t1", 120.5), ("d1", 125.0)):
+        cache.upsert(tid, {"tempo_bpm": tempo, "rms_mean": 0.3,
+                           "zcr_mean": 0.05, "spectral_centroid_mean": 2000.0})
+    cache.remember_meta([{"spotify_track_id": t, "track_name": t, "artist_names": "A"}
+                         for t in ("c1", "t1", "d1")])
+    with cache._Session() as s:
+        from .models import TrackMeta
+        s.get(TrackMeta, "t1").duplicate_of = "c1"
+        s.commit()
+    ids = [tid for tid, _ in cache.similar("c1", k=5)]
+    assert "t1" not in ids and "d1" in ids                 # twin out, real neighbor in
+    # …but a twin can still be the QUERY (its /song page keeps working)
+    assert cache.similar("t1", k=5)
+
+
 def test_provenance_for_returns_current_event(cache):
     # Q2/D-51: /song reads the LATEST event for a track.
     assert cache.provenance_for("nope") is None            # ∅ until extracted

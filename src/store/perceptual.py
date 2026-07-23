@@ -116,12 +116,16 @@ def compute_perceptual(cache: FeatureCache) -> pd.DataFrame:
 
     Returns a DataFrame keyed on the bridge key with every CATALOG column +
     ``version``. Incomplete rows (e.g. never-acquired tracks) sit out.
+    O3b: flagged duplicate twins sit out too — the perceptual plane counts
+    each RECORDING once (cache.twin_ids is the one shared filter, red-team #8).
     """
     feats = cache.all_features()
+    twins = cache.twin_ids()
     ts_map = cache.all_time_signatures()  # promoted column, joined by bridge key
     rows = [{"spotify_track_id": tid, **f} for tid, f in feats.items()
-            if all(isinstance(f.get(c), (int, float)) and f.get(c) is not None
-                   for c in _REQUIRED)]
+            if tid not in twins
+            and all(isinstance(f.get(c), (int, float)) and f.get(c) is not None
+                    for c in _REQUIRED)]
     if not rows:
         return pd.DataFrame(columns=["spotify_track_id", "version"])
     df = pd.DataFrame(rows)
@@ -292,6 +296,9 @@ def rebuild_marts(cache: FeatureCache, marts_dir: Path) -> dict[str, Any]:
         return {"n_tracks": 0, "perceptual": df,
                 "catalog": pd.DataFrame(), "stats": pd.DataFrame()}
     n = persist_perceptual(cache, df)
+    # O3b (red-team #2): the table must match the frame — merge-only persistence
+    # would leave a newly-flagged twin's stale row serving /explore + /recommend.
+    cache.prune_perceptual(cache.twin_ids())
     marts_dir = Path(marts_dir)
     marts_dir.mkdir(parents=True, exist_ok=True)
     catalog = catalog_frame()

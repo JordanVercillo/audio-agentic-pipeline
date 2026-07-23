@@ -233,6 +233,70 @@ def test_audit_catches_provenance_orphan(corpus, tmp_path):
     assert any("non-analyzed" in w for w in warnings)
 
 
+# ── O3b: the canonical-only plane ────────────────────────────────────────────
+def test_corpus_facts_carry_duplicate_honesty(corpus):
+    _, tc, ar = _semantic_frames(corpus)
+    cf = build_corpus_facts(tc, ar, n_duplicates_flagged=3, n_analyzed_twins=2)
+    row = cf.iloc[0]
+    assert row["n_unique_recordings"] == row["n_tracks"]
+    assert row["n_analyzed_incl_duplicates"] == row["n_tracks"] + 2
+    assert row["n_duplicates_flagged"] == 3
+
+
+def test_duplicate_flags_mart_and_twin_leakage_tripwire(corpus, tmp_path):
+    # A flagged twin planted into track_card (simulating filter drift) must
+    # trip TWIN_LEAKAGE; the healthy write reads false.
+    import pandas as pd
+    marts = _write_semantic_marts(tmp_path, corpus)
+    pd.DataFrame([{"duplicate_id": "ghost_twin", "canonical_id": "real"}]).to_parquet(
+        marts / "duplicate_flags.parquet", index=False)
+    _, _, _, flags = _audit().check_marts(marts)
+    assert flags["TWIN_LEAKAGE"] is False                  # twin absent everywhere → clean
+    tc = pd.read_parquet(marts / "track_card.parquet")
+    leak = tc.iloc[[0]].copy()
+    leak["spotify_track_id"] = "ghost_twin"
+    pd.concat([tc, leak]).to_parquet(marts / "track_card.parquet", index=False)
+    _, warnings, _, flags = _audit().check_marts(marts)
+    assert flags["TWIN_LEAKAGE"] is True
+    assert any("TWIN_LEAKAGE" in w for w in warnings)
+
+
+def test_provenanced_twin_is_not_an_orphan(corpus, tmp_path):
+    # O3b (red-team #1): a track provenanced FIRST and twin-flagged LATER is
+    # analyzed, not an orphan — the reference set is track_card ∪ twins.
+    import pandas as pd
+    marts = _write_semantic_marts(tmp_path, corpus)
+    tc = pd.read_parquet(marts / "track_card.parquet")
+    twin_id = "late_twin"
+    pd.DataFrame([{"duplicate_id": twin_id,
+                   "canonical_id": tc["spotify_track_id"].iloc[0]}]).to_parquet(
+        marts / "duplicate_flags.parquet", index=False)
+    pv = pd.read_parquet(marts / "track_provenance.parquet")
+    extra = pv.iloc[[0]].copy()
+    extra["spotify_track_id"] = twin_id
+    # NOTE: the twin's provenance row rides the MART here only to prove the
+    # audit's reference set; build_provenance_mart itself excludes twins.
+    pd.concat([pv, extra]).to_parquet(marts / "track_provenance.parquet", index=False)
+    _, _, _, flags = _audit().check_marts(marts)
+    assert flags["PROVENANCE_ORPHAN"] is False             # twin ≠ orphan
+
+
+def test_provenance_mart_excludes_twins(corpus):
+    from .semantic import build_duplicate_flags_mart, build_provenance_mart
+    corpus.remember_provenance(spotify_track_id="k1", youtube_url="u")
+    corpus.remember_provenance(spotify_track_id="k2", youtube_url="u2")
+    corpus.remember_meta([{"spotify_track_id": t, "track_name": t, "artist_names": "A"}
+                          for t in ("k1", "k2")])
+    with corpus._Session() as s:
+        from .models import TrackMeta
+        s.get(TrackMeta, "k2").duplicate_of = "k1"
+        s.commit()
+    pv = build_provenance_mart(corpus)
+    assert "k2" not in set(pv["spotify_track_id"])         # twin excluded (red-team #1)
+    dfm = build_duplicate_flags_mart(corpus)
+    assert dfm.iloc[0]["duplicate_id"] == "k2" and dfm.iloc[0]["canonical_id"] == "k1"
+
+
 def test_audit_catches_plane_incoherence(corpus, tmp_path):
     marts = _write_semantic_marts(tmp_path, corpus, drop_card_row=True)
     _, warnings, _, flags = _audit().check_marts(marts)

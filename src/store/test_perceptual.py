@@ -214,8 +214,35 @@ _ALL_MART_FLAGS_FALSE = {
     "CATALOG_MART_DRIFT": False, "STATS_MART_DRIFT": False,
     "FEATURE_DISTRIBUTION": False, "PLANE_COHERENCE": False,
     "SEMANTIC_PARITY": False, "CLUSTER_PROFILE_DRIFT": False,
-    "PROVENANCE_ORPHAN": False,
+    "PROVENANCE_ORPHAN": False, "TWIN_LEAKAGE": False,
 }
+
+
+def test_perceptual_plane_excludes_twins_and_prunes_the_table(corpus, tmp_path):
+    # O3b (red-team #2): a twin flagged AFTER it was analyzed must leave BOTH
+    # the computed frame and the track_perceptual TABLE (merge-only persistence
+    # left a stale row serving /explore + /recommend). Distinct names keep the
+    # rebuild's own flag-refresh from re-deriving flags for the fixture blobs;
+    # the twin flag is planted directly (the stored flag is the source of truth).
+    from .perceptual import compute_perceptual, rebuild_marts
+    corpus.upsert("twin9", _club(9))
+    rebuild_marts(corpus, tmp_path / "m1")               # analyzed, unflagged → in table
+    assert "twin9" in corpus.all_perceptual()
+    # flag it a twin of club0 — same name/artist/duration so the rebuild's own
+    # refresh_duplicate_flags KEEPS the flag (it recomputes from metadata)
+    corpus.remember_meta([
+        {"spotify_track_id": "club0", "track_name": "Same Song",
+         "artist_names": "A", "duration_ms": 200_000},
+        {"spotify_track_id": "twin9", "track_name": "Same Song",
+         "artist_names": "A", "duration_ms": 199_800},  # shorter → club0 stays canonical
+    ])
+    corpus.refresh_duplicate_flags()
+    assert corpus.duplicate_flags().get("twin9") == "club0"
+    df = compute_perceptual(corpus)
+    assert "twin9" not in set(df["spotify_track_id"])     # frame excludes it
+    assert "club0" in set(df["spotify_track_id"])         # canonical stays
+    rebuild_marts(corpus, tmp_path / "m2")
+    assert "twin9" not in corpus.all_perceptual()         # TABLE pruned too
 
 
 def test_audit_marts_green_on_good_marts(corpus, tmp_path):

@@ -168,6 +168,19 @@ def test_broken_extraction_excluded_from_training(corpus):
     assert ares is not None and ares["n_artists"] == 6
 
 
+def test_twins_sit_out_of_training(corpus):
+    # O3b: a flagged duplicate must not double-weight a centroid. Flag one blob
+    # member directly and retrain — assignments must exclude it.
+    with corpus._Session() as s:
+        from .models import TrackMeta
+        s.get(TrackMeta, "a1").duplicate_of = "a0"
+        s.commit()
+    res = train_song_clusters(corpus, coords="pca")
+    assert res is not None and res["n_tracks"] == 11       # 12 − 1 twin
+    model = latest_model(corpus, "song")
+    assert "a1" not in track_assignments(corpus, model.id)
+
+
 def test_training_skips_tiny_corpora(tmp_path):
     cache = FeatureCache(url=f"sqlite:///{tmp_path / 'tiny.db'}")
     for i in range(3):
