@@ -410,6 +410,29 @@ def test_repair_refuses_non_owner_and_accepts_owner(client, monkeypatch, tmp_pat
     assert "✓ repaired" in page and "Repair source" in page
 
 
+def test_owner_gate_forgives_case_and_padding_only(client, monkeypatch, tmp_path):
+    # Spotify ids aren't case-sensitive and a pasted value picks up whitespace
+    # — but this stays an EXACT identity check: a different id never passes.
+    monkeypatch.setenv("WEBAPP_OWNER_SPOTIFY_ID", "  Jordan_Vercillo  ")
+    tc = _repair_cache(tmp_path)
+    monkeypatch.setattr("src.webapp.app._feature_cache", lambda: tc)
+    calls: list = []
+    monkeypatch.setattr("src.store.repair.repair_from_link",
+                        lambda cache, tid, url, **kw: calls.append(tid)
+                        or (True, "repaired"))
+    client.cookies.set(config.SESSION_COOKIE,
+                       _seed_session(taste=_TASTE, extra={"me_id": "jordan_vercillo"}))
+    client.post("/song/fixme/repair-link", data={"url": "https://youtu.be/x"},
+                follow_redirects=False)
+    assert calls == ["fixme"]                       # case/padding forgiven
+    # a genuinely different id is still refused
+    client.cookies.set(config.SESSION_COOKIE,
+                       _seed_session(taste=_TASTE, extra={"me_id": "jordan_vercill"}))
+    client.post("/song/fixme/repair-link", data={"url": "https://youtu.be/x"},
+                follow_redirects=False)
+    assert calls == ["fixme"]                       # unchanged — no second call
+
+
 def test_library_needs_source_filter_owner_only(client, monkeypatch, tmp_path):
     import json as _json
     monkeypatch.setenv("WEBAPP_OWNER_SPOTIFY_ID", "jordan_id")

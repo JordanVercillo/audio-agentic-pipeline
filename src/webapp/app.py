@@ -413,11 +413,20 @@ def create_app() -> FastAPI:
         dashboard fetch, /ask, /classify) still require real auth."""
         return auth_web.is_authenticated(session) or bool(session.get("is_guest"))
 
+    def _same_user(a: Optional[str], b: Optional[str]) -> bool:
+        """Spotify user ids are not case-sensitive in practice, and a pasted
+        value picks up stray whitespace — compare them the way a human means
+        them. Still an EXACT identity check: only case/padding is forgiven."""
+        if not a or not b:
+            return False
+        return a.strip().casefold() == b.strip().casefold()
+
     def _is_owner(session: dict[str, Any]) -> bool:
         """D-56 repair gate: authed AND the session's Spotify /me id equals
-        WEBAPP_OWNER_SPOTIFY_ID. Fail-closed: env unset, anon, guests, or an
-        undeterminable /me id all read False. The id is cached in the session
-        after the first check (one borrowed-time /me call, then free)."""
+        WEBAPP_OWNER_SPOTIFY_ID (case/whitespace-insensitive). Fail-closed:
+        env unset, anon, guests, or an undeterminable /me id all read False.
+        The id is cached in the session after the first check (one
+        borrowed-time /me call, then free)."""
         owner = config.owner_spotify_id()
         if not owner or not auth_web.is_authenticated(session):
             return False
@@ -430,13 +439,13 @@ def create_app() -> FastAPI:
                 mid = None
             if mid:
                 session["me_id"] = mid
-        if mid and mid != owner:
+        if mid and not _same_user(mid, owner):
             # Fail-closed is right, but silent-and-wrong is miserable to debug:
             # say the id we SAW so a typo'd WEBAPP_OWNER_SPOTIFY_ID is a
             # one-line log read, not a mystery. Local gitignored log only.
             logger.info("repair gate: signed-in id %r != WEBAPP_OWNER_SPOTIFY_ID %r",
                         mid, owner)
-        return bool(mid) and mid == owner
+        return _same_user(mid, owner)
 
     def _needs_source(cache: FeatureCache, track_id: Optional[str] = None):
         """The repair queue (D-56): ledgered acquisition failures that no
