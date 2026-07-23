@@ -1220,3 +1220,26 @@ resume key is a completion claim, not a quality claim.
 > rule, not just correct behavior going forward. Make "recheck existing rows
 > against the current bar" a first-class operation (reuse the gate's own
 > function so the audit and the gate can never disagree), never a one-off.*
+
+## 47 — Detecting a problem is not solving it (2026-07-23, the ffmpeg shadow)
+
+Repairs kept failing with "Encoder not found". I traced it correctly: the
+process's PATH resolved an ffmpeg built without libmp3lame, and I wrote a
+resolver that verified the binary's encoder list before trusting it. It
+worked — it identified the bad ffmpeg precisely. Then it `return None`d,
+which handed yt-dlp back to PATH, where it found *that same bad binary*. I
+told the owner it was fixed. They hit the identical error twice more before
+the log named the culprit: Anaconda's ffmpeg, shadowing the good WinGet build.
+
+**The realization:** my detection was correct and my fix was a no-op, and the
+two felt the same from the inside because the hard part — the diagnosis — was
+done. A guard that recognizes a bad input and then falls through to the
+default path has changed nothing except my confidence. Worse, I'd verified the
+resolver in *my* shell, where Anaconda wasn't on PATH, so the environment that
+had the bug was the one environment I never tested in.
+
+> *When a check rejects something, follow the rejection to a different
+> outcome — keep looking, fail loudly, or refuse — never fall through to the
+> behaviour you just rejected. And verify environment-dependent fixes in the
+> environment that has the problem: reproduce the broken PATH, don't test the
+> healthy one and infer.*

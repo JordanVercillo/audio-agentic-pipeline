@@ -681,18 +681,41 @@
   Drifting Loyalist"** (σ 0.141→0.163, crossing the 0.15 band). New key
   files: `scripts/re_extract_status.py`, `scripts/quarantine_wrong_songs.py`,
   `src/store/repair.py` owner_audio retention, `cache.quarantine_tracks`.
-  **➡️ NEXT ACTION — ① (owner, at leisure) DRAIN THE NEEDS-SOURCE QUEUE (73
-  tracks):** `/library?filter=needs-source` → per song, paste the correct
-  YouTube link or upload the audio (Roots by WILDS et al) — validation still
-  runs (host allowlist, duration hard-reject). The 73 = 46 guard-rejected
-  (no findable source) + 27 quarantined wrong-songs. **② (build) next slice =
-  Q4 QA tooling** (`review_provenance.py` — stratified sample over the
-  provenance mart + duration audit → aggregates-only health artifact; the
-  needs-source queue is now real input), then R1–R3 Artists 2.0 (MusicBrainz,
-  $0). **③ (owner call, RECOMMENDED soon) adopt the two acquisition guards in
-  the LIVE WORKER** (`default_acquire`) — it still lacks them, which is how
-  the 19 DJ-sets + wrong-songs entered; new logins re-introduce the bug
-  otherwise. DEFERRED (not blocking):
+  ✅ **VERIFY-LINKS + REPAIR HARDENING + D-57 (2026-07-23, session 56 cont'd;
+  commits →D-57, 555 tests, app-verify ALL-FALSE):** provenance became
+  CLICKABLE (library Src glyph → the exact YouTube recording, proven live);
+  owner uploads RETAINED + owner-only playback; **five live bugs found and
+  fixed by using the thing** (all in `docs/QA_PLAN.md` §A): the Anaconda-ffmpeg
+  shadow that silently killed every repair (the first fix only DETECTED it and
+  handed yt-dlp back the same binary), repairs leaving STALE derived planes
+  (`/explore`+chat kept the old numbers), the 20 MB cap that made lossless
+  masters impossible, the D-57 gate hiding the owner's own repair tools, and
+  "117 bpm vs 112 bpm" on identical audio (headline = beat_track periodicity,
+  section = beat DENSITY — two measures, one label). **D-57 (owner call):
+  features are WITHHELD until the source is verified** — 46 analyzed tracks
+  had no provenance (features from the same unguarded matcher that produced 27
+  wrong songs), so /song withholds spectrogram/curve/sections/radar/figures,
+  /library blanks the BPM cell, and similar() drops them from the candidate
+  pool; a repair reveals everything. Two repairs proven live end-to-end:
+  "1, 2 Step" (link) and "Roots" by WILDS (a 29.6 MB WAV master, the
+  not-on-YouTube case D-56 exists for). **CORPUS TRUTH: 770 canonical analyzed
+  · 724 source-validated · 46 unvalidated (withheld) · 72 needs-source · 35
+  twins.**
+  **➡️ NEXT ACTION — EPIC QA: read [`docs/QA_PLAN.md`](../docs/QA_PLAN.md)
+  FIRST — it is the full bug/QA brief written for this pickup** (§A the 8
+  fixed bugs each needing a live regression check, §B the ranked open items,
+  §C the proposed build). The build order it proposes: **QA1** `scripts/
+  qa_audit.py` — ONE command running every A1–A8 regression against LIVE data
+  with a pass/fail table (makes "is the corpus honest?" a 30-second question);
+  **QA2 = B1, the highest-value open bug** — the LIVE WORKER (`extractor.
+  default_acquire`) still has NEITHER acquisition guard, so every new login
+  can re-introduce the DJ-sets and wrong-songs we just spent a session
+  removing (owner call: it changes live ingestion); **QA3** `review_
+  provenance.py` (the original Q4 health flywheel); **QA4** = B2, the owner
+  decision on whether the 46 unvalidated tracks also leave the AGGREGATES
+  (clusters/explore/chat) — costs corpus 770→724 and another archetype shift.
+  Owner track, at leisure: drain the 72-track needs-source queue via
+  `/library?filter=needs-source`. DEFERRED (not blocking):
   O3d — the acoustic recall miner (cross-name same-audio candidates from the
   77-dim vectors, review-report-only, after Q3's uniform re-extraction);
   S4 DMARC reject-flip (owner, ~Jul-25 after clean reports); cluster_profile
@@ -2339,6 +2362,24 @@ narrative goes to `notes/engineering_journal.md`, plans to
   HEALTHY mid-flight (~4-5 h at observed pace); D-56 deployed fail-closed.
   NEXT = owner env var → run finishes → post-run checklist → drain the
   repair queue; build = Q4. NEW SESSION: run `/resume`.**
+- **2026-07-23 (session 56 cont'd — verify-links, repair hardening, D-57 +
+  the QA brief; Opus + Fable; 555 tests):** Made provenance clickable
+  (library glyph → the exact recording), retained owner uploads with
+  owner-only playback, and **found five live bugs by actually using the
+  feature** — the Anaconda-ffmpeg shadow that killed every repair (my first
+  fix only DETECTED it, journal #47), repairs leaving stale derived planes,
+  the 20 MB cap blocking lossless masters, the D-57 gate hiding the repair
+  tools it should expose, and a headline-vs-section tempo label collision the
+  owner spotted (117 vs 112 on identical audio). **D-57 (owner call): no
+  verified source → no features shown**, anywhere (46 tracks), with the
+  repair path as the way to reveal them. Repaired 2 tracks live incl. a
+  29.6 MB WAV master. Wrote **`docs/QA_PLAN.md`** — the full bug/QA brief for
+  the next session (8 fixed bugs w/ regression checks, 7 ranked open items,
+  a proposed 4-slice Q4). **Left off: corpus 770 analyzed / 724 validated /
+  46 withheld / 72 needs-source; app healthy. NEXT = Epic QA per
+  docs/QA_PLAN.md — start with QA1 (qa_audit.py), then B1 (the live worker
+  still lacks BOTH acquisition guards — highest-value open bug). NEW SESSION:
+  run `/resume`.**
 - **2026-07-23 (session 56 cont'd — Q3 closed + verify-links + DQ quarantine,
   Opus + Fable; commits 871d000→228b7ad, 548 tests):** The full run finished
   (750 swapped, 96% clean). Built V1+V2 (verifiable provenance: clickable
