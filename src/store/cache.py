@@ -301,6 +301,15 @@ class FeatureCache:
                 })
         return rows
 
+    def all_match_confidence(self) -> dict[str, Optional[float]]:
+        """{track_id → stored O2 match_confidence} for every analyzed track —
+        the Q3 runner's value-first ordering (lowest-confidence re-extracted
+        early). Display/ordering context, never a gate (S2)."""
+        with self._Session() as s:
+            rows = s.execute(select(TrackFeatures.spotify_track_id,
+                                    TrackFeatures.match_confidence)).all()
+        return {tid: (float(c) if c is not None else None) for tid, c in rows}
+
     def cached_ids(self, track_ids: list[str]) -> set[str]:
         if not track_ids:
             return set()
@@ -370,7 +379,8 @@ class FeatureCache:
                time_signature: Optional[int] = None,
                beat_times: Optional[list] = None,
                sections: Optional[list] = None,
-               match_confidence: Optional[float] = None) -> None:
+               match_confidence: Optional[float] = None,
+               replace_display: bool = False) -> None:
         """Store a song's features (idempotent) and mark any pending job done.
 
         Display artifacts (spectrogram_uri, loudness_curve, time_signature,
@@ -378,10 +388,15 @@ class FeatureCache:
         merge would otherwise NULL them. This makes a features-only re-write
         (e.g. re-running seed_cache after the F-v2/F-v3 backfills) truly
         idempotent instead of wiping every backfilled artifact.
+
+        `replace_display=True` (Q3/D-52, red-team F2): a RE-ACQUISITION changes
+        the audio itself — preserving an old curve/meter against new features
+        would silently mix two sources on the row `/song` renders. A true swap
+        takes the caller's values verbatim, None meaning None.
         """
         with self._Session() as s:
             existing = s.get(TrackFeatures, track_id)
-            if existing is not None:
+            if existing is not None and not replace_display:
                 if spectrogram_uri is None:
                     spectrogram_uri = existing.spectrogram_uri
                 if loudness_curve is None:

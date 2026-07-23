@@ -252,8 +252,14 @@ def _write_atomic(df: pd.DataFrame, path: Path) -> None:
 
     On Windows os.replace raises PermissionError if a reader has the target open
     (a POSIX rename would just succeed), so retry briefly through pandas' short
-    read window instead of failing the whole mart rebuild."""
-    tmp = path.with_suffix(path.suffix + ".tmp")
+    read window instead of failing the whole mart rebuild.
+
+    The tmp name is UNIQUE PER PROCESS (Q3 red-team F1): the worker's
+    post-drain rebuild and the re-extraction runner's post-batch rebuild can
+    fire concurrently — a shared fixed ".tmp" let one process os.replace the
+    other's half-written file into place (a truncated mart, served live).
+    Unique tmp + atomic replace = last-writer-wins between two COMPLETE files."""
+    tmp = path.with_suffix(path.suffix + f".{os.getpid()}.tmp")
     df.to_parquet(tmp, index=False)
     for attempt in range(5):
         try:
@@ -261,6 +267,7 @@ def _write_atomic(df: pd.DataFrame, path: Path) -> None:
             return
         except PermissionError:
             if attempt == 4:
+                tmp.unlink(missing_ok=True)  # per-pid tmps must not accumulate
                 raise
             time.sleep(0.1)
 

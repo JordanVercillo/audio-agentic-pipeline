@@ -110,11 +110,13 @@ def another_worker_alive(heartbeat: Optional[dict], my_pid: int,
 
 
 def _record_provenance(cache: FeatureCache, track_id: str,
-                       match: Optional[dict]) -> None:
+                       match: Optional[dict]) -> int:
     """Persist one D-51 acquisition event from the matcher's record. Everything
-    here was already returned by resolve_youtube_match — nothing is re-fetched."""
+    here was already returned by resolve_youtube_match — nothing is re-fetched.
+    Returns the row id (-1 on a swallowed failure) — the Q3 runner checks it:
+    provenance is its resume marker, so a silent miss must surface (red-team #5)."""
     m = match or {}
-    cache.remember_provenance(
+    return cache.remember_provenance(
         spotify_track_id=track_id,
         youtube_url=m.get("url"), youtube_video_id=m.get("youtube_video_id"),
         youtube_title=m.get("title"), channel=m.get("channel"),
