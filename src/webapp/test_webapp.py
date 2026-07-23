@@ -239,7 +239,9 @@ def test_sections_svg_ribbon():
     fills = re.findall(r'fill="(#\w{6})"', svg)
     assert fills[0] == fills[2] != fills[1]
     assert ">A<" in svg and ">B<" in svg          # letters by first appearance
-    assert "1:00–2:00" in svg and "128 bpm" in svg and "E major" in svg  # hover stats
+    # "beats/min avg" not "bpm": this is beat DENSITY over the span, a different
+    # measure from the headline tempo — labelling both "bpm" read as a contradiction
+    assert "1:00–2:00" in svg and "128 beats/min avg" in svg and "E major" in svg
     assert "3:00" in svg                          # duration axis label
     assert sections_svg(None, 180.0) == "" and sections_svg([], 180.0) == ""
     assert sections_svg(secs, 0) == ""            # degenerate duration
@@ -299,6 +301,10 @@ def test_song_deep_dive_renders_features_and_similar(client, monkeypatch, tmp_pa
     tc.upsert("sng2", _feat(130))
     tc.remember_meta([{"spotify_track_id": "sng1", "track_name": "Hush", "artist_names": "Muse"},
                       {"spotify_track_id": "sng2", "track_name": "Other", "artist_names": "Band"}])
+    # features only render for a source-validated track (owner call 2026-07-23)
+    for t in ("sng1", "sng2"):
+        tc.remember_provenance(spotify_track_id=t, youtube_url=f"https://youtu.be/{t}",
+                               youtube_title=t, match_confidence=0.9)
     monkeypatch.setattr("src.webapp.app._feature_cache", lambda: tc)
     client.cookies.set(config.SESSION_COOKIE, _seed_session(taste=None))
     r = client.get("/song/sng1")
@@ -332,9 +338,43 @@ def test_song_provenance_section_renders_and_escapes(client, monkeypatch, tmp_pa
     assert "https://youtu.be/xyz" in r.text and "RealVEVO" in r.text and "86%" in r.text
     assert "<script>alert(1)</script>" not in r.text        # escaped — no raw script tag
     assert "&lt;script&gt;" in r.text                        # …rendered inert
-    # the ∅ track shows the honest "not recorded" note, no source card
+    # the ∅ track: no source card, and (owner call 2026-07-23) its features
+    # are withheld entirely rather than shown as unverifiable fact
     r2 = client.get("/song/none")
-    assert r2.status_code == 200 and "Source not recorded" in r2.text
+    assert r2.status_code == 200 and "Features withheld" in r2.text
+    assert "youtu.be/xyz" not in r2.text                      # not the other's source
+
+
+def test_unvalidated_source_withholds_features(client, monkeypatch, tmp_path):
+    # Owner call (2026-07-23): features whose SOURCE isn't recorded are not
+    # shown at all — they came from the pre-provenance matcher that produced
+    # wrong songs. A repair (which writes provenance) reveals them.
+    from ..store.cache import FeatureCache
+    tc = FeatureCache(url=f"sqlite:///{tmp_path / 'uv.db'}")
+    tc.upsert("unval", _feat(120))
+    tc.upsert("valid", _feat(130))
+    tc.remember_meta([{"spotify_track_id": "unval", "track_name": "Unverified",
+                       "artist_names": "A"},
+                      {"spotify_track_id": "valid", "track_name": "Verified",
+                       "artist_names": "A"}])
+    tc.remember_provenance(spotify_track_id="valid", youtube_url="https://youtu.be/ok",
+                           youtube_title="Verified", match_confidence=0.9)
+    monkeypatch.setattr("src.webapp.app._feature_cache", lambda: tc)
+
+    r = client.get("/song/unval")
+    assert r.status_code == 200
+    assert "Features withheld" in r.text and "source not verified" in r.text.lower()
+    assert "Acoustic fingerprint" not in r.text      # no radar
+    assert "Mel-spectrogram" not in r.text           # no spectrogram
+    assert "summary-row" not in r.text               # no tempo/energy figures
+    # the validated one still shows everything
+    r2 = client.get("/song/valid")
+    assert "Features withheld" not in r2.text and "Acoustic fingerprint" in r2.text
+    # …and an unvalidated track is not offered as a neighbour
+    assert "unval" not in r2.text
+    # library: its BPM cell is withheld, the validated one shows
+    lib = client.get("/library")
+    assert "source not verified — features withheld" in lib.text
 
 
 def test_song_twin_page_banners_its_canonical(client, monkeypatch, tmp_path):

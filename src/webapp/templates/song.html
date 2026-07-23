@@ -12,7 +12,22 @@
     source shown here are this release's own.</p>
   {% endif %}
 
-  {% if analyzed %}
+  {% if analyzed and not source_validated %}
+  {# Owner call: no verified source → no numbers. Showing tempo/energy for
+     audio we can't trace invites trust the data hasn't earned. #}
+  <div class="prov-card">
+    <h2 class="section" style="margin-top:0">Features withheld — source not verified</h2>
+    <p class="cap">This track was analyzed before we started recording <em>where</em>
+      the audio came from, so we can't show you the recording these numbers were
+      measured against. Rather than present figures you can't check, we hold them
+      back until the source is verified — the same standard every other track on
+      this site meets.</p>
+    <p class="cap">Its features are also excluded from “songs like this” and the
+      recommender until then.</p>
+  </div>
+  {% endif %}
+
+  {% if analyzed and source_validated %}
   <div class="song-grid">
     <div class="song-spec">
       {% if has_spectrogram %}
@@ -36,7 +51,9 @@
         <p class="cap">Detected sections — the same letter and color mean the
           same-sounding part (repeats found by self-similarity). Honest
           boundaries only: no “chorus/verse” claims. Hover a section for its
-          tempo, loudness, and key.</p>
+          average beat rate, loudness, and key — that rate counts beats over the
+          span, so it reads lower than the headline tempo when a section has
+          sparse or silent stretches.</p>
       </div>
       {% endif %}
       <div class="summary-row">
@@ -81,18 +98,40 @@
       score is common for remixes/edits, not proof of a wrong match.</p>
   </div>
   {% endif %}
-  {# V2: retained owner upload — renders regardless of provenance state, so a
-     kept file is always playable/verifiable by the owner. #}
+
+  <p><a class="btn ghost" href="/recommend?seed={{ track_id }}">More like this — tune it →</a></p>
+
+  {% if similar %}
+  <h2 class="section">Songs like this</h2>
+  <div class="artists">
+    {% for s in similar %}
+    <a class="artist" href="/song/{{ s.id }}">
+      <div class="ameta">
+        <span class="aname">{{ s.name }}</span>
+        <span class="genres">{{ s.artist }}</span>
+      </div>
+    </a>
+    {% endfor %}
+  </div>
+  {% endif %}
+  {% endif %}{# /analyzed and source_validated #}
+
+  {% if not analyzed %}
+  <p class="lede">This song is queued for analysis — its acoustic features and
+    spectrogram will appear here once a worker has extracted them.</p>
+  {% if authed %}<a class="btn" href="/dashboard">Back to your dashboard</a>
+  {% else %}<a class="btn" href="/library">Back to Library</a>{% endif %}
+  {% endif %}
+
+  {# The OWNER's repair tools live OUTSIDE the validation gate — an unverified
+     or unanalyzed track is precisely the one that needs repairing, so hiding
+     them here would hide the fix along with the data. #}
   {% if has_owner_audio %}
   <div class="prov-card">
     <p class="cap"><b>Owner-supplied audio</b> — play it to confirm it's the right
       recording (visible to you only; we host this file, so it isn't public):</p>
     <audio class="audio-verify" controls preload="none" src="/audio/{{ track_id }}"></audio>
   </div>
-  {% endif %}
-  {% if not provenance and not has_owner_audio %}
-  <p class="cap muted">Source not recorded for this track yet — it was analyzed
-    before provenance capture, and will populate on re-extraction.</p>
   {% endif %}
 
   {% if is_owner %}
@@ -118,29 +157,6 @@
       length doesn't match this track's is rejected. mp3/wav/flac/m4a, {{ max_upload_mb }} MB max
       (content-sniffed, the filename doesn't matter) — lossless masters welcome.</p>
   </div>
-  {% endif %}
-
-  <p><a class="btn ghost" href="/recommend?seed={{ track_id }}">More like this — tune it →</a></p>
-
-  {% if similar %}
-  <h2 class="section">Songs like this</h2>
-  <div class="artists">
-    {% for s in similar %}
-    <a class="artist" href="/song/{{ s.id }}">
-      <div class="ameta">
-        <span class="aname">{{ s.name }}</span>
-        <span class="genres">{{ s.artist }}</span>
-      </div>
-    </a>
-    {% endfor %}
-  </div>
-  {% endif %}
-
-  {% else %}
-  <p class="lede">This song is queued for analysis — its acoustic features and
-    spectrogram will appear here once a worker has extracted them.</p>
-  {% if authed %}<a class="btn" href="/dashboard">Back to your dashboard</a>
-  {% else %}<a class="btn" href="/library">Back to Library</a>{% endif %}
   {% endif %}
 </section>
 {% endblock %}

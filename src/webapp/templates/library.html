@@ -57,7 +57,9 @@
         {% if ns_filtered and r.id in ns_reasons %}<span class="cap dup">⚠ {{ ns_reasons[r.id] }}</span>{% endif %}</td>
       <td class="tartist">{{ r.artist }}</td>
       <td class="num">{{ r.popularity if r.popularity is not none else '—' }}</td>
-      <td class="num">{{ r.tempo|round|int if r.tempo is not none else '—' }}</td>
+      {# no verified source → no numbers (owner call): a BPM we can't trace to
+         a recording is presented as nothing, not as fact. #}
+      <td class="num">{% if r.tempo is not none and r.provenance %}{{ r.tempo|round|int }}{% else %}<span title="{{ 'source not verified — features withheld' if r.analyzed else 'not analyzed yet' }}">—</span>{% endif %}</td>
       <td class="num">{% if r.provenance and r.source_url %}<a class="prov-glyph {{ r.provenance }}"
            href="{{ r.source_url }}" target="_blank" rel="noopener nofollow"
            title="Open the source audio on YouTube and check it yourself{{ ' — low match confidence' if r.provenance == 'low' else '' }}">{{ '✓' if r.provenance == 'ok' else '~' }}</a>

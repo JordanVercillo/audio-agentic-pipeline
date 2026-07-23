@@ -276,8 +276,12 @@ def sections_svg(sections: Optional[list], duration_sec: Optional[float],
         key, mode = s.get("key", -1), s.get("mode", "")
         keyname = f"{_PITCHES[key]} {mode}" if 0 <= key <= 11 and mode else "—"
         loud = s.get("loudness_db")
+        # "beat rate", NOT "bpm": this is 60·beats/duration within the span, a
+        # DENSITY — the headline tempo is beat_track's dominant periodicity.
+        # They legitimately differ (sparse intro/outro beats drag density down),
+        # and labelling both "bpm" made the page look self-contradictory.
         tip = (f"{letter} · {_mmss(s['start'])}–{_mmss(s['end'])} · "
-               f"{s.get('tempo_bpm', 0):.0f} bpm · "
+               f"{s.get('tempo_bpm', 0):.0f} beats/min avg · "
                f"{loud if loud is not None else '—'} dB · {keyname}")
         parts.append(
             f'<rect class="sec-rect" x="{x0:.1f}" y="{pad_t}" width="{w:.1f}" '

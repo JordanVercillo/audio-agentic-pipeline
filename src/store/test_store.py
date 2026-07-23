@@ -201,6 +201,9 @@ def test_similar_ranks_by_acoustic_distance(cache):
     cache.upsert("a", {"tempo_bpm": 120, "rms_mean": 0.20, "spectral_centroid_mean": 2000})
     cache.upsert("near", {"tempo_bpm": 122, "rms_mean": 0.21, "spectral_centroid_mean": 2010})
     cache.upsert("far", {"tempo_bpm": 180, "rms_mean": 0.05, "spectral_centroid_mean": 4000})
+    # neighbours must be SOURCE-VALIDATED to be offered (owner call 2026-07-23)
+    for t in ("a", "near", "far"):
+        cache.remember_provenance(spotify_track_id=t, youtube_url=f"https://y/{t}")
     sims = cache.similar("a", k=2)
     assert [sid for sid, _d in sims] == ["near", "far"]  # nearer first
     assert cache.similar("missing") == []
@@ -294,6 +297,9 @@ def test_similar_excludes_twin_candidates(cache):
                            "zcr_mean": 0.05, "spectral_centroid_mean": 2000.0})
     cache.remember_meta([{"spotify_track_id": t, "track_name": t, "artist_names": "A"}
                          for t in ("c1", "t1", "d1")])
+    # similar() only offers SOURCE-VALIDATED neighbours (owner call 2026-07-23)
+    for t in ("c1", "t1", "d1"):
+        cache.remember_provenance(spotify_track_id=t, youtube_url=f"https://y/{t}")
     with cache._Session() as s:
         from .models import TrackMeta
         s.get(TrackMeta, "t1").duplicate_of = "c1"

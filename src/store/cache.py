@@ -808,6 +808,18 @@ class FeatureCache:
                              .where(TrackMeta.duplicate_of.isnot(None))).all()
         return {tid: canon for tid, canon in rows}
 
+    def source_validated_ids(self) -> set[str]:
+        """Track ids with a recorded acquisition source (Q1/D-51).
+
+        A track WITHOUT one has features that trace to no verifiable audio —
+        they came from the pre-provenance era, produced by the same unguarded
+        matcher that gave us wrong songs and DJ sets. Owner call (2026-07-23):
+        the app must not present those numbers as fact, so the display layer
+        gates on this set and a repair (which writes provenance) reveals them."""
+        with self._Session() as s:
+            return set(s.execute(
+                select(TrackProvenance.spotify_track_id).distinct()).scalars())
+
     def twin_ids(self) -> set[str]:
         """The flagged-duplicate id set — THE one twin filter every population
         builder shares (O3, red-team #8): perceptual plane, cluster training,
@@ -941,9 +953,12 @@ class FeatureCache:
         (`ORDER BY vector <-> :target`) over the Epic-B Vector(77) column.
         O3b: flagged twins sit out of the CANDIDATE pool (a track's nearest
         neighbor is otherwise literally itself under another id); a twin can
-        still be the QUERY (its /song page keeps working).
+        still be the QUERY (its /song page keeps working). Source-unvalidated
+        tracks sit out too — recommending a neighbour is presenting its
+        features as fact, which is exactly what we don't do until validated.
         """
-        twins = self.twin_ids()
+        twins = self.twin_ids() | (
+            set(self.all_features()) - self.source_validated_ids())
         with self._Session() as s:
             target = s.get(TrackFeatures, track_id)
             if target is None:

@@ -1259,6 +1259,11 @@ def create_app() -> FastAPI:
             # Jinja auto-escapes (the |safe SVG XSS lesson, security review).
             "provenance": cache.provenance_for(track_id),
         }
+        # Owner call (2026-07-23): features whose SOURCE isn't recorded are not
+        # presented at all. They came from the pre-provenance matcher — the same
+        # one that produced wrong songs and DJ sets — so showing tempo/energy as
+        # fact invites trust the data hasn't earned. A repair reveals them.
+        ctx["source_validated"] = ctx["provenance"] is not None
         # O3c: a twin's page keeps working (public URLs never break) but names
         # its canonical — the features/provenance shown are THIS release's own.
         canon_id = cache.duplicate_flags().get(track_id)
@@ -1276,7 +1281,7 @@ def create_app() -> FastAPI:
             ctx["has_owner_audio"] = find_owner_audio(
                 _OWNER_AUDIO_DIR, track_id) is not None
             ctx["max_upload_mb"] = MAX_UPLOAD_BYTES // (1024 * 1024)
-        if features is not None:
+        if features is not None and ctx["source_validated"]:
             ctx["summary"] = track_summary(features)
             ctx["radar"] = radar_svg(features)
             ctx["loudness"] = loudness_svg(
