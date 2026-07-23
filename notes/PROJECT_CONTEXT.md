@@ -543,15 +543,34 @@
   provenance events → empty mart, audit green; the ∅→populated transition
   lands on the next real extraction / Q3.** Ground rules held: zero new
   fetches, bridge key untouched, synthetic-tested (real DSP path).
-  **➡️ NEXT ACTION — Phase 4.5, slice Q2 (Opus): expose provenance on /song +
-  /library.** A "Source & provenance" section on `/song` (YouTube link, title,
-  channel, duration delta, match confidence) + a ✓/~/∅ glyph on `/library`;
-  **ESCAPE the external youtube_title/channel strings** (new class of
-  untrusted display data — reuse the markupsafe/`_neutralize` pattern; name it
-  in the acceptance or it's an untestable XSS gap); public taste-free surfaces;
-  honest ∅ tier until Q3 backfills. Then Q3 the D-52 re-extraction program
-  (**Fable signs the batch plan** before the ~11h run; permanently fixes the 2
-  broken extractions + retires the interim feature_valid gate), Q4 QA tooling
+  ✅ **Q2 SHIPPED (2026-07-22, session 53, Fable+orchestrator; 501 tests,
+  audit green, app-verify ALL-FALSE, both surfaces browser-validated live):
+  provenance exposed on /song + /library.** `/song` gains a **"Source &
+  provenance" card** (YouTube link, channel, duration delta, ✓/~ match-conf
+  indicator + the honest "low = remix, not wrong-match" caption from S2);
+  `/library` gains a **Src column** (✓ recorded / ~ low-conf / ∅ not-yet) +
+  legend. New readers: `cache.provenance_for(track_id)` (latest event) +
+  `_provenance_glyph_map` folded into `library_rows` (`provenance`:
+  "ok"|"low"|None). **XSS discipline (the |safe SVG lesson applied):** external
+  youtube_title/channel render WITHOUT `|safe` (Jinja auto-escapes) + the
+  youtube_url is **scheme-guarded** to http(s) so a `javascript:` url is never
+  linked — both regression-tested (a `<script>`-shaped title renders inert).
+  Live truth: all 807 tracks are pre-Q1 → the ∅ tier renders across the
+  corpus (honest; populated cards light up on Q3/next extraction). New key
+  files/conventions: `TrackProvenance` (models), `remember_provenance`/
+  `all_provenance`/`provenance_for` (cache), `build_provenance_mart` (semantic),
+  `PROVENANCE_ORPHAN` (audit), `_record_provenance` (extractor), the `.prov-*`
+  CSS. **➡️ NEXT ACTION — Phase 4.5, slice Q3: the D-52 re-extraction program**
+  (**Fable signs the batch plan FIRST** — irreversible ~11h data-mutating run;
+  Opus builds the resumable runner). Uniformly re-acquire+re-extract all ~807
+  through the D-51 schema + duration-aware matcher; **per-track atomic swap on
+  SUCCESS only** (a failed re-extract keeps old features + a flagged row);
+  resumable, rate-limited, capped batches; frozen 77-dim contract untouched;
+  ends with post-drain rebuild + cluster retrain + plane-coherence green.
+  **This permanently fixes the 2 broken extractions (Aftermath/Q&A, still
+  tempo-0 live) + retires the interim feature_valid gate, and populates ALL
+  provenance (∅→✓ across the corpus).** Owner-ratified consequence: feature
+  shift → cluster/archetype may change (precedented, D-55). Then Q4 QA tooling
   (exempt from the QA-deferral), then R1–R3 Artists 2.0 (MusicBrainz, $0,
   auth-less; research-expert fences ToS/rate once). DEFERRED (not blocking):
   S4 DMARC reject-flip (owner, ~Jul-25 after clean reports); cluster_profile
@@ -2125,3 +2144,16 @@ narrative goes to `notes/engineering_journal.md`, plans to
   execution). **Left off: Q1 shipped, verified. NEXT = Q2 — expose
   provenance on /song + /library (escape the external strings). NEW SESSION:
   run `/resume`.**
+- **2026-07-22 (session 53 — Phase 4.5 Q2, Fable + orchestrator; 501 tests):**
+  Exposed D-51 provenance on /song (a "Source & provenance" card) + /library
+  (a Src ✓/~/∅ glyph column + legend) in three slices, no consult (warm
+  webapp context + the XSS fix is known: Jinja auto-escapes, so external
+  strings are safe as long as nothing `|safe`s them). `cache.provenance_for`
+  + a glyph folded into `library_rows`; the youtube_url is scheme-guarded to
+  http(s) (no `javascript:` links) and the untrusted title/channel render
+  auto-escaped — both regression-tested (a `<script>` title renders inert).
+  Live ∅ tier validated on both surfaces through the edge (all 807 tracks are
+  pre-Q1 — populated cards activate on Q3). No journal entry (clean specced
+  execution; the auto-escape default made the flagged XSS risk a non-event).
+  **Left off: Q2 shipped, verified. NEXT = Q3 — the D-52 re-extraction program
+  (Fable signs the batch plan first). NEW SESSION: run `/resume`.**
