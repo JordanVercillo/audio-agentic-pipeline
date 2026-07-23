@@ -304,6 +304,38 @@ def test_similar_excludes_twin_candidates(cache):
     assert cache.similar("t1", k=5)
 
 
+def test_quarantine_tracks_removes_analysis_keeps_bridge_key(cache):
+    # DQ1: a not-confident track's WRONG analysis is deleted (stops polluting
+    # marts) and its job dead-lettered (worker won't re-grab), but the bridge
+    # key survives and a D-56 repair can re-analyze it.
+    from .models import TrackCluster, TrackPerceptual
+    cache.upsert("wrong", {"tempo_bpm": 120.0, "rms_mean": 0.3,
+                           "spectral_centroid_mean": 2000.0})
+    cache.remember_meta([{"spotify_track_id": "wrong", "track_name": "Real Song",
+                          "artist_names": "Real Artist"}])
+    cache.remember_provenance(spotify_track_id="wrong", youtube_url="u",
+                              youtube_title="Some Other Song")
+    with cache._Session() as s:
+        s.add(TrackPerceptual(spotify_track_id="wrong", features={"tempo": 120.0},
+                              version="perceptual-v1"))
+        s.add(TrackCluster(spotify_track_id="wrong", model_id=1, cluster_id=0))
+        s.commit()
+
+    n = cache.quarantine_tracks({"wrong": "wrong-song swap — needs manual source"})
+    assert n == 1
+    assert cache.get(["wrong"]) == {}                        # features gone
+    assert cache.provenance_for("wrong") is None             # provenance gone
+    assert cache.get_perceptual(["wrong"]) == {}             # perceptual gone
+    assert cache.get_meta("wrong")["track_name"] == "Real Song"  # bridge key KEPT
+    # dead-lettered → enqueue refuses to re-queue it (worker can't re-grab)
+    assert cache.enqueue(["wrong"]) == []
+    assert cache.job_status(["wrong"])["failed"] == 1
+    # …but a D-56 repair path (direct upsert) still re-analyzes it
+    cache.upsert("wrong", {"tempo_bpm": 128.0, "rms_mean": 0.4})
+    assert cache.get(["wrong"])["wrong"]["tempo_bpm"] == 128.0
+    assert cache.quarantine_tracks({}) == 0                   # empty is a no-op
+
+
 def test_provenance_for_returns_current_event(cache):
     # Q2/D-51: /song reads the LATEST event for a track.
     assert cache.provenance_for("nope") is None            # ∅ until extracted

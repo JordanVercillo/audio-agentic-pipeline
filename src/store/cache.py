@@ -35,6 +35,7 @@ from .models import (
     ChatLabel,
     ChatLog,
     ExtractionJob,
+    TrackCluster,
     TrackFeatures,
     TrackMeta,
     TrackPerceptual,
@@ -521,6 +522,43 @@ class FeatureCache:
             return row.sections if row is not None else None
 
     # ── perceptual-v1 layer (VISION_SPECS F1) ────────────────────────────────
+    def quarantine_tracks(self, reasons: dict[str, str]) -> int:
+        """Remove the WRONG ANALYSIS for tracks we're not confident in (DQ1) —
+        the derived data (features, perceptual, provenance, cluster assignment)
+        is deleted so it stops polluting marts/clusters, and the extraction job
+        is DEAD-LETTERED (failed at MAX_ATTEMPTS) so the guard-less worker can't
+        silently re-grab another wrong song. The bridge key (TrackMeta) is
+        UNTOUCHED — the track still exists, now unanalyzed, ready for a D-56
+        manual repair (which re-upserts features + provenance). Reversible by
+        re-extraction; derived data is rebuildable (ground rule 7). Returns the
+        number of tracks quarantined. Caller deletes spectrogram files + writes
+        the needs-source ledger (the runner owns that file's single-writer rule
+        only during a run; this is a between-runs curation write)."""
+        ids = list(reasons)
+        if not ids:
+            return 0
+        with self._Session() as s:
+            for model in (TrackFeatures, TrackPerceptual):
+                for r in s.execute(select(model).where(
+                        model.spotify_track_id.in_(ids))).scalars().all():
+                    s.delete(r)
+            for r in s.execute(select(TrackProvenance).where(
+                    TrackProvenance.spotify_track_id.in_(ids))).scalars().all():
+                s.delete(r)
+            for r in s.execute(select(TrackCluster).where(
+                    TrackCluster.spotify_track_id.in_(ids))).scalars().all():
+                s.delete(r)
+            for tid, reason in reasons.items():
+                job = s.get(ExtractionJob, tid)
+                if job is None:
+                    job = ExtractionJob(spotify_track_id=tid)
+                    s.add(job)
+                job.status = JOB_FAILED
+                job.attempts = MAX_ATTEMPTS          # dead-lettered: enqueue won't retry
+                job.last_error = reason[:500]
+            s.commit()
+        return len(ids)
+
     def prune_perceptual(self, track_ids: set[str]) -> int:
         """Delete track_perceptual rows for the given ids (O3b, red-team #2:
         excluding twins at compute never reached the TABLE that /explore and
