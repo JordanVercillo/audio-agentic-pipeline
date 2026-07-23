@@ -59,7 +59,10 @@ References
 from __future__ import annotations
 
 import logging
+import os
 import random
+import shutil
+import subprocess
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -111,6 +114,35 @@ _CONF_OFFSET, _CONF_RANGE = 30.0, 65.0
 # Stamped on each provenance row (Epic Q / D-51) so a re-tuned matcher's rows
 # are distinguishable — and it is the version the O2 sign-off (S2) applies to.
 MATCHER_VERSION = "heuristic-v1"
+
+
+def ffmpeg_location() -> Optional[str]:
+    """Directory of an ffmpeg that can actually encode MP3, or None to let
+    yt-dlp search PATH itself.
+
+    Why this exists (live bug, 2026-07-23): a repair download completed and
+    then failed postprocessing with "Encoder not found" — the webapp's
+    yt-dlp had resolved an ffmpeg WITHOUT libmp3lame, while the same code run
+    from a shell worked. A process inherits the PATH of whoever launched it,
+    so acquisition was silently environment-dependent. Resolve it explicitly:
+    FFMPEG_LOCATION wins (ops escape hatch), else the PATH hit is verified to
+    list libmp3lame before we trust it."""
+    override = os.environ.get("FFMPEG_LOCATION")
+    if override:
+        return override
+    exe = shutil.which("ffmpeg")
+    if not exe:
+        return None
+    try:
+        out = subprocess.run([exe, "-hide_banner", "-encoders"],
+                             capture_output=True, text=True, timeout=20, check=False)
+        if "libmp3lame" not in (out.stdout or ""):
+            logger.warning("ffmpeg at %s cannot encode mp3 (no libmp3lame) — "
+                           "set FFMPEG_LOCATION to a full build", exe)
+            return None
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    return str(Path(exe).parent)
 
 
 def score_candidate(title: str, duration_s: Optional[float],
@@ -355,6 +387,14 @@ def download_track_audio(
         "quiet": True,
         "no_warnings": True,
     }
+    # PIN the ffmpeg build (live bug, 2026-07-23): the download succeeded but
+    # postprocessing died with "Encoder not found" — yt-dlp resolved a
+    # DIFFERENT ffmpeg than the shell's (no libmp3lame) because it inherits
+    # whatever PATH the launching process had. A critical binary must not
+    # depend on ambient PATH ordering, so resolve it once, explicitly.
+    ffmpeg_dir = ffmpeg_location()
+    if ffmpeg_dir:
+        ydl_opts["ffmpeg_location"] = ffmpeg_dir
 
     logger.info(
         "Downloading audio: spotify_track_id=%s url=%s", spotify_track_id, youtube_url
