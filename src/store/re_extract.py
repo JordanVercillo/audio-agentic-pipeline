@@ -57,6 +57,56 @@ logger = logging.getLogger(__name__)
 
 _BROKEN_TEMPO = 1.0  # mirrors clusters._MIN_VALID_TEMPO_BPM / the mart gate
 
+# WRONG-VERSION GUARD (live finding, 2026-07-23 — the first full-run batch).
+# heuristic-v1 never rejects, only ranks: when every YouTube candidate for an
+# obscure track is a DJ SET, it returns the least-bad one. 19 corpus tracks
+# carry mix-length audio that way (up to 37x — a 130-min set stored as a
+# 3.5-min track), and a re-extraction faithfully re-downloads the same set:
+# ~9 GB RAM and minutes of DSP to reproduce known-garbage features.
+# So the runner rejects an acquisition whose length is IMPLAUSIBLE against
+# Spotify's own duration for that track. This is NOT the S2 rejection
+# threshold that was declined (that was match_confidence gating corpus
+# SELECTION — a legit remix must never be discarded); this compares the
+# acquired audio's LENGTH to a known ground truth, and only fires on
+# objectively-wrong acquisitions. Fails safe: old features kept, ledgered.
+_DURATION_MAX_RATIO = 2.0     # a remix/extended take may legitimately run longer…
+_DURATION_MAX_EXTRA_S = 120.0  # …but not >2x AND >2 min beyond the known length
+
+
+def implausible_duration(actual_s: Optional[float],
+                         expected_s: Optional[float]) -> bool:
+    """True when acquired audio is far too long to be this track (a DJ set /
+    full-album upload). Unknown either side → not implausible (never guess)."""
+    if not actual_s or not expected_s or actual_s <= 0 or expected_s <= 0:
+        return False
+    return actual_s > max(_DURATION_MAX_RATIO * expected_s,
+                          expected_s + _DURATION_MAX_EXTRA_S)
+
+
+def guarded_acquire(track_id: str, name: str, artist: str, dest_dir: Path,
+                    duration_s: Optional[float] = None,
+                    ) -> tuple[Optional[Path], Optional[dict]]:
+    """The runner's acquire: resolve ONCE, refuse a wrong-VERSION match BEFORE
+    downloading (the matcher already carries `youtube_duration_s` from Q1a, so
+    the check is free and saves both the ~170 MB fetch and the ~9 GB DSP),
+    then download. Same (path, match) contract as default_acquire."""
+    from ..ingestion.audio_downloader import (
+        DownloadConfig,
+        download_track_audio,
+        resolve_youtube_match,
+    )
+    match = resolve_youtube_match(name, artist or "", duration_s=duration_s)
+    if not match:
+        return None, None
+    yt_len = match.get("youtube_duration_s")
+    if implausible_duration(yt_len, duration_s):
+        logger.info("rejected wrong-version match for %r: %.0fs vs expected %.0fs",
+                    name, yt_len or 0.0, duration_s or 0.0)
+        return None, {**match, "_rejected": "duration"}
+    path = download_track_audio(match["url"], track_id,
+                                DownloadConfig(output_dir=Path(dest_dir)))
+    return path, match
+
 
 def _utc() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
@@ -138,7 +188,7 @@ def select_targets(cache: FeatureCache) -> list[str]:
 
 # ── the per-track swap ────────────────────────────────────────────────────────
 def re_extract_one(cache: FeatureCache, track_id: str, *, audio_dir: Path,
-                   spectrogram_dir: Path, acquire: AcquireFn = default_acquire,
+                   spectrogram_dir: Path, acquire: AcquireFn = guarded_acquire,
                    ) -> tuple[bool, str]:
     """Re-acquire + re-extract ONE analyzed track. Returns (ok, note).
 
@@ -157,12 +207,25 @@ def re_extract_one(cache: FeatureCache, track_id: str, *, audio_dir: Path,
     audio_path: Optional[Path] = None
     try:
         dur_ms = meta.get("duration_ms")
+        expected_s = (dur_ms / 1000.0) if dur_ms else None
         audio_path, match = acquire(track_id, meta["track_name"],
                                     meta.get("artist_names") or "", Path(audio_dir),
-                                    (dur_ms / 1000.0) if dur_ms else None)
+                                    expected_s)
         if audio_path is None or not Path(audio_path).exists():
+            if (match or {}).get("_rejected") == "duration":
+                return False, (f"wrong-version rejected: candidate "
+                               f"{(match or {}).get('youtube_duration_s') or 0:.0f}s "
+                               f"vs expected {expected_s or 0:.0f}s")
             return False, "audio acquisition failed"
         signal = load_audio(audio_path)
+        # Backstop: YouTube's advertised length can differ from the real file
+        # (and an injected acquire skips the pre-download guard). Reject BEFORE
+        # writing anything — a swap must never install DJ-set audio as a song.
+        actual_s = getattr(signal, "duration_sec", None) or (
+            len(signal.waveform) / signal.sr if getattr(signal, "sr", 0) else None)
+        if implausible_duration(actual_s, expected_s):
+            return False, (f"wrong-version rejected after load: "
+                           f"{actual_s or 0:.0f}s vs expected {expected_s or 0:.0f}s")
         tf = extract_features(signal)
         features = tf.to_summary_dict()
         spec_uri = make_mel_spectrogram(signal,

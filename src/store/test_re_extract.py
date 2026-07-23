@@ -179,6 +179,62 @@ def test_still_broken_swap_is_flagged_not_failed(cache, tmp_path):
     assert cache.provenance_for("qb1") is not None         # provenance recorded
 
 
+def test_implausible_duration_rule():
+    # The live finding: a 130-min DJ set stored as a 3.5-min track. Reject the
+    # objectively-wrong, never a legitimately-longer remix.
+    from .re_extract import implausible_duration
+    assert implausible_duration(7396.0, 207.0)          # 36x — a DJ set
+    assert implausible_duration(3600.0, 210.0)
+    assert not implausible_duration(240.0, 200.0)       # a slightly longer take
+    assert not implausible_duration(330.0, 200.0)       # extended mix, <2x AND <+120s
+    assert not implausible_duration(200.0, 200.0)
+    assert not implausible_duration(None, 200.0)        # unknown → never guess
+    assert not implausible_duration(400.0, None)
+    assert not implausible_duration(0.0, 200.0)
+    # a genuinely long track is judged against ITS OWN spotify length
+    assert not implausible_duration(600.0, 590.0)
+
+
+def test_wrong_version_is_rejected_before_download(cache, tmp_path, monkeypatch):
+    # guarded_acquire must refuse a DJ-set candidate WITHOUT downloading it.
+    from . import re_extract as rx
+    downloads: list = []
+    monkeypatch.setattr(
+        "src.ingestion.audio_downloader.resolve_youtube_match",
+        lambda name, artist, duration_s=None: {
+            "url": "https://y/mix", "title": "2 Hour Mix", "score": 0,
+            "confidence": 0.1, "duration_delta_s": 7000.0,
+            "youtube_duration_s": 7396.0, "candidate_count": 5})
+    monkeypatch.setattr("src.ingestion.audio_downloader.download_track_audio",
+                        lambda *a, **k: downloads.append(a) or Path("nope.mp3"))
+    path, match = rx.guarded_acquire("t", "WGTF?", "Riordan", tmp_path, 207.0)
+    assert path is None and match["_rejected"] == "duration"
+    assert downloads == []                               # never fetched the 170 MB
+
+
+def test_wrong_version_keeps_old_features_and_ledgers(cache, tmp_path):
+    # End-to-end: the swap is refused, the old row is untouched, no provenance,
+    # and the reason is ledgered for Q4.
+    _seed(cache, "wv1", tempo=140.0, conf=0.5)
+    with cache._Session() as s:
+        from .models import TrackMeta
+        s.get(TrackMeta, "wv1").duration_ms = 207_000
+        s.commit()
+    before = copy.deepcopy(cache.get(["wv1"])["wv1"])
+
+    def mix_acquire(track_id, name, artist, dest_dir, duration_s=None):
+        return None, {"url": "u", "title": "2 Hour Mix",
+                      "youtube_duration_s": 7396.0, "_rejected": "duration"}
+
+    ledger = Ledger(tmp_path / "led.json")
+    s = run(cache, audio_dir=tmp_path / "a", spectrogram_dir=tmp_path / "s",
+            ledger=ledger, limit=None, acquire=mix_acquire)
+    assert s["ok"] == 0 and s["failed"] == 1
+    assert cache.get(["wv1"])["wv1"] == before           # untouched
+    assert cache.provenance_for("wv1") is None
+    assert "wrong-version rejected" in ledger.data["failed"]["wv1"]["error"]
+
+
 def test_runner_never_touches_the_job_queue(cache, tmp_path):
     _seed(cache, "q1", tempo=120.0)
     ledger = Ledger(tmp_path / "led.json")
