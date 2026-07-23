@@ -17,6 +17,7 @@ Run from the project root:
 from __future__ import annotations
 
 # ── Allow running before installation (add src to path) ──────────────────────
+import os
 import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -205,6 +206,54 @@ class TestShouldSkipDownload:
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 #  TEST 3 — resolve_youtube_url()
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+
+class TestFfmpegResolution:
+    """The live bug (2026-07-23): the webapp's PATH put Anaconda's ffmpeg
+    first — a build with NO libmp3lame — so every acquisition downloaded fine
+    then died at conversion with "Encoder not found". The first fix only
+    DETECTED the bad binary and returned None, handing yt-dlp back to that
+    same bad ffmpeg. The resolver must keep looking past a lame-less build."""
+
+    def test_skips_a_lame_less_ffmpeg_and_keeps_looking(self, monkeypatch, tmp_path):
+        from src.ingestion import audio_downloader as ad
+        bad = tmp_path / "anaconda" / "ffmpeg.exe"
+        good = tmp_path / "full_build" / "ffmpeg.exe"
+        for p in (bad, good):
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text("x")
+        monkeypatch.setattr(ad, "_mp3_capable_candidates",
+                            lambda: [str(bad), str(good)])
+        monkeypatch.setattr(ad, "_can_encode_mp3", lambda exe: exe == str(good))
+        assert ad.ffmpeg_location() == str(good.parent)   # skipped the bad one
+
+    def test_returns_none_when_nothing_can_encode(self, monkeypatch):
+        from src.ingestion import audio_downloader as ad
+        monkeypatch.setattr(ad, "_mp3_capable_candidates", lambda: ["/x/ffmpeg"])
+        monkeypatch.setattr(ad, "_can_encode_mp3", lambda exe: False)
+        assert ad.ffmpeg_location() is None               # honest, and it logs
+
+    def test_override_is_tried_first(self, monkeypatch, tmp_path):
+        from src.ingestion import audio_downloader as ad
+        exe = tmp_path / "ops" / "ffmpeg.exe"
+        exe.parent.mkdir(parents=True)
+        exe.write_text("x")
+        monkeypatch.setenv("FFMPEG_LOCATION", str(exe.parent))
+        assert str(exe) in ad._mp3_capable_candidates()[:1]
+
+    def test_candidates_scan_every_path_entry_not_just_the_first(
+            self, monkeypatch, tmp_path):
+        # shutil.which returns only the FIRST hit — which was the broken one.
+        from src.ingestion import audio_downloader as ad
+        first, second = tmp_path / "a", tmp_path / "b"
+        for d in (first, second):
+            d.mkdir()
+            (d / "ffmpeg.exe").write_text("x")
+        monkeypatch.delenv("FFMPEG_LOCATION", raising=False)
+        monkeypatch.setenv("PATH", os.pathsep.join([str(first), str(second)]))
+        found = ad._mp3_capable_candidates()
+        assert str(first / "ffmpeg.exe") in found
+        assert str(second / "ffmpeg.exe") in found        # the shadowed one too
 
 
 class TestResolveYoutubeUrl:

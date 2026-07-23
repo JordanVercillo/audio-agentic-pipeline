@@ -61,7 +61,6 @@ from __future__ import annotations
 import logging
 import os
 import random
-import shutil
 import subprocess
 import time
 from dataclasses import dataclass, field
@@ -116,33 +115,73 @@ _CONF_OFFSET, _CONF_RANGE = 30.0, 65.0
 MATCHER_VERSION = "heuristic-v1"
 
 
-def ffmpeg_location() -> Optional[str]:
-    """Directory of an ffmpeg that can actually encode MP3, or None to let
-    yt-dlp search PATH itself.
-
-    Why this exists (live bug, 2026-07-23): a repair download completed and
-    then failed postprocessing with "Encoder not found" — the webapp's
-    yt-dlp had resolved an ffmpeg WITHOUT libmp3lame, while the same code run
-    from a shell worked. A process inherits the PATH of whoever launched it,
-    so acquisition was silently environment-dependent. Resolve it explicitly:
-    FFMPEG_LOCATION wins (ops escape hatch), else the PATH hit is verified to
-    list libmp3lame before we trust it."""
-    override = os.environ.get("FFMPEG_LOCATION")
-    if override:
-        return override
-    exe = shutil.which("ffmpeg")
-    if not exe:
-        return None
+def _can_encode_mp3(exe: str) -> bool:
+    """Does THIS ffmpeg build actually have the MP3 encoder? Asking the binary
+    is the only reliable test — the name tells you nothing."""
     try:
         out = subprocess.run([exe, "-hide_banner", "-encoders"],
                              capture_output=True, text=True, timeout=20, check=False)
-        if "libmp3lame" not in (out.stdout or ""):
-            logger.warning("ffmpeg at %s cannot encode mp3 (no libmp3lame) — "
-                           "set FFMPEG_LOCATION to a full build", exe)
-            return None
+        return "libmp3lame" in (out.stdout or "")
     except (OSError, subprocess.TimeoutExpired):
-        return None
-    return str(Path(exe).parent)
+        return False
+
+
+def _mp3_capable_candidates() -> list[str]:
+    """Every ffmpeg worth trying, in priority order: the explicit override,
+    then EVERY entry on PATH (not just the first — the first is exactly what
+    was broken), then the usual full-build install locations."""
+    candidates: list[str] = []
+    override = os.environ.get("FFMPEG_LOCATION")
+    if override:
+        p = Path(override)
+        candidates.append(str(p if p.suffix else p / "ffmpeg.exe"))
+
+    exe_names = ("ffmpeg.exe", "ffmpeg")
+    for entry in (os.environ.get("PATH") or "").split(os.pathsep):
+        if not entry:
+            continue
+        for name in exe_names:
+            candidates.append(str(Path(entry) / name))
+
+    home = Path.home()
+    try:  # WinGet's Gyan full build — the one that actually has libmp3lame
+        candidates += [str(p) for p in sorted(
+            (home / "AppData/Local/Microsoft/WinGet/Packages").glob(
+                "Gyan.FFmpeg*/**/bin/ffmpeg.exe"))]
+    except OSError:
+        pass
+    candidates += [r"C:\ffmpeg\bin\ffmpeg.exe",
+                   r"C:\ProgramData\chocolatey\bin\ffmpeg.exe"]
+
+    out: list[str] = []
+    seen: set[str] = set()
+    for c in candidates:
+        key = c.lower()
+        if key not in seen and Path(c).exists():
+            seen.add(key)
+            out.append(c)
+    return out
+
+
+def ffmpeg_location() -> Optional[str]:
+    """Directory of an ffmpeg that can actually encode MP3, or None if none
+    can be found (then yt-dlp is on its own).
+
+    Why this exists (live bug, 2026-07-23): a repair download completed and
+    then failed postprocessing with "Encoder not found". The webapp's PATH put
+    **Anaconda's** ffmpeg first — a build with NO libmp3lame — while a shell
+    found the WinGet full build, so acquisition was silently
+    environment-dependent. The first fix only DETECTED the bad binary and
+    returned None, which handed yt-dlp straight back to that same bad ffmpeg;
+    detecting a problem is not solving it. So now we keep looking: every
+    candidate is asked whether it can encode MP3, and the first that CAN wins.
+    FFMPEG_LOCATION still overrides for ops."""
+    for exe in _mp3_capable_candidates():
+        if _can_encode_mp3(exe):
+            return str(Path(exe).parent)
+    logger.error("no ffmpeg with libmp3lame found — audio acquisition will "
+                 "fail at conversion; install a full build or set FFMPEG_LOCATION")
+    return None
 
 
 def score_candidate(title: str, duration_s: Optional[float],
