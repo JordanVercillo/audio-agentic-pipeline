@@ -524,15 +524,35 @@
   in Phase 6. **Split-note corrected (stale-fact fix):** e4b earns its K2d
   residency TODAY as the story/classify/cluster voice; its audio input is a
   held option — D-45 is DSP-over-uploads and never feeds audio to e4b.
-  **➡️ NEXT ACTION — Phase 4.5, slice Q1 (Opus): `track_provenance` captured
-  AT extraction (D-51)** — append-only table (current = latest per bridge
-  key) persisting everything the O2 matcher already knows (youtube_url/
-  video_id/title/channel/duration_delta/match score+confidence/matcher
-  version/dsp_version, zero new fetches) + the post-drain Parquet provenance
-  mart + an audit tripwire; then Q2 exposure on /song+/library (escape the
-  new external strings), Q3 the D-52 re-extraction program (**Fable signs the
-  batch plan** before the ~11h run; permanently fixes the 2 broken
-  extractions), Q4 QA tooling, then R1–R3 Artists 2.0 (MusicBrainz, $0,
+  ✅ **Q1 SHIPPED (2026-07-22, session 52, Fable+orchestrator; commits
+  Q1a→Q1b, 496 tests, ruff clean, audit green, app-verify ALL-FALSE):
+  `track_provenance` captured AT extraction (D-51).** New key files:
+  `models.TrackProvenance` (append-only, soft `spotify_track_id` ref NOT
+  unique; auto-created by create_all — no migration); the yt-dlp matcher
+  record now CARRIES what it always knew + discarded (`pick_best_candidate` →
+  youtube_video_id/youtube_duration_s/channel/candidate_count; `resolve_
+  youtube_match` stamps query + `MATCHER_VERSION="heuristic-v1"`);
+  `cache.remember_provenance`/`all_provenance`; `extractor._record_provenance`
+  appends one event per successful extraction (best-effort — never fails the
+  extraction it describes; NOT on the dedup-twin path); `semantic.build_
+  provenance_mart` (current = latest per bridge key, drops internal id) →
+  `track_provenance.parquet` in build_semantic_marts (rides the post-drain
+  rebuild); audit **PROVENANCE_ORPHAN** (only hard invariant = no provenance
+  for a non-analyzed track / no dup keys; coverage is a NOTE — the pre-Q1
+  corpus is ∅ until Q3). **Live truth: all 807 tracks are pre-Q1 → 0
+  provenance events → empty mart, audit green; the ∅→populated transition
+  lands on the next real extraction / Q3.** Ground rules held: zero new
+  fetches, bridge key untouched, synthetic-tested (real DSP path).
+  **➡️ NEXT ACTION — Phase 4.5, slice Q2 (Opus): expose provenance on /song +
+  /library.** A "Source & provenance" section on `/song` (YouTube link, title,
+  channel, duration delta, match confidence) + a ✓/~/∅ glyph on `/library`;
+  **ESCAPE the external youtube_title/channel strings** (new class of
+  untrusted display data — reuse the markupsafe/`_neutralize` pattern; name it
+  in the acceptance or it's an untestable XSS gap); public taste-free surfaces;
+  honest ∅ tier until Q3 backfills. Then Q3 the D-52 re-extraction program
+  (**Fable signs the batch plan** before the ~11h run; permanently fixes the 2
+  broken extractions + retires the interim feature_valid gate), Q4 QA tooling
+  (exempt from the QA-deferral), then R1–R3 Artists 2.0 (MusicBrainz, $0,
   auth-less; research-expert fences ToS/rate once). DEFERRED (not blocking):
   S4 DMARC reject-flip (owner, ~Jul-25 after clean reports); cluster_profile
   online-cluster (owner call — now 99.7% covered, the gap is tiny).
@@ -2088,3 +2108,20 @@ narrative goes to `notes/engineering_journal.md`, plans to
   aligned. NEXT = Phase 4.5 slice Q1 — track_provenance capture (Opus).
   DMARC reject-flip is the owner's ~Jul-25 item. NEW SESSION: run
   `/resume`.**
+- **2026-07-22 (session 52 — Phase 4.5 Q1, Fable + orchestrator; commits
+  Q1a→Q1b, 496 tests):** Built D-51 provenance capture in two reviewable
+  slices, no consult (warm context — the K3a/K3d table/mart/migration/audit
+  patterns were fresh). Q1a: the yt-dlp matcher already knew the video id,
+  channel, yt-duration, candidate count, query + matcher version and threw
+  them away — `pick_best_candidate`/`resolve_youtube_match` now carry them
+  (additive), `extract_one` appends one `track_provenance` event per
+  extraction (best-effort, not on the dedup-twin path). Q1b: the
+  current-per-key Parquet mart + the `PROVENANCE_ORPHAN` tripwire
+  (under-coverage is a NOTE, not a flag — the pre-Q1 corpus is ∅ until Q3).
+  Honest live state: 807 tracks, 0 provenance events (all pre-Q1) → empty
+  mart, audit green; capture proven on the real DSP path by synthetic test.
+  Found the app DOWN at wrap (on-demand, long session) → restarted,
+  ALL-FALSE, public site restored. No journal entry (clean specced
+  execution). **Left off: Q1 shipped, verified. NEXT = Q2 — expose
+  provenance on /song + /library (escape the external strings). NEW SESSION:
+  run `/resume`.**
