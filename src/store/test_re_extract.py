@@ -195,6 +195,49 @@ def test_implausible_duration_rule():
     assert not implausible_duration(600.0, 590.0)
 
 
+def test_title_affinity_on_the_real_wrong_song_pairs():
+    # Fixtures ARE the live failures (2026-07-23): every confirmed wrong-song
+    # swap must reject; the tokenization artifacts (right video, mangled
+    # overlap) must pass. Precision-first: artist-only overlap is NOT enough.
+    from .re_extract import title_affinity
+    # confirmed wrong songs → False
+    assert not title_affinity("Alone", "MPH, Carla Monroe",
+                              "Anti-Up - Shake (Official Visualizer)")
+    assert not title_affinity("Prayers", "Zefer",
+                              "Ziferblat - Bird of Pray | Ukraine | Official Music Video")
+    assert not title_affinity("NOW IT'S GONE - DIFFRENT REMIX", "IN PARALLEL, Diffrent",
+                              "Tate McRae - siren sounds (bridge demo)")
+    assert not title_affinity("305 LUV STORY", "Gonzy",
+                              "Gonzy - SOBREDOSIS (Official)", "Gonzy")  # same artist ≠ same song
+    assert not title_affinity("Peace of Mind (feat. Delilah)", "Hutcher, GEE LEE, Delilah",
+                              "Rod Wave - Bachelor (Official Audio)")
+    # right videos that a naive normalizer scores 0 → True
+    assert title_affinity("Airmaxes - KETTAMA Mix", "KETTAMA, Shady Nasty, Fred again..",
+                          "KETTAMA, Shady Nasty, Fred Again.. - Air Maxes (KETTAMA MIX)")
+    assert title_affinity("Boasty (Conducta Remix) - Mixed", "Wiley, Stefflon Don",
+                          "Wiley Ft Stefflon Don ft Sean Paul Idris Elba Boasty Official Audio")
+    assert title_affinity("Hysteria", "Muse", "Muse - Hysteria [Official Music Video]")
+    assert title_affinity("Q&A", "Drake", "Drake - Q&A Lyrics (DLyrics01)")
+
+
+def test_no_affinity_candidate_rejected_before_download(cache, tmp_path, monkeypatch):
+    from . import re_extract as rx
+    downloads: list = []
+    monkeypatch.setattr(
+        "src.ingestion.audio_downloader.resolve_youtube_match",
+        lambda name, artist, duration_s=None: {
+            "url": "https://y/wrong", "title": "Completely Unrelated Tune",
+            "channel": "OtherVEVO", "score": 25, "confidence": 0.85,
+            "duration_delta_s": 1.7, "youtube_duration_s": 208.0,
+            "candidate_count": 5})
+    monkeypatch.setattr("src.ingestion.audio_downloader.download_track_audio",
+                        lambda *a, **k: downloads.append(a))
+    path, match = rx.guarded_acquire("t", "Blue Horizon", "My Artist",
+                                     tmp_path, 207.0)
+    assert path is None and match["_rejected"] == "affinity"
+    assert downloads == []
+
+
 def test_wrong_version_is_rejected_before_download(cache, tmp_path, monkeypatch):
     # guarded_acquire must refuse a DJ-set candidate WITHOUT downloading it.
     from . import re_extract as rx

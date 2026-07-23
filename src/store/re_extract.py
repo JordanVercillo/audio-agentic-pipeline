@@ -45,13 +45,14 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
 from .cache import FeatureCache
-from .extractor import DSP_VERSION, AcquireFn, _record_provenance, default_acquire
+from .extractor import DSP_VERSION, AcquireFn, _record_provenance
 
 logger = logging.getLogger(__name__)
 
@@ -83,6 +84,44 @@ def implausible_duration(actual_s: Optional[float],
                           expected_s + _DURATION_MAX_EXTRA_S)
 
 
+# TITLE-AFFINITY GATE (live finding #2, 2026-07-23, 71 swaps in): duration
+# alone scores +25 with ZERO title requirement, so for an obscure track "any
+# song of the same length" wins — 7 of the first 71 swaps were the WRONG SONG
+# ("Alone" ← Anti-Up "Shake"; "Prayers" ← a Eurovision entry). Owner-ratified
+# safe mode: AUTO-accept only candidates that visibly look like the song;
+# everything else rejects into the ledger → the manual-repair queue
+# (paste-a-link / upload-own-audio, the D-56 flow).
+_AFFINITY_STOPWORDS = frozenset(
+    "official audio video music lyric lyrics visualizer hd hq the a an of and "
+    "x feat ft featuring remix mix mixed edit vip version".split())
+
+
+def _tokens(s: Optional[str]) -> set[str]:
+    import unicodedata
+    t = unicodedata.normalize("NFKD", str(s or "").lower())
+    t = "".join(ch for ch in t if not unicodedata.combining(ch))
+    words = set(re.sub(r"[^a-z0-9]+", " ", t).split())
+    return {w for w in words if w not in _AFFINITY_STOPWORDS}
+
+
+def title_affinity(track_name: Optional[str], artist: Optional[str],
+                   youtube_title: Optional[str], channel: Optional[str] = None,
+                   ) -> bool:
+    """True when the candidate plausibly IS this song: at least one meaningful
+    TITLE token appears in the video title/channel, or the space-squashed
+    titles contain each other ("Airmaxes" vs "Air Maxes" — the tokenization
+    artifact). Artist-only overlap is NOT enough — a same-artist different
+    song ("305 LUV STORY" ← Gonzy's SOBREDOSIS) must reject to manual."""
+    title_toks = _tokens(track_name)
+    yt_toks = _tokens(youtube_title) | _tokens(channel)
+    if title_toks & yt_toks:
+        return True
+    squash_t = re.sub(r"[^a-z0-9]+", "", str(track_name or "").lower())
+    squash_y = re.sub(r"[^a-z0-9]+", "", str(youtube_title or "").lower())
+    return bool(squash_t) and bool(squash_y) and (
+        squash_t in squash_y or squash_y in squash_t)
+
+
 def guarded_acquire(track_id: str, name: str, artist: str, dest_dir: Path,
                     duration_s: Optional[float] = None,
                     ) -> tuple[Optional[Path], Optional[dict]]:
@@ -103,6 +142,10 @@ def guarded_acquire(track_id: str, name: str, artist: str, dest_dir: Path,
         logger.info("rejected wrong-version match for %r: %.0fs vs expected %.0fs",
                     name, yt_len or 0.0, duration_s or 0.0)
         return None, {**match, "_rejected": "duration"}
+    if not title_affinity(name, artist, match.get("title"), match.get("channel")):
+        logger.info("rejected no-affinity match for %r: candidate %r",
+                    name, match.get("title"))
+        return None, {**match, "_rejected": "affinity"}
     path = download_track_audio(match["url"], track_id,
                                 DownloadConfig(output_dir=Path(dest_dir)))
     return path, match
@@ -212,10 +255,15 @@ def re_extract_one(cache: FeatureCache, track_id: str, *, audio_dir: Path,
                                     meta.get("artist_names") or "", Path(audio_dir),
                                     expected_s)
         if audio_path is None or not Path(audio_path).exists():
-            if (match or {}).get("_rejected") == "duration":
+            rej = (match or {}).get("_rejected")
+            if rej == "duration":
                 return False, (f"wrong-version rejected: candidate "
                                f"{(match or {}).get('youtube_duration_s') or 0:.0f}s "
                                f"vs expected {expected_s or 0:.0f}s")
+            if rej == "affinity":
+                return False, (f"no-affinity rejected: candidate "
+                               f"{(match or {}).get('title')!r} does not look "
+                               "like this song — manual-repair queue")
             return False, "audio acquisition failed"
         signal = load_audio(audio_path)
         # Backstop: YouTube's advertised length can differ from the real file
@@ -259,7 +307,7 @@ def re_extract_one(cache: FeatureCache, track_id: str, *, audio_dir: Path,
 # ── the program loop ──────────────────────────────────────────────────────────
 def run(cache: FeatureCache, *, audio_dir: Path, spectrogram_dir: Path,
         ledger: Ledger, limit: Optional[int] = 25, retry_failed: bool = False,
-        acquire: AcquireFn = default_acquire, marts_dir: Optional[Path] = None,
+        acquire: AcquireFn = guarded_acquire, marts_dir: Optional[Path] = None,
         ) -> dict[str, Any]:
     """One resumable invocation: pick up to `limit` un-done targets, swap them,
     ledger the failures, rebuild marts once at the end if anything changed."""
