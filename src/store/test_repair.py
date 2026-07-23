@@ -194,6 +194,40 @@ def test_owner_audio_path_resists_traversal():
     assert p.parent == Path("/keep") and "passwd" in p.name
 
 
+def test_repair_refreshes_the_derived_planes(cache, tmp_path):
+    # Live bug: a repair swapped TrackFeatures but /explore, /recommend and the
+    # chat read track_perceptual + the marts, which kept the WRONG-audio
+    # numbers until something else rebuilt. Same class as the O3
+    # compute-vs-table trap — fixing one layer isn't fixing the read path.
+    cache.remember_meta([{"spotify_track_id": "trk", "track_name": "Roots",
+                          "artist_names": "WILDS", "duration_ms": 5_000}])
+    marts = tmp_path / "marts"
+    rebuilt: list = []
+    import src.store.perceptual as perc
+    orig = perc.rebuild_marts
+    perc.rebuild_marts = lambda c, d: rebuilt.append(Path(d)) or orig(c, d)
+    try:
+        ok, msg = repair_from_upload(cache, "trk", io.BytesIO(_wav_bytes(5.0)),
+                                     audio_dir=tmp_path / "a",
+                                     spectrogram_dir=tmp_path / "s",
+                                     marts_dir=marts)
+    finally:
+        perc.rebuild_marts = orig
+    assert ok, msg
+    assert rebuilt == [marts]                    # the derived planes were rebuilt
+    # …and a rebuild failure must NOT undo a good repair (best-effort)
+    perc_fail = perc.rebuild_marts
+    perc.rebuild_marts = lambda c, d: (_ for _ in ()).throw(RuntimeError("boom"))
+    try:
+        ok2, _ = repair_from_upload(cache, "trk", io.BytesIO(_wav_bytes(5.0)),
+                                    audio_dir=tmp_path / "a",
+                                    spectrogram_dir=tmp_path / "s",
+                                    marts_dir=marts)
+    finally:
+        perc.rebuild_marts = perc_fail
+    assert ok2                                    # swap still succeeded
+
+
 def test_upload_duration_mismatch_hard_rejects(cache, tmp_path):
     # track says 200s; the uploaded tone is 5s*… make the FILE long instead:
     # a 5s file against a 200s track is SHORT (allowed — implausible only when

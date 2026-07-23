@@ -112,6 +112,9 @@ _LEDGER_PATH = _BASE.parent.parent / "data" / "re_extract_ledger.json"
 _REPAIR_AUDIO_DIR = _BASE.parent.parent / "data" / "tmp_repair"
 # V2: RETAINED owner uploads — the only copy of tracks with no external source.
 _OWNER_AUDIO_DIR = _BASE.parent.parent / "data" / "owner_audio"
+# A repair mutates the corpus, so it rebuilds the derived planes (explore.py's
+# _MARTS is the same dir) — otherwise /explore + the chat keep the old numbers.
+_MARTS_DIR = _BASE.parent.parent / "data" / "marts"
 _UPLOAD_FILE = File(...)  # module-level singleton (B008 — the FastAPI idiom)
 
 
@@ -1321,7 +1324,8 @@ def create_app() -> FastAPI:
         from ..store.repair import repair_from_link
         ok, msg = repair_from_link(_feature_cache(), track_id, url,
                                    audio_dir=_REPAIR_AUDIO_DIR,
-                                   spectrogram_dir=_SPECTROGRAM_DIR)
+                                   spectrogram_dir=_SPECTROGRAM_DIR,
+                                   marts_dir=_MARTS_DIR)
         session["repair_msg"] = ("✓ " if ok else "✗ ") + msg
         return RedirectResponse(f"/song/{track_id}", status_code=303)
 
@@ -1340,7 +1344,8 @@ def create_app() -> FastAPI:
         ok, msg = repair_from_upload(_feature_cache(), track_id, file.file,
                                      audio_dir=_REPAIR_AUDIO_DIR,
                                      spectrogram_dir=_SPECTROGRAM_DIR,
-                                     keep_dir=_OWNER_AUDIO_DIR)
+                                     keep_dir=_OWNER_AUDIO_DIR,
+                                     marts_dir=_MARTS_DIR)
         session["repair_msg"] = ("✓ " if ok else "✗ ") + msg
         return RedirectResponse(f"/song/{track_id}", status_code=303)
 

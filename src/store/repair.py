@@ -105,6 +105,27 @@ def _ffprobe_duration(path: Path) -> Optional[float]:
         return None
 
 
+def refresh_derived(cache: FeatureCache, marts_dir: Optional[Path]) -> None:
+    """Rebuild the derived planes after a repair (live bug, 2026-07-23).
+
+    A repair swaps TrackFeatures, but `/explore`, `/recommend`, the chat's SQL
+    and the percentile chips read `track_perceptual` + the marts — which kept
+    the OLD (wrong-audio) numbers until something else happened to rebuild.
+    Same class as the O3 compute-vs-table trap: fixing one layer isn't fixing
+    the read path. rebuild_marts is THE idempotent entry point (~3 s over 770
+    tracks) and percentile columns recalibrate against the whole population,
+    so a single-row patch would be wrong. Best-effort: a rebuild failure must
+    not undo a good repair — the next drain rebuilds anyway."""
+    if marts_dir is None:
+        return
+    try:
+        from .perceptual import rebuild_marts
+        rebuild_marts(cache, Path(marts_dir))
+    except Exception as exc:  # noqa: BLE001 — the swap already succeeded
+        logger.warning("post-repair mart rebuild failed (%s) — planes stale "
+                       "until the next drain", exc)
+
+
 def _swap(cache: FeatureCache, track_id: str, audio_path: Path,
           spectrogram_dir: Path, expected_s: Optional[float],
           provenance: dict[str, Any]) -> tuple[bool, str]:
@@ -147,6 +168,7 @@ def _swap(cache: FeatureCache, track_id: str, audio_path: Path,
 
 def repair_from_link(cache: FeatureCache, track_id: str, url: str, *,
                      audio_dir: Path, spectrogram_dir: Path,
+                     marts_dir: Optional[Path] = None,
                      probe=None, download=None) -> tuple[bool, str]:
     """Owner-pasted YouTube link → validated swap. `probe`/`download` are
     injectable for tests (ground rule 5). Never raises."""
@@ -183,14 +205,19 @@ def repair_from_link(cache: FeatureCache, track_id: str, url: str, *,
                 return download_track_audio(u, tid, DownloadConfig(output_dir=Path(dest)))
         audio_path = download(clean, track_id, audio_dir)
         if audio_path is None or not Path(audio_path).exists():
-            return False, "download failed"
-        return _swap(cache, track_id, Path(audio_path), spectrogram_dir, expected_s, {
-            "source": "youtube", "matcher_version": "manual-link",
-            "youtube_url": clean, "youtube_video_id": info.get("id"),
-            "youtube_title": info.get("title"), "channel": info.get("channel")
-            or info.get("uploader"),
-            "youtube_duration_s": float(vid_len) if vid_len else None,
-            "audio_format": "mp3", "audio_bitrate_kbps": 192})
+            return False, ("audio conversion failed (the download itself "
+                           "succeeded) — check ffmpeg; see logs/webapp.log")
+        ok, msg = _swap(cache, track_id, Path(audio_path), spectrogram_dir,
+                        expected_s, {
+                            "source": "youtube", "matcher_version": "manual-link",
+                            "youtube_url": clean, "youtube_video_id": info.get("id"),
+                            "youtube_title": info.get("title"),
+                            "channel": info.get("channel") or info.get("uploader"),
+                            "youtube_duration_s": float(vid_len) if vid_len else None,
+                            "audio_format": "mp3", "audio_bitrate_kbps": 192})
+        if ok:
+            refresh_derived(cache, marts_dir)
+        return ok, msg
     except Exception as exc:  # noqa: BLE001 — a repair must never 500 the app
         logger.warning("repair_from_link failed for %s: %s", track_id, exc)
         return False, f"repair failed: {exc}"
@@ -220,7 +247,8 @@ def find_owner_audio(audio_dir: Path, track_id: str) -> Optional[Path]:
 def repair_from_upload(cache: FeatureCache, track_id: str, stream: BinaryIO, *,
                        audio_dir: Path, spectrogram_dir: Path,
                        max_bytes: int = MAX_UPLOAD_BYTES,
-                       keep_dir: Optional[Path] = None) -> tuple[bool, str]:
+                       keep_dir: Optional[Path] = None,
+                       marts_dir: Optional[Path] = None) -> tuple[bool, str]:
     """Owner-uploaded audio file → validated swap. The stream is read in
     chunks against the cap (never buffer-then-check); the container is
     sniffed from magic bytes; duration is validated BEFORE decode.
@@ -278,6 +306,8 @@ def repair_from_upload(cache: FeatureCache, track_id: str, stream: BinaryIO, *,
                 kept.write_bytes(audio_path.read_bytes())
             except OSError as exc:
                 logger.warning("could not retain upload for %s: %s", track_id, exc)
+        if ok:
+            refresh_derived(cache, marts_dir)
         return ok, msg
     except Exception as exc:  # noqa: BLE001 — a repair must never 500 the app
         logger.warning("repair_from_upload failed for %s: %s", track_id, exc)
