@@ -273,9 +273,16 @@ def check_marts(marts_dir: Path):
             warnings.append(f"marts/track_provenance: {len(orphans)} provenance "
                             "row(s) for non-analyzed tracks — PROVENANCE_ORPHAN")
             flags["PROVENANCE_ORPHAN"] = True
-        covered = len(prov_keys & analyzed)
+        # Coverage denominator = CANONICAL analyzed (Q3 red-team #6): dedup
+        # twins ride their canonical's audio and are never re-extracted, so
+        # counting them makes 100% unreachable and Q4's health metric drift.
+        if "duplicate_of" in track_card.columns:
+            canonical = set(track_card.loc[track_card["duplicate_of"].isna(), BRIDGE])
+        else:
+            canonical = analyzed
+        covered = len(prov_keys & canonical)
         report["track_provenance"] = {**report.get("track_provenance", {}),
-                                      "coverage": f"{covered}/{len(analyzed)} analyzed tracks"}
+                                      "coverage": f"{covered}/{len(canonical)} canonical analyzed"}
 
     return report, warnings, errors, flags
 
