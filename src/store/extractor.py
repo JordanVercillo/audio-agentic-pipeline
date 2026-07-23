@@ -50,19 +50,22 @@ AcquireFn = Callable[[str, str, str, Path, Optional[float]],
 def default_acquire(track_id: str, name: str, artist: str, dest_dir: Path,
                     duration_s: Optional[float] = None,
                     ) -> tuple[Optional[Path], Optional[dict]]:
-    """Resolve + download the track's audio via the yt-dlp downloader (O2:
-    duration-aware match, confidence returned for recording)."""
-    from ..ingestion.audio_downloader import (
-        DownloadConfig,
-        download_track_audio,
-        resolve_youtube_match,
-    )
-    match = resolve_youtube_match(name, artist or "", duration_s=duration_s)
-    if not match:
-        return None, None
-    path = download_track_audio(match["url"], track_id,
-                                DownloadConfig(output_dir=Path(dest_dir)))
-    return path, match
+    """Resolve + download the track's audio, admitting ONLY a candidate that
+    passes the shared acceptance gate (QA2 / B1).
+
+    This used to take the matcher's top-scoring result unconditionally, and
+    that is how the corpus was polluted: 19 tracks stored DJ sets as songs (up
+    to 37x too long) and 27 stored the wrong song outright. The Q3 re-extraction
+    runner grew guards; this path — the one every real login and playlist
+    import goes through — did not, so each new visitor could re-introduce
+    exactly what a full re-extraction had just removed. There is now ONE
+    acquisition path (`re_extract.guarded_acquire` over `ingestion.match_gate`)
+    and both callers use it.
+
+    A refused track stays unanalyzed and lands in the owner's needs-source
+    repair queue — the D-57 posture: no data beats wrong data."""
+    from .re_extract import guarded_acquire
+    return guarded_acquire(track_id, name, artist, dest_dir, duration_s)
 
 
 def make_mel_spectrogram(signal, out_path: Path) -> Path:
@@ -162,7 +165,12 @@ def extract_one(cache: FeatureCache, track_id: str, *, audio_dir: Path,
                                     meta.get("artist_names") or "", Path(audio_dir),
                                     (dur_ms / 1000.0) if dur_ms else None)
         if audio_path is None or not Path(audio_path).exists():
-            cache.fail(track_id, "audio acquisition failed")
+            # Say what actually happened (QA_PLAN B6): "acquisition failed" on a
+            # REFUSED match reads as a network problem and invites blind retries,
+            # when the truth is that nothing admissible was found.
+            reason = (match or {}).get("_reason")
+            cache.fail(track_id, f"no usable source — {reason}" if reason
+                       else "audio acquisition failed")
             return False
 
         signal = load_audio(audio_path)

@@ -220,21 +220,26 @@ def test_title_affinity_on_the_real_wrong_song_pairs():
     assert title_affinity("Q&A", "Drake", "Drake - Q&A Lyrics (DLyrics01)")
 
 
+def _patch_candidates(monkeypatch, candidates):
+    monkeypatch.setattr(
+        "src.ingestion.audio_downloader.resolve_youtube_candidates",
+        lambda name, artist, duration_s=None, **kw: candidates)
+
+
 def test_no_affinity_candidate_rejected_before_download(cache, tmp_path, monkeypatch):
     from . import re_extract as rx
     downloads: list = []
-    monkeypatch.setattr(
-        "src.ingestion.audio_downloader.resolve_youtube_match",
-        lambda name, artist, duration_s=None: {
-            "url": "https://y/wrong", "title": "Completely Unrelated Tune",
-            "channel": "OtherVEVO", "score": 25, "confidence": 0.85,
-            "duration_delta_s": 1.7, "youtube_duration_s": 208.0,
-            "candidate_count": 5})
+    _patch_candidates(monkeypatch, [{
+        "url": "https://y/wrong", "title": "Completely Unrelated Tune",
+        "channel": "OtherVEVO", "score": 25, "confidence": 0.85,
+        "duration_delta_s": 1.7, "youtube_duration_s": 208.0,
+        "candidate_count": 5}])
     monkeypatch.setattr("src.ingestion.audio_downloader.download_track_audio",
                         lambda *a, **k: downloads.append(a))
     path, match = rx.guarded_acquire("t", "Blue Horizon", "My Artist",
                                      tmp_path, 207.0)
-    assert path is None and match["_rejected"] == "affinity"
+    assert path is None and match["_rejected"] == "gate"
+    assert "title" in match["_reason"]                   # names the real cause
     assert downloads == []
 
 
@@ -242,17 +247,33 @@ def test_wrong_version_is_rejected_before_download(cache, tmp_path, monkeypatch)
     # guarded_acquire must refuse a DJ-set candidate WITHOUT downloading it.
     from . import re_extract as rx
     downloads: list = []
-    monkeypatch.setattr(
-        "src.ingestion.audio_downloader.resolve_youtube_match",
-        lambda name, artist, duration_s=None: {
-            "url": "https://y/mix", "title": "2 Hour Mix", "score": 0,
-            "confidence": 0.1, "duration_delta_s": 7000.0,
-            "youtube_duration_s": 7396.0, "candidate_count": 5})
+    _patch_candidates(monkeypatch, [{
+        "url": "https://y/mix", "title": "2 Hour Mix", "score": 0,
+        "confidence": 0.1, "duration_delta_s": 7000.0,
+        "youtube_duration_s": 7396.0, "candidate_count": 5}])
     monkeypatch.setattr("src.ingestion.audio_downloader.download_track_audio",
                         lambda *a, **k: downloads.append(a) or Path("nope.mp3"))
     path, match = rx.guarded_acquire("t", "WGTF?", "Riordan", tmp_path, 207.0)
-    assert path is None and match["_rejected"] == "duration"
+    assert path is None and match["_rejected"] == "gate"
     assert downloads == []                               # never fetched the 170 MB
+
+
+def test_guarded_acquire_downloads_the_survivor_not_the_top_score(
+        cache, tmp_path, monkeypatch):
+    # QA2's whole point: the highest-scoring candidate is a DJ set, but a real
+    # recording sits below it. The old rank-then-reject path binned both.
+    from . import re_extract as rx
+    downloads: list = []
+    _patch_candidates(monkeypatch, [
+        {"url": "https://y/mix", "title": "Riordan B2B in a Skate Park | RAW CUTS",
+         "channel": "RAW", "score": 25, "youtube_duration_s": 7397.0},
+        {"url": "https://y/real", "title": "Riordan - WGTF? (Official Audio)",
+         "channel": "Riordan", "score": 10, "youtube_duration_s": 205.0}])
+    monkeypatch.setattr("src.ingestion.audio_downloader.download_track_audio",
+                        lambda url, tid, cfg: downloads.append(url) or Path("a.mp3"))
+    path, match = rx.guarded_acquire("t", "WGTF?", "Riordan", tmp_path, 207.0)
+    assert downloads == ["https://y/real"] and match["url"] == "https://y/real"
+    assert path == Path("a.mp3")
 
 
 def test_wrong_version_keeps_old_features_and_ledgers(cache, tmp_path):
@@ -267,7 +288,8 @@ def test_wrong_version_keeps_old_features_and_ledgers(cache, tmp_path):
 
     def mix_acquire(track_id, name, artist, dest_dir, duration_s=None):
         return None, {"url": "u", "title": "2 Hour Mix",
-                      "youtube_duration_s": 7396.0, "_rejected": "duration"}
+                      "youtube_duration_s": 7396.0, "_rejected": "gate",
+                      "_reason": "length mismatch — 7396s vs expected 207s"}
 
     ledger = Ledger(tmp_path / "led.json")
     s = run(cache, audio_dir=tmp_path / "a", spectrogram_dir=tmp_path / "s",
@@ -275,7 +297,7 @@ def test_wrong_version_keeps_old_features_and_ledgers(cache, tmp_path):
     assert s["ok"] == 0 and s["failed"] == 1
     assert cache.get(["wv1"])["wv1"] == before           # untouched
     assert cache.provenance_for("wv1") is None
-    assert "wrong-version rejected" in ledger.data["failed"]["wv1"]["error"]
+    assert "length mismatch" in ledger.data["failed"]["wv1"]["error"]
 
 
 def test_runner_never_touches_the_job_queue(cache, tmp_path):

@@ -114,6 +114,13 @@ _CONF_OFFSET, _CONF_RANGE = 30.0, 65.0
 # are distinguishable — and it is the version the O2 sign-off (S2) applies to.
 MATCHER_VERSION = "heuristic-v1"
 
+# How many search results to score. Was 5, when only the winner was ever used.
+# The QA2 gate filters candidates instead of judging one, so a deeper pool is
+# free precision: same single flat-search request, more chances that an
+# ADMISSIBLE recording is in it. Measured on the needs-source queue — real
+# matches sat as far down as position 6.
+_SEARCH_DEPTH = 10
+
 
 def _can_encode_mp3(exe: str) -> bool:
     """Does THIS ffmpeg build actually have the MP3 encoder? Asking the binary
@@ -207,38 +214,55 @@ def score_candidate(title: str, duration_s: Optional[float],
     return score
 
 
-def pick_best_candidate(entries: list, target_duration_s: Optional[float]) -> Optional[dict]:
-    """Rank flat-search entries → the best match record, or None.
+def score_all_candidates(entries: list,
+                         target_duration_s: Optional[float]) -> list[dict]:
+    """Score EVERY flat-search entry → a list of match records, search order kept.
 
-    Returns {url, title, score, confidence, duration_delta_s} plus the Epic-Q
-    provenance fields the flat entry already carries but we used to discard
-    (`youtube_video_id`, `youtube_duration_s`, `channel`, `candidate_count`) —
-    `confidence` is the [0,1] heuristic map of the score; `duration_delta_s` is
-    None when either duration is unknown. Pure."""
-    best: Optional[dict] = None
-    considered = 0
+    Each record is {url, title, score, confidence, duration_delta_s} plus the
+    Epic-Q provenance fields the flat entry already carries but we used to
+    discard (`youtube_video_id`, `youtube_duration_s`, `channel`,
+    `candidate_count`) — `confidence` is the [0,1] heuristic map of the score;
+    `duration_delta_s` is None when either duration is unknown.
+
+    Why the whole list and not just the winner (QA2): ranking first and judging
+    the winner afterwards throws away a usable candidate sitting at position 2
+    of the very same search. `match_gate.select_confident` filters this list
+    and then ranks the survivors. Pure."""
+    scored: list[dict] = []
     for entry in entries or []:
         if not entry:
             continue
         url = entry.get("url") or entry.get("webpage_url")
         if not url:
             continue
-        considered += 1
         title = entry.get("title") or ""
         dur = entry.get("duration")
         score = score_candidate(title, dur, target_duration_s)
-        if best is None or score > best["score"]:
-            delta = (abs(float(dur) - float(target_duration_s))
-                     if dur is not None and target_duration_s is not None else None)
-            best = {"url": url, "title": title, "score": score,
-                    "confidence": max(0.0, min(1.0, (score + _CONF_OFFSET) / _CONF_RANGE)),
-                    "duration_delta_s": delta,
-                    # Epic Q (D-51): captured, not fetched — already in the entry.
-                    "youtube_video_id": entry.get("id"),
-                    "youtube_duration_s": float(dur) if dur is not None else None,
-                    "channel": entry.get("channel") or entry.get("uploader")}
-    if best is not None:
-        best["candidate_count"] = considered
+        delta = (abs(float(dur) - float(target_duration_s))
+                 if dur is not None and target_duration_s is not None else None)
+        scored.append({
+            "url": url, "title": title, "score": score,
+            "confidence": max(0.0, min(1.0, (score + _CONF_OFFSET) / _CONF_RANGE)),
+            "duration_delta_s": delta,
+            # Epic Q (D-51): captured, not fetched — already in the entry.
+            "youtube_video_id": entry.get("id"),
+            "youtube_duration_s": float(dur) if dur is not None else None,
+            "channel": entry.get("channel") or entry.get("uploader")})
+    for rec in scored:
+        rec["candidate_count"] = len(scored)
+    return scored
+
+
+def pick_best_candidate(entries: list, target_duration_s: Optional[float]) -> Optional[dict]:
+    """Rank flat-search entries → the highest-scoring match record, or None.
+
+    Selection ONLY — never rejection (see the heuristic-v1 note at the
+    weights). Admissibility is `match_gate`'s job. Ties keep the earlier
+    (higher-ranked by YouTube) entry. Pure."""
+    best: Optional[dict] = None
+    for rec in score_all_candidates(entries, target_duration_s):
+        if best is None or rec["score"] > best["score"]:
+            best = rec
     return best
 
 
@@ -282,13 +306,17 @@ def resolve_youtube_match(
     duration_s: Optional[float] = None,
     prefer_official: bool = True,
 ) -> Optional[dict]:
-    """Find the best YouTube match for a track using yt_dlp's flat search (O2).
+    """Find the best-SCORING YouTube match for a track (O2).
 
-    Queries the top 5 results (``ytsearch5:``), scores each candidate by title
-    keywords AND duration closeness against Spotify's ``duration_ms`` (the
-    strongest wrong-version signal — live cuts and extended mixes are tens of
-    seconds off), then returns the best as a match record. No YouTube Data API
-    key is required.
+    Scores each search candidate by title keywords AND duration closeness
+    against Spotify's ``duration_ms`` (the strongest wrong-version signal —
+    live cuts and extended mixes are tens of seconds off), then returns the
+    best as a match record. No YouTube Data API key is required.
+
+    Selection only. This function has no opinion on whether the winner is
+    ADMISSIBLE — acquisition paths go through ``match_gate`` for that, because
+    "best of five wrong answers" is how DJ sets and wrong songs entered the
+    corpus. Prefer ``resolve_youtube_candidates`` + ``select_confident``.
 
     Args:
         track_name:      The name of the track (e.g., ``"Bohemian Rhapsody"``).
@@ -305,23 +333,63 @@ def resolve_youtube_match(
         best available — never rejected on a threshold (selection + recording
         only; see the heuristic-v1 note at the weights).
     """
+    candidates = resolve_youtube_candidates(track_name, artist_name,
+                                            duration_s=duration_s,
+                                            prefer_official=prefer_official)
+    if not candidates:
+        return None
+    # These are already scored records — re-running the scorer over them would
+    # read `duration` off a dict that now spells it `youtube_duration_s` and
+    # silently drop the duration term. Take the max directly; ties keep the
+    # earlier (higher-ranked) entry, as before.
+    best = candidates[0]
+    for rec in candidates[1:]:
+        if rec["score"] > best["score"]:
+            best = rec
+    # O2 acceptance: the match decision is always visible in the worker log.
+    delta = best["duration_delta_s"]
+    logger.info(
+        "match %r: score=%d conf=%.2f dur_delta=%s title=%r",
+        best.get("query"), best["score"], best["confidence"],
+        f"{delta:.1f}s" if delta is not None else "unknown", best["title"],
+    )
+    return best
+
+
+def resolve_youtube_candidates(
+    track_name: str,
+    artist_name: str,
+    duration_s: Optional[float] = None,
+    prefer_official: bool = True,
+    depth: int = _SEARCH_DEPTH,
+) -> list[dict]:
+    """Every scored candidate for this track, search order kept (QA2).
+
+    One search, two policies: `resolve_youtube_match` takes the top-scoring
+    record, `match_gate.select_confident` takes the best ADMISSIBLE one. The
+    gate needs the whole list because the top-scoring candidate is regularly
+    inadmissible while a usable one sits below it.
+
+    Returns ``[]`` on any search failure — callers treat empty as "no match",
+    never as "no opinion". Each record carries the Epic-Q `query` +
+    `matcher_version` provenance fields."""
     try:
         import yt_dlp  # local import — optional dependency
     except ImportError:
         logger.error(
             "yt_dlp is not installed. Add 'yt-dlp>=2026.2.21' to requirements.txt."
         )
-        return None
+        return []
 
     suffix = " official audio" if prefer_official else ""
     query = f"{artist_name} {track_name}{suffix}"
-    search_term = f"ytsearch5:{query}"
+    search_term = f"ytsearch{int(depth)}:{query}"
 
     logger.debug("YouTube search query: %r", query)
 
     ydl_opts: dict = {
         "extract_flat": True,
-        "default_search": "ytsearch5",
+        "default_search": search_term.split(":")[0],
         "quiet": True,
         "no_warnings": True,
         "skip_download": True,
@@ -332,32 +400,22 @@ def resolve_youtube_match(
             info = ydl.extract_info(search_term, download=False)
     except yt_dlp.utils.DownloadError as exc:
         logger.warning("yt_dlp search failed for %r: %s", query, exc)
-        return None
+        return []
     except Exception as exc:  # noqa: BLE001
         logger.warning("Unexpected error during YouTube search for %r: %s", query, exc)
-        return None
+        return []
 
     entries = (info or {}).get("entries") or []
     if not entries:
         logger.debug("No YouTube results for query: %r", query)
-        return None
+        return []
 
-    best = pick_best_candidate(entries, duration_s)
-    if best is None:
-        logger.debug("No suitable YouTube result for %r", query)
-        return None
-    # Epic Q (D-51): the resolve layer knows the query + which matcher scored it.
-    best["query"] = query
-    best["matcher_version"] = MATCHER_VERSION
-
-    # O2 acceptance: the match decision is always visible in the worker log.
-    delta = best["duration_delta_s"]
-    logger.info(
-        "match %r: score=%d conf=%.2f dur_delta=%s title=%r",
-        query, best["score"], best["confidence"],
-        f"{delta:.1f}s" if delta is not None else "unknown", best["title"],
-    )
-    return best
+    candidates = score_all_candidates(entries, duration_s)
+    for rec in candidates:
+        # Epic Q (D-51): the resolve layer knows the query + which matcher scored it.
+        rec["query"] = query
+        rec["matcher_version"] = MATCHER_VERSION
+    return candidates
 
 
 def resolve_youtube_url(

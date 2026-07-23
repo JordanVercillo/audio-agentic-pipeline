@@ -45,12 +45,22 @@ from __future__ import annotations
 import json
 import logging
 import os
-import re
 import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
+# The acceptance policy lives in ONE place (`ingestion.match_gate`) so the live
+# worker and this runner cannot drift apart — drift is exactly what let the DJ
+# sets and wrong songs in: the runner had guards, the worker never did (B1).
+# `implausible_duration` / `title_affinity` are re-exported because `repair.py`,
+# `scripts/quarantine_wrong_songs.py` and the pinned tests import them here.
+from ..ingestion.match_gate import (
+    implausible_duration,
+    rejection_reason,
+    select_confident,
+    title_affinity,
+)
 from .cache import FeatureCache
 from .extractor import DSP_VERSION, AcquireFn, _record_provenance
 
@@ -58,97 +68,50 @@ logger = logging.getLogger(__name__)
 
 _BROKEN_TEMPO = 1.0  # mirrors clusters._MIN_VALID_TEMPO_BPM / the mart gate
 
-# WRONG-VERSION GUARD (live finding, 2026-07-23 — the first full-run batch).
-# heuristic-v1 never rejects, only ranks: when every YouTube candidate for an
-# obscure track is a DJ SET, it returns the least-bad one. 19 corpus tracks
-# carry mix-length audio that way (up to 37x — a 130-min set stored as a
-# 3.5-min track), and a re-extraction faithfully re-downloads the same set:
-# ~9 GB RAM and minutes of DSP to reproduce known-garbage features.
-# So the runner rejects an acquisition whose length is IMPLAUSIBLE against
-# Spotify's own duration for that track. This is NOT the S2 rejection
-# threshold that was declined (that was match_confidence gating corpus
-# SELECTION — a legit remix must never be discarded); this compares the
-# acquired audio's LENGTH to a known ground truth, and only fires on
-# objectively-wrong acquisitions. Fails safe: old features kept, ledgered.
-_DURATION_MAX_RATIO = 2.0     # a remix/extended take may legitimately run longer…
-_DURATION_MAX_EXTRA_S = 120.0  # …but not >2x AND >2 min beyond the known length
-
-
-def implausible_duration(actual_s: Optional[float],
-                         expected_s: Optional[float]) -> bool:
-    """True when acquired audio is far too long to be this track (a DJ set /
-    full-album upload). Unknown either side → not implausible (never guess)."""
-    if not actual_s or not expected_s or actual_s <= 0 or expected_s <= 0:
-        return False
-    return actual_s > max(_DURATION_MAX_RATIO * expected_s,
-                          expected_s + _DURATION_MAX_EXTRA_S)
-
-
-# TITLE-AFFINITY GATE (live finding #2, 2026-07-23, 71 swaps in): duration
-# alone scores +25 with ZERO title requirement, so for an obscure track "any
-# song of the same length" wins — 7 of the first 71 swaps were the WRONG SONG
-# ("Alone" ← Anti-Up "Shake"; "Prayers" ← a Eurovision entry). Owner-ratified
-# safe mode: AUTO-accept only candidates that visibly look like the song;
-# everything else rejects into the ledger → the manual-repair queue
-# (paste-a-link / upload-own-audio, the D-56 flow).
-_AFFINITY_STOPWORDS = frozenset(
-    "official audio video music lyric lyrics visualizer hd hq the a an of and "
-    "x feat ft featuring remix mix mixed edit vip version".split())
-
-
-def _tokens(s: Optional[str]) -> set[str]:
-    import unicodedata
-    t = unicodedata.normalize("NFKD", str(s or "").lower())
-    t = "".join(ch for ch in t if not unicodedata.combining(ch))
-    words = set(re.sub(r"[^a-z0-9]+", " ", t).split())
-    return {w for w in words if w not in _AFFINITY_STOPWORDS}
-
-
-def title_affinity(track_name: Optional[str], artist: Optional[str],
-                   youtube_title: Optional[str], channel: Optional[str] = None,
-                   ) -> bool:
-    """True when the candidate plausibly IS this song: at least one meaningful
-    TITLE token appears in the video title/channel, or the space-squashed
-    titles contain each other ("Airmaxes" vs "Air Maxes" — the tokenization
-    artifact). Artist-only overlap is NOT enough — a same-artist different
-    song ("305 LUV STORY" ← Gonzy's SOBREDOSIS) must reject to manual."""
-    title_toks = _tokens(track_name)
-    yt_toks = _tokens(youtube_title) | _tokens(channel)
-    if title_toks & yt_toks:
-        return True
-    squash_t = re.sub(r"[^a-z0-9]+", "", str(track_name or "").lower())
-    squash_y = re.sub(r"[^a-z0-9]+", "", str(youtube_title or "").lower())
-    return bool(squash_t) and bool(squash_y) and (
-        squash_t in squash_y or squash_y in squash_t)
+__all__ = ["Ledger", "guarded_acquire", "implausible_duration", "re_extract_one",
+           "rejection_reason", "run", "select_confident", "select_targets",
+           "title_affinity"]
 
 
 def guarded_acquire(track_id: str, name: str, artist: str, dest_dir: Path,
-                    duration_s: Optional[float] = None,
+                    duration_s: Optional[float] = None, *,
+                    require_channel: bool = False,
+                    tol_s: Optional[float] = None,
                     ) -> tuple[Optional[Path], Optional[dict]]:
-    """The runner's acquire: resolve ONCE, refuse a wrong-VERSION match BEFORE
-    downloading (the matcher already carries `youtube_duration_s` from Q1a, so
-    the check is free and saves both the ~170 MB fetch and the ~9 GB DSP),
-    then download. Same (path, match) contract as default_acquire."""
+    """The shared acquire: search once, admit only a candidate that passes the
+    QA2 gate, then download. Same (path, match) contract as before.
+
+    FILTER-THEN-RANK (QA2): every candidate faces the gate and the best
+    survivor wins. The old order — rank first, judge the winner — discarded a
+    usable recording sitting at position 2 of the same search, and admitted
+    wrong songs whose single shared word passed title affinity.
+
+    Rejection happens BEFORE the download (the matcher already carries
+    `youtube_duration_s` from Q1a, so the check is free and saves both the
+    ~170 MB fetch and the ~9 GB DSP). On rejection the returned record carries
+    `_rejected` + a `_reason` that names the real cause."""
     from ..ingestion.audio_downloader import (
         DownloadConfig,
         download_track_audio,
-        resolve_youtube_match,
+        resolve_youtube_candidates,
     )
-    match = resolve_youtube_match(name, artist or "", duration_s=duration_s)
-    if not match:
+    candidates = resolve_youtube_candidates(name, artist or "", duration_s=duration_s)
+    if not candidates:
         return None, None
-    yt_len = match.get("youtube_duration_s")
-    if implausible_duration(yt_len, duration_s):
-        logger.info("rejected wrong-version match for %r: %.0fs vs expected %.0fs",
-                    name, yt_len or 0.0, duration_s or 0.0)
-        return None, {**match, "_rejected": "duration"}
-    if not title_affinity(name, artist, match.get("title"), match.get("channel")):
-        logger.info("rejected no-affinity match for %r: candidate %r",
-                    name, match.get("title"))
-        return None, {**match, "_rejected": "affinity"}
-    path = download_track_audio(match["url"], track_id,
+    chosen = select_confident(candidates, name, artist, duration_s,
+                              require_channel=require_channel, tol_s=tol_s)
+    if chosen is None:
+        # Report against the best-SCORING candidate — the one that would have
+        # been chosen before, so the ledger reason names a recognisable video.
+        top = max(candidates, key=lambda c: c.get("score") or 0)
+        reason = rejection_reason(name, artist, top, duration_s,
+                                  require_channel=require_channel, tol_s=tol_s)
+        logger.info("rejected all %d candidates for %r — %s (top: %r)",
+                    len(candidates), name, reason, top.get("title"))
+        return None, {**top, "_rejected": "gate", "_reason": reason}
+    path = download_track_audio(chosen["url"], track_id,
                                 DownloadConfig(output_dir=Path(dest_dir)))
-    return path, match
+    return path, chosen
 
 
 def _utc() -> str:
@@ -255,15 +218,10 @@ def re_extract_one(cache: FeatureCache, track_id: str, *, audio_dir: Path,
                                     meta.get("artist_names") or "", Path(audio_dir),
                                     expected_s)
         if audio_path is None or not Path(audio_path).exists():
-            rej = (match or {}).get("_rejected")
-            if rej == "duration":
-                return False, (f"wrong-version rejected: candidate "
-                               f"{(match or {}).get('youtube_duration_s') or 0:.0f}s "
-                               f"vs expected {expected_s or 0:.0f}s")
-            if rej == "affinity":
-                return False, (f"no-affinity rejected: candidate "
-                               f"{(match or {}).get('title')!r} does not look "
-                               "like this song — manual-repair queue")
+            if (match or {}).get("_rejected"):
+                return False, (f"gate rejected: {(match or {}).get('_reason')} "
+                               f"(best candidate {(match or {}).get('title')!r}) "
+                               "— manual-repair queue")
             return False, "audio acquisition failed"
         signal = load_audio(audio_path)
         # Backstop: YouTube's advertised length can differ from the real file
