@@ -245,6 +245,26 @@ def build_cluster_profile(cache: Any, track_card: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def build_provenance_mart(cache: Any) -> pd.DataFrame:
+    """Current acquisition provenance — the LATEST event per bridge key (Q1/D-51):
+    where each track's audio came from + the match quality. The analytic table
+    the /song provenance section (Q2) and the QA loop (Q4) read. Empty when
+    nothing's been extracted-with-provenance yet (honest ∅ — coverage grows as
+    new extractions land + the Q3 backfill runs)."""
+    rows = cache.all_provenance()  # newest-first
+    if not rows:
+        return pd.DataFrame()
+    seen: set = set()
+    current: list[dict] = []
+    for r in rows:  # newest-first → the first sighting of a key IS its latest event
+        tid = r.get("spotify_track_id")
+        if tid in seen:
+            continue
+        seen.add(tid)
+        current.append({k: v for k, v in r.items() if k != "id"})  # drop the internal event id
+    return pd.DataFrame(current)
+
+
 def build_semantic_marts(cache: Any, perceptual_df: pd.DataFrame,
                          marts_dir: Path) -> dict[str, int]:
     """Write the semantic marts (atomic, idempotent). Called from rebuild_marts
@@ -256,6 +276,7 @@ def build_semantic_marts(cache: Any, perceptual_df: pd.DataFrame,
     ar = build_artist_rollup(cache, perceptual_df)
     cf = build_corpus_facts(tc, ar)
     cp = build_cluster_profile(cache, tc)
+    pv = build_provenance_mart(cache)
     _write_atomic(fd, marts_dir / "feature_dictionary.parquet")
     if not tc.empty:
         _write_atomic(tc, marts_dir / "track_card.parquet")
@@ -265,6 +286,8 @@ def build_semantic_marts(cache: Any, perceptual_df: pd.DataFrame,
         _write_atomic(cf, marts_dir / "corpus_facts.parquet")
     if not cp.empty:
         _write_atomic(cp, marts_dir / "cluster_profile.parquet")
+    if not pv.empty:
+        _write_atomic(pv, marts_dir / "track_provenance.parquet")
     return {"feature_dictionary": len(fd), "track_card": len(tc),
             "artist_rollup": len(ar), "corpus_facts": len(cf),
-            "cluster_profile": len(cp)}
+            "cluster_profile": len(cp), "track_provenance": len(pv)}

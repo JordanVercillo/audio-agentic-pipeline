@@ -158,13 +158,22 @@ def test_cluster_profile_projects_saved_descriptions(corpus):
 
 # ── K2.0: the audit tripwires (positive AND negative) ────────────────────────
 def _write_semantic_marts(tmp_path, corpus, *, drop_card_row=False,
-                          wrong_fact=False, bad_share=False):
+                          wrong_fact=False, bad_share=False, orphan_provenance=False):
     from .clusters import train_song_clusters
     from .perceptual import catalog_frame, compute_feature_stats
+    from .semantic import build_provenance_mart
     train_song_clusters(corpus)
     perc, tc, ar = _semantic_frames(corpus)
     cf = build_corpus_facts(tc, ar)
     cp = build_cluster_profile(corpus, tc)
+    # a real provenance event for one analyzed track (+ optionally an orphan)
+    corpus.remember_provenance(spotify_track_id=tc["spotify_track_id"].iloc[0],
+                               youtube_url="u", match_confidence=0.8,
+                               matcher_version="heuristic-v1")
+    if orphan_provenance:
+        corpus.remember_provenance(spotify_track_id="ghost_not_analyzed",
+                                   youtube_url="u2", match_confidence=0.5)
+    pv = build_provenance_mart(corpus)
     if drop_card_row:
         tc = tc.iloc[1:]                       # a key in perceptual but not the card
     if wrong_fact:
@@ -180,7 +189,23 @@ def _write_semantic_marts(tmp_path, corpus, *, drop_card_row=False,
     ar.to_parquet(marts / "artist_rollup.parquet", index=False)
     cf.to_parquet(marts / "corpus_facts.parquet", index=False)
     cp.to_parquet(marts / "cluster_profile.parquet", index=False)
+    pv.to_parquet(marts / "track_provenance.parquet", index=False)
     return marts
+
+
+def test_provenance_mart_is_current_per_key(corpus):
+    # Q1/D-51: append two events for one track → the mart keeps only the latest.
+    from .semantic import build_provenance_mart
+    corpus.remember_provenance(spotify_track_id="t", youtube_url="old",
+                               match_confidence=0.4)
+    corpus.remember_provenance(spotify_track_id="t", youtube_url="new",
+                               match_confidence=0.9)
+    corpus.remember_provenance(spotify_track_id="u", youtube_url="other")
+    pv = build_provenance_mart(corpus)
+    assert len(pv) == 2 and not pv["spotify_track_id"].duplicated().any()
+    row = pv.set_index("spotify_track_id").loc["t"]
+    assert row["youtube_url"] == "new" and row["match_confidence"] == 0.9  # latest wins
+    assert "id" not in pv.columns                                          # internal id dropped
 
 
 def _audit():
@@ -192,10 +217,20 @@ def test_audit_semantic_marts_green_when_coherent(corpus, tmp_path):
     report, _, errors, flags = _audit().check_marts(_write_semantic_marts(tmp_path, corpus))
     # the fixture's broken row trips the (independent, pre-existing)
     # FEATURE_DISTRIBUTION check — the K2.0 flags themselves must read green
-    for flag in ("PLANE_COHERENCE", "SEMANTIC_PARITY", "CLUSTER_PROFILE_DRIFT"):
+    for flag in ("PLANE_COHERENCE", "SEMANTIC_PARITY", "CLUSTER_PROFILE_DRIFT",
+                 "PROVENANCE_ORPHAN"):
         assert flags[flag] is False, flag
     assert not errors
     assert report["track_card"]["rows"] == 9 and report["corpus_facts"]["rows"] == 1
+    # Q1: provenance mart present, coverage reported (1 real event, no orphan)
+    assert "coverage" in report["track_provenance"]
+
+
+def test_audit_catches_provenance_orphan(corpus, tmp_path):
+    marts = _write_semantic_marts(tmp_path, corpus, orphan_provenance=True)
+    _, warnings, _, flags = _audit().check_marts(marts)
+    assert flags["PROVENANCE_ORPHAN"] is True
+    assert any("non-analyzed" in w for w in warnings)
 
 
 def test_audit_catches_plane_incoherence(corpus, tmp_path):

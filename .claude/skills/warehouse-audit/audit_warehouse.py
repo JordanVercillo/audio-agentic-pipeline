@@ -91,6 +91,10 @@ def check_marts(marts_dir: Path):
       CLUSTER_PROFILE_DRIFT  cluster_profile's assignment counts/shares are
                              impossible against the corpus (share outside [0,1],
                              n_assigned beyond n_tracks, or an unlabeled row)
+      PROVENANCE_ORPHAN      track_provenance (Q1/D-51) carries a bridge key
+                             that is NOT an analyzed track — the only real
+                             invariant (coverage of OLD tracks is ∅ until the
+                             Q3 backfill, so under-coverage is a NOTE, not a flag)
 
     Marts are an optional derived layer: an absent dir (or an absent semantic
     mart — they land with K2.0 rebuilds) is a note, not a finding.
@@ -101,7 +105,8 @@ def check_marts(marts_dir: Path):
     errors: list[str] = []
     flags = {"CATALOG_MART_DRIFT": False, "STATS_MART_DRIFT": False,
              "FEATURE_DISTRIBUTION": False, "PLANE_COHERENCE": False,
-             "SEMANTIC_PARITY": False, "CLUSTER_PROFILE_DRIFT": False}
+             "SEMANTIC_PARITY": False, "CLUSTER_PROFILE_DRIFT": False,
+             "PROVENANCE_ORPHAN": False}
 
     if not marts_dir.is_dir() or not any(marts_dir.glob("*.parquet")):
         warnings.append("data/marts/ not built (optional — run scripts/build_feature_marts.py)")
@@ -122,7 +127,8 @@ def check_marts(marts_dir: Path):
         report[name] = {"rows": int(len(df)), "cols": int(df.shape[1])}
     # Semantic marts (K2.0) are optional until first rebuilt — absent is silent
     # here (MART_INCOMPLETE would misfire on every pre-K2.0 marts dir).
-    for name in ("track_card", "artist_rollup", "corpus_facts", "cluster_profile"):
+    for name in ("track_card", "artist_rollup", "corpus_facts", "cluster_profile",
+                 "track_provenance"):
         path = marts_dir / f"{name}.parquet"
         if not path.exists():
             continue
@@ -141,6 +147,7 @@ def check_marts(marts_dir: Path):
     artist_rollup = frames.get("artist_rollup")
     corpus_facts = frames.get("corpus_facts")
     cluster_profile = frames.get("cluster_profile")
+    provenance = frames.get("track_provenance")
 
     if catalog is not None and perceptual is not None:
         cat_cols = set(catalog["column"])
@@ -249,6 +256,26 @@ def check_marts(marts_dir: Path):
             warnings.append("marts/cluster_profile: " + "; ".join(bad)
                             + " — CLUSTER_PROFILE_DRIFT")
             flags["CLUSTER_PROFILE_DRIFT"] = True
+
+    # Q1/D-51: provenance is append-only history reduced to current-per-key. The
+    # ONLY hard invariant is no orphan (a provenance key must be an analyzed
+    # track); coverage of the pre-Q1 corpus is ∅ until the Q3 backfill, so we
+    # report under-coverage as a note, never a flag.
+    if provenance is not None and not provenance.empty and track_card is not None:
+        analyzed = set(track_card[BRIDGE])
+        prov_keys = set(provenance[BRIDGE])
+        orphans = prov_keys - analyzed
+        if provenance[BRIDGE].duplicated().any():
+            warnings.append("marts/track_provenance: duplicate bridge keys "
+                            "(mart must be current-per-key) — PROVENANCE_ORPHAN")
+            flags["PROVENANCE_ORPHAN"] = True
+        if orphans:
+            warnings.append(f"marts/track_provenance: {len(orphans)} provenance "
+                            "row(s) for non-analyzed tracks — PROVENANCE_ORPHAN")
+            flags["PROVENANCE_ORPHAN"] = True
+        covered = len(prov_keys & analyzed)
+        report["track_provenance"] = {**report.get("track_provenance", {}),
+                                      "coverage": f"{covered}/{len(analyzed)} analyzed tracks"}
 
     return report, warnings, errors, flags
 
