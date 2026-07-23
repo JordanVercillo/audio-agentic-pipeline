@@ -32,6 +32,26 @@ def annotate_dupes(rows: list[dict]) -> list[dict]:
     return rows
 
 
+def consolidate_rows(rows: list[dict], *, expand: bool = False) -> list[dict]:
+    """Collapse twin rows under their canonical (O3c — DISPLAY only, red-team
+    #5: the group is counted and named BEFORE any row is dropped, and the twin
+    titles ride the canonical as `alt_names` so searching a twin's distinct
+    title still surfaces the recording). `expand=True` keeps every row (the
+    transparency view — twins carry their same_as note from annotate_dupes).
+    A twin whose canonical is absent from the list stays visible (fail-open)."""
+    by_id = {r["id"]: r for r in rows}
+    for r in rows:
+        canon = r.get("duplicate_of")
+        if canon and canon in by_id:
+            c = by_id[canon]
+            c.setdefault("alt_names", []).append(r["name"])
+            c["n_versions"] = 1 + len(c["alt_names"])
+    if expand:
+        return rows
+    return [r for r in rows
+            if not (r.get("duplicate_of") and r["duplicate_of"] in by_id)]
+
+
 def _apply_sort(rows: list[dict], field: str, numeric: bool, desc: bool) -> list[dict]:
     if numeric:
         # Unanalyzed rows (value None) always sort LAST, in either direction —
@@ -59,9 +79,12 @@ def library_view(rows: list[dict], *, q: str = "", sort: str = "name",
         out = [r for r in out if r.get("analyzed")]
     ql = (q or "").strip().lower()
     if ql:
+        # O3c: a collapsed canonical also matches through its twins' titles
+        # (alt_names), so searching "… - 2011 Remaster" still finds the recording.
         out = [r for r in out
                if ql in (r.get("name") or "").lower()
-               or ql in (r.get("artist") or "").lower()]
+               or ql in (r.get("artist") or "").lower()
+               or any(ql in (n or "").lower() for n in r.get("alt_names") or [])]
     field, numeric = _SORTS.get(sort, _SORTS["name"])
     out = _apply_sort(out, field, numeric, desc=(order == "desc"))
     return {"rows": out, "shown": len(out), "total": total,

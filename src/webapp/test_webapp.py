@@ -337,6 +337,29 @@ def test_song_provenance_section_renders_and_escapes(client, monkeypatch, tmp_pa
     assert r2.status_code == 200 and "Source not recorded" in r2.text
 
 
+def test_song_twin_page_banners_its_canonical(client, monkeypatch, tmp_path):
+    # O3c: a twin's public URL keeps working and names its canonical; the
+    # canonical's page carries no banner.
+    from ..store.cache import FeatureCache
+    tc = FeatureCache(url=f"sqlite:///{tmp_path / 'tb.db'}")
+    tc.upsert("canonx", _feat(120))
+    tc.upsert("twinx", _feat(120))
+    tc.remember_meta([
+        {"spotify_track_id": "canonx", "track_name": "Original", "artist_names": "A"},
+        {"spotify_track_id": "twinx", "track_name": "Original (Deluxe)", "artist_names": "A"}])
+    with tc._Session() as s:
+        from ..store.models import TrackMeta
+        s.get(TrackMeta, "twinx").duplicate_of = "canonx"
+        s.commit()
+    monkeypatch.setattr("src.webapp.app._feature_cache", lambda: tc)
+    r = client.get("/song/twinx")
+    assert r.status_code == 200
+    assert "same recording as" in r.text and '/song/canonx' in r.text
+    assert "this release" in r.text                        # own-features honesty line
+    r2 = client.get("/song/canonx")
+    assert "same recording as" not in r2.text              # canonical: no banner
+
+
 def test_song_provenance_url_scheme_guarded(client, monkeypatch, tmp_path):
     # A non-http(s) youtube_url must NOT become a clickable link (javascript:).
     from ..store.cache import FeatureCache

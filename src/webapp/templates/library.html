@@ -46,6 +46,7 @@
     <tr>
       <td>{% if r.art %}<img class="art-sm" src="{{ r.art }}" alt="" loading="lazy">{% else %}<span class="art-sm art-ph">♪</span>{% endif %}</td>
       <td>{% if r.analyzed %}<a href="/song/{{ r.id }}">{{ r.name }}</a>{% else %}<span title="not analyzed yet">{{ r.name }}</span>{% endif %}
+        {% if r.n_versions %}<span class="cap dup" title="{{ r.alt_names|join(' · ') }}">{{ r.n_versions }} releases of this recording</span>{% endif %}
         {% if r.same_as %}<span class="cap dup">↔ same recording as {{ r.same_as }}</span>{% endif %}</td>
       <td class="tartist">{{ r.artist }}</td>
       <td class="num">{{ r.popularity if r.popularity is not none else '—' }}</td>

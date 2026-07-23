@@ -1130,7 +1130,11 @@ def create_app() -> FastAPI:
         session = request.state.session
         params = dict(request.query_params)
         cache = _feature_cache()
-        rows = library_view_mod.annotate_dupes(cache.library_rows())
+        # O3c: one row per RECORDING by default; ?dupes=all expands the twins
+        expand_dupes = params.get("dupes") == "all"
+        rows = library_view_mod.consolidate_rows(
+            library_view_mod.annotate_dupes(cache.library_rows()),
+            expand=expand_dupes)
         q = (params.get("q") or "").strip()
         sort = params.get("sort") or "name"
         order = params.get("order") or "asc"
@@ -1181,6 +1185,13 @@ def create_app() -> FastAPI:
             # Jinja auto-escapes (the |safe SVG XSS lesson, security review).
             "provenance": cache.provenance_for(track_id),
         }
+        # O3c: a twin's page keeps working (public URLs never break) but names
+        # its canonical — the features/provenance shown are THIS release's own.
+        canon_id = cache.duplicate_flags().get(track_id)
+        if canon_id:
+            cmeta = cache.get_meta(canon_id) or {}
+            ctx["canonical"] = {"id": canon_id,
+                                "name": cmeta.get("track_name") or canon_id}
         if features is not None:
             ctx["summary"] = track_summary(features)
             ctx["radar"] = radar_svg(features)

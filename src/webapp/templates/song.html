@@ -6,6 +6,11 @@
   {% else %}<a class="back" href="/library">← Back to Library</a>{% endif %}
   <h1>{{ name }}</h1>
   <p class="muted artist-line">{{ artist }}</p>
+  {% if canonical %}
+  <p class="cap dup">↔ This release is the same recording as
+    <a href="/song/{{ canonical.id }}">{{ canonical.name }}</a> — the features and
+    source shown here are this release's own.</p>
+  {% endif %}
 
   {% if analyzed %}
   <div class="song-grid">

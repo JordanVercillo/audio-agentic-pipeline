@@ -158,6 +158,53 @@ def test_library_search_filters(rclient, monkeypatch, tmp_path):
     assert "Anthem" in r.text and "Zephyr" not in r.text
 
 
+def test_consolidate_rows_collapses_and_carries_alt_names():
+    from .library import annotate_dupes, consolidate_rows, library_view
+    rows = annotate_dupes([
+        {"id": "c", "name": "Song", "artist": "A", "duplicate_of": None,
+         "analyzed": True, "tempo": 120.0},
+        {"id": "t", "name": "Song - 2011 Remaster", "artist": "A",
+         "duplicate_of": "c", "analyzed": True, "tempo": 120.0},
+        {"id": "x", "name": "Other", "artist": "B", "duplicate_of": None,
+         "analyzed": True, "tempo": 100.0},
+        {"id": "orphan", "name": "Lost", "artist": "C",
+         "duplicate_of": "missing", "analyzed": False, "tempo": None},
+    ])
+    out = consolidate_rows(rows)
+    ids = [r["id"] for r in out]
+    assert "t" not in ids                                   # twin collapsed
+    assert "orphan" in ids                                  # fail-open: canon absent
+    canon = next(r for r in out if r["id"] == "c")
+    assert canon["n_versions"] == 2
+    assert canon["alt_names"] == ["Song - 2011 Remaster"]
+    # searching the TWIN's distinct title surfaces the canonical (red-team #5)
+    v = library_view(out, q="remaster")
+    assert [r["id"] for r in v["rows"]] == ["c"]
+    # expand keeps every row (the transparency view)
+    assert len(consolidate_rows(rows, expand=True)) == 4
+
+
+def test_library_route_collapses_by_default_and_expands(rclient, monkeypatch, tmp_path):
+    def _cache():
+        tc = _seed_route_cache(tmp_path)
+        tc.remember_meta([{"spotify_track_id": "cccccccc", "track_name": "Zephyr - Live",
+                           "artist_names": "Beck"}])
+        with tc._Session() as s:
+            from ..store.models import TrackMeta
+            s.get(TrackMeta, "cccccccc").duplicate_of = "aaaaaaaa"
+            s.commit()
+        return tc
+    monkeypatch.setattr("src.webapp.app._feature_cache", _cache)
+    r = rclient.get("/library")
+    assert "releases of this recording" in r.text           # the chip on the canonical
+    assert "↔ same recording as" not in r.text              # no twin ROW by default
+    r2 = rclient.get("/library?dupes=all")
+    assert "↔ same recording as" in r2.text                 # expanded: twin row + note
+    # twin-title search surfaces the RECORDING (via alt_names), not nothing
+    r3 = rclient.get("/library?q=live")
+    assert "Zephyr" in r3.text and "releases of this recording" in r3.text
+
+
 def test_library_provenance_glyph_and_legend(rclient, monkeypatch, tmp_path):
     # Q2/D-51: the Src column shows ✓ for a recorded source and the legend renders;
     # the seed cache has no provenance for Anthem → its ∅ glyph appears too.
