@@ -585,18 +585,54 @@
   fade-in + 7-section ribbon + the populated provenance card, verified live
   through the public edge. FEATURE_DISTRIBUTION's breakage warnings are GONE
   (only the documented legit DJ-mix duration tail remains). Provenance
-  coverage: 3/796 canonical.** **➡️ NEXT ACTION — (owner) SCHEDULE THE FULL
+  coverage: 3/796 canonical.**
+  ✅ **O3a–c SHIPPED (2026-07-23, session 55, Fable + data-platform red-team;
+  commits ce8fc9a/604fb3e/5d1d26b, 525 tests, all audit flags false, deployed,
+  browser-validated live): DUPLICATE CONSOLIDATION — a read-time view, never
+  a merge (bridge key untouched, zero feature deletions).** Owner un-parked
+  "dupe-pruning" and ratified 4 calls: collapse-by-default · "N analyzed / M
+  unique" honesty language · twins' features stay stored-but-invisible
+  (pruning stays parked) · O3d acoustic recall miner waits for post-Q3
+  vectors. The red-team found 4 concrete holes in the draft (journal #44):
+  guests DOUBLE-COUNTED 10 twins live since P3.5 (FOUR `range_ids` producers,
+  the draft named one); the compute-side exclusion never reached the
+  `track_perceptual` TABLE that `/explore`+`/recommend` read (merge-only
+  persistence — the F-class trap again); PROVENANCE_ORPHAN would false-fire
+  on a provenanced-then-flagged twin; the standalone audit had no
+  authoritative twin set. **Shipped:** `canonicalize_ids/range_ids` (pure,
+  dedup.py) at ALL FOUR producers (dashboard build AFTER enqueue's intake
+  guard · /guest route + guest context canonicalize at READ so the pre-O3
+  snapshot self-heals · snapshot script); `cache.twin_ids()` = THE one
+  filter (perceptual + `prune_perceptual` table reconcile + `_drop_twins`
+  in cluster training + `similar()` candidates (twin may still be the
+  QUERY) + signature/nearest-artist populations + rollup n_tracks);
+  `duplicate_flags.parquet` (authoritative, 35 rows) + **TWIN_LEAKAGE**
+  tripwire + PROVENANCE_ORPHAN ref widened to card ∪ twins + the provenance
+  mart excludes twins; corpus_facts honesty fields (n_unique_recordings /
+  n_analyzed_incl_duplicates / n_duplicates_flagged); /library collapses
+  (chip "N releases of this recording", twin titles searchable via
+  alt_names, `?dupes=all` expands); twin `/song` URLs keep working + a
+  canonical banner (own-features honesty — never borrow the canonical's
+  provenance). **Live: 796 unique of 807 analyzed · header "796 analyzed of
+  811 known" · Unravelling collapsed to 1 row w/ chip · twin banner live ·
+  table pruned 807→796.** Corrections: the O3b commit message says "530
+  tests" — the truth is 522 (miscount; this line wins). Interim residue: the
+  /analytics scatter plots ~11 twin dots until the next retrain (cosmetic).
+  **➡️ NEXT ACTION — (owner) SCHEDULE THE FULL
   RUN:** `uv run python scripts/re_extract.py --all` (~12-16 h,
   interrupt-safe at any moment, resumable by construction; or bite-size
   `--limit 100` evenings). Take a backup first if running with the app up
   (`uv run python scripts/backup_cache.py`; stop_app also snapshots). When
   it prints COVERAGE COMPLETE, follow its checklist: train_clusters →
   describe_clusters --force → build marts → both audits → restart + browser
-  check (cluster/archetype WILL shift — ratified, D-55). **(build) next
+  check (cluster/archetype WILL shift — ratified D-55, and that retrain now
+  ALSO materializes O3's twin-free training in the same pass). **(build) next
   slice = Q4 QA tooling** (`review_provenance.py` — stratified sample over
   the provenance mart + duration audit → aggregates-only health artifact;
   exempt from the QA-deferral), then R1–R3 Artists 2.0 (MusicBrainz, $0,
   auth-less; research-expert fences ToS/rate once). DEFERRED (not blocking):
+  O3d — the acoustic recall miner (cross-name same-audio candidates from the
+  77-dim vectors, review-report-only, after Q3's uniform re-extraction);
   S4 DMARC reject-flip (owner, ~Jul-25 after clean reports); cluster_profile
   online-cluster (owner call — now 99.7% covered, the gap is tiny).
   RESIDUAL (honest):
@@ -2202,3 +2238,23 @@ narrative goes to `notes/engineering_journal.md`, plans to
   schedule (interrupt-safe, resumable); its completion checklist is printed
   by the runner. Next build slice = Q4 `review_provenance.py`. NEW SESSION:
   run `/resume`.**
+- **2026-07-23 (session 55 — O3 duplicate consolidation, Fable +
+  data-platform red-team; commits ce8fc9a/604fb3e/5d1d26b, 525 tests):**
+  Owner un-parked dupe consolidation ("same track in multiple albums shows
+  twice"), ratified 4 calls, and the journal-#43 discipline paid again: the
+  red-team probe found guests DOUBLE-COUNTING 10 twins live since P3.5
+  (four range_ids producers, the draft named one), the F-class
+  compute-vs-TABLE divergence (merge-only persistence would keep serving
+  twin rows to /explore+/recommend), a forward-reachable PROVENANCE_ORPHAN
+  false-fire, and a missing authoritative twin set for the standalone
+  audit (journal #44 — a flag nobody consumes is documentation, not
+  protection). Shipped consolidation as a READ-TIME view: one filter
+  (`cache.twin_ids`), one canonicalizer (`canonicalize_ids`) at all four
+  producers, canonical-only marts/training/similar/populations, the
+  duplicate_flags mart + TWIN_LEAKAGE tripwire, /library collapse w/
+  chip + alt_names search + ?dupes=all, twin /song banners. Live: 796
+  unique of 807; Unravelling 1 row; all audit flags false. O3b commit msg
+  says 530 — truth 522 (miscount). **Left off: O3 COMPLETE and live. NEXT
+  unchanged = (owner) the Q3 `--all` full run — its post-run retrain now
+  materializes twin-free training too; (build) Q4. NEW SESSION: run
+  `/resume`.**

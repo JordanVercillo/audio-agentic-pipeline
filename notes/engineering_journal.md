@@ -1144,3 +1144,28 @@ depending on WHY you're writing.
 > the NEW intent, not the intent it was built for; and treat "I verified X"
 > as evidence only about X, never about the neighboring claims you didn't
 > think to state.*
+
+## 44 — A flag nobody consumes is documentation, not protection (2026-07-23, O3)
+
+O1 shipped dedup-as-flag on July 14: detection at intake, `duplicate_of`
+stored, a "same recording as" note in the library. Everyone moved on. Nine
+days later the owner asked why the same track shows up twice — and the
+red-team probe found the flag had quietly gone unconsumed by every surface
+built since: the guest dashboard double-counted 10 twins in its taste math,
+the semantic marts and the chat's corpus counts carried 11 redundant feature
+rows, the cluster retrain double-weighted them, and similar() would offer a
+track its own twin as a "similar song." Detection worked perfectly the whole
+time. Nothing read it.
+
+**The realization:** a data-quality flag has no default effect — every
+consumer must OPT IN, and consumers written later don't know it exists. Each
+new surface (guest replica, semantic layer, retrain, tool-loop SQL) was
+individually correct against the data it read, and collectively wrong,
+because the flag lived beside the data instead of in front of it.
+
+> *When you ship a data-quality flag, ship three things or you shipped none:
+> the ONE shared filter every population must pass through (`twin_ids`), the
+> canonicalizer applied at every producer of derived id-sets, and a tripwire
+> that FAILS when any population bypasses the filter (TWIN_LEAKAGE). A flag
+> without an enforcement choke-point decays into decoration as the codebase
+> grows around it.*
