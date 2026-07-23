@@ -83,6 +83,31 @@
     before provenance capture, and will populate on re-extraction.</p>
   {% endif %}
 
+  {% if is_owner %}
+  <div class="prov-card">
+    <h2 class="section" style="margin-top:0">Repair source <small class="cap">(owner)</small></h2>
+    {% if repair_msg %}<p class="cap"><b>{{ repair_msg }}</b></p>{% endif %}
+    {% if needs_source_reason %}
+    <p class="cap dup">⚠ flagged by the re-extraction run: {{ needs_source_reason }}</p>
+    {% endif %}
+    <form class="ask" method="post" action="/song/{{ track_id }}/repair-link">
+      <input type="url" name="url" required
+             placeholder="Paste the correct YouTube link (youtube.com / youtu.be)…"
+             aria-label="YouTube link for this track">
+      <button type="submit">Repair from link</button>
+    </form>
+    <form class="ask" method="post" action="/song/{{ track_id }}/repair-upload"
+          enctype="multipart/form-data">
+      <input type="file" name="file" required accept=".mp3,.wav,.flac,.m4a,audio/*"
+             aria-label="Audio file for this track">
+      <button type="submit">Repair from file</button>
+    </form>
+    <p class="cap">You vouch for identity; validation still runs — a source whose
+      length doesn't match this track's is rejected. mp3/wav/flac/m4a, 20 MB max
+      (content-sniffed, the filename doesn't matter).</p>
+  </div>
+  {% endif %}
+
   <p><a class="btn ghost" href="/recommend?seed={{ track_id }}">More like this — tune it →</a></p>
 
   {% if similar %}

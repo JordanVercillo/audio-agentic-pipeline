@@ -11,7 +11,13 @@
     <a class="tab{{ ' is-active' if tab == 'all' else '' }}" href="/library">All songs <b>{{ total }}</b></a>
     {% if viewer %}<a class="tab{{ ' is-active' if tab == 'mine' else '' }}" href="/library?tab=mine">My songs <b>{{ my_count }}</b></a>{% endif %}
     {% if authed %}<a class="tab" href="/playlists">Playlists →</a>{% endif %}
+    {% if is_owner and ns_count %}<a class="tab{{ ' is-active' if ns_filtered else '' }}"
+       href="/library?filter=needs-source">Needs source <b>{{ ns_count }}</b></a>{% endif %}
   </div>
+  {% if ns_filtered %}
+  <p class="cap dup">Acquisition failures awaiting a source — open a song to paste
+    the correct YouTube link or upload its audio file. Validation still runs.</p>
+  {% endif %}
 
   {% if tab == 'playlists' %}
   <p class="cap">Playlist import lives on its own page now —
@@ -47,7 +53,8 @@
       <td>{% if r.art %}<img class="art-sm" src="{{ r.art }}" alt="" loading="lazy">{% else %}<span class="art-sm art-ph">♪</span>{% endif %}</td>
       <td>{% if r.analyzed %}<a href="/song/{{ r.id }}">{{ r.name }}</a>{% else %}<span title="not analyzed yet">{{ r.name }}</span>{% endif %}
         {% if r.n_versions %}<span class="cap dup" title="{{ r.alt_names|join(' · ') }}">{{ r.n_versions }} releases of this recording</span>{% endif %}
-        {% if r.same_as %}<span class="cap dup">↔ same recording as {{ r.same_as }}</span>{% endif %}</td>
+        {% if r.same_as %}<span class="cap dup">↔ same recording as {{ r.same_as }}</span>{% endif %}
+        {% if ns_filtered and r.id in ns_reasons %}<span class="cap dup">⚠ {{ ns_reasons[r.id] }}</span>{% endif %}</td>
       <td class="tartist">{{ r.artist }}</td>
       <td class="num">{{ r.popularity if r.popularity is not none else '—' }}</td>
       <td class="num">{{ r.tempo|round|int if r.tempo is not none else '—' }}</td>

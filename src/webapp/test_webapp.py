@@ -360,6 +360,77 @@ def test_song_twin_page_banners_its_canonical(client, monkeypatch, tmp_path):
     assert "same recording as" not in r2.text              # canonical: no banner
 
 
+# ── D-56: the owner repair surfaces ─────────────────────────────────────────
+def _repair_cache(tmp_path):
+    from ..store.cache import FeatureCache
+    tc = FeatureCache(url=f"sqlite:///{tmp_path / 'rep.db'}")
+    tc.upsert("fixme", _feat(120))
+    tc.remember_meta([{"spotify_track_id": "fixme", "track_name": "Roots",
+                       "artist_names": "WILDS", "duration_ms": 200_000}])
+    return tc
+
+
+def test_repair_fails_closed_without_owner_env(client, monkeypatch, tmp_path):
+    # WEBAPP_OWNER_SPOTIFY_ID unset → repair is disabled for EVERYONE,
+    # including authed users; the engine must never be reached.
+    monkeypatch.delenv("WEBAPP_OWNER_SPOTIFY_ID", raising=False)
+    monkeypatch.setattr("src.webapp.app._feature_cache",
+                        lambda: _repair_cache(tmp_path))
+    monkeypatch.setattr("src.store.repair.repair_from_link",
+                        lambda *a, **k: pytest.fail("engine must not run"))
+    client.cookies.set(config.SESSION_COOKIE, _seed_session(taste=_TASTE))
+    r = client.post("/song/fixme/repair-link", data={"url": "https://youtu.be/x"},
+                    follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "/song/fixme"
+    # and the page shows no repair form
+    assert "Repair source" not in client.get("/song/fixme").text
+
+
+def test_repair_refuses_non_owner_and_accepts_owner(client, monkeypatch, tmp_path):
+    monkeypatch.setenv("WEBAPP_OWNER_SPOTIFY_ID", "jordan_id")
+    tc = _repair_cache(tmp_path)
+    monkeypatch.setattr("src.webapp.app._feature_cache", lambda: tc)
+    calls: list = []
+    monkeypatch.setattr("src.store.repair.repair_from_link",
+                        lambda cache, tid, url, **kw: calls.append((tid, url))
+                        or (True, "repaired"))
+    # a DIFFERENT authed pilot user → refused, engine untouched
+    client.cookies.set(config.SESSION_COOKIE,
+                       _seed_session(taste=_TASTE, extra={"me_id": "someone_else"}))
+    client.post("/song/fixme/repair-link", data={"url": "https://youtu.be/x"},
+                follow_redirects=False)
+    assert calls == []
+    # the owner → engine runs, PRG + flash
+    client.cookies.set(config.SESSION_COOKIE,
+                       _seed_session(taste=_TASTE, extra={"me_id": "jordan_id"}))
+    r = client.post("/song/fixme/repair-link", data={"url": "https://youtu.be/x"},
+                    follow_redirects=False)
+    assert r.status_code == 303 and calls == [("fixme", "https://youtu.be/x")]
+    page = client.get("/song/fixme").text
+    assert "✓ repaired" in page and "Repair source" in page
+
+
+def test_library_needs_source_filter_owner_only(client, monkeypatch, tmp_path):
+    import json as _json
+    monkeypatch.setenv("WEBAPP_OWNER_SPOTIFY_ID", "jordan_id")
+    tc = _repair_cache(tmp_path)
+    monkeypatch.setattr("src.webapp.app._feature_cache", lambda: tc)
+    ledger = tmp_path / "led.json"
+    ledger.write_text(_json.dumps(
+        {"failed": {"fixme": {"error": "no-affinity rejected: candidate ..."}}}),
+        encoding="utf-8")
+    monkeypatch.setattr("src.webapp.app._LEDGER_PATH", ledger)
+    # anon: the filter param is ignored, no tab shown
+    r = client.get("/library?filter=needs-source")
+    assert "Needs source" not in r.text
+    # owner: the tab + the filtered view with the reason
+    client.cookies.set(config.SESSION_COOKIE,
+                       _seed_session(taste=_TASTE, extra={"me_id": "jordan_id"}))
+    r2 = client.get("/library?filter=needs-source")
+    assert "Needs source" in r2.text and "no-affinity rejected" in r2.text
+    assert "Roots" in r2.text
+
+
 def test_song_provenance_url_scheme_guarded(client, monkeypatch, tmp_path):
     # A non-http(s) youtube_url must NOT become a clickable link (javascript:).
     from ..store.cache import FeatureCache
@@ -1550,13 +1621,15 @@ def test_ask_route_surfaces_local_model(client, monkeypatch, tmp_path):
     assert "local gemma4:12b ($0)" in r.text             # honest, credits the $0 local model
 
 
-def _seed_session(taste=None):
+def _seed_session(taste=None, extra=None):
     from .app import _signer, _store
     sid = _store.new()
     sess = _store.get(sid)
     sess["token"] = {"access_token": "x"}  # authenticated
     if taste is not None:
         sess["taste"] = taste
+    if extra:
+        sess.update(extra)  # e.g. a pre-resolved me_id (D-56 owner-gate tests)
     return _signer.sign(sid)
 
 

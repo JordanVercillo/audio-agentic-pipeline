@@ -25,7 +25,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any, Optional
 
-from fastapi import FastAPI, Form, Request
+from fastapi import FastAPI, File, Form, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -105,6 +105,12 @@ def _spectrogram_path(track_id: str) -> Path:
 
 
 _DEMO_PROFILE_PATH = _BASE.parent.parent / "data" / "demo_profile.json"
+
+# D-56: the runner's ledger (read-only here — the runner is its single writer)
+# and a repair-scratch dir SEPARATE from the runner's (no file collisions).
+_LEDGER_PATH = _BASE.parent.parent / "data" / "re_extract_ledger.json"
+_REPAIR_AUDIO_DIR = _BASE.parent.parent / "data" / "tmp_repair"
+_UPLOAD_FILE = File(...)  # module-level singleton (B008 — the FastAPI idiom)
 
 
 def load_demo_profile() -> Optional[dict[str, Any]]:
@@ -406,6 +412,43 @@ def create_app() -> FastAPI:
         read-only guest (H7 demo). Actions that need a token or write (login,
         dashboard fetch, /ask, /classify) still require real auth."""
         return auth_web.is_authenticated(session) or bool(session.get("is_guest"))
+
+    def _is_owner(session: dict[str, Any]) -> bool:
+        """D-56 repair gate: authed AND the session's Spotify /me id equals
+        WEBAPP_OWNER_SPOTIFY_ID. Fail-closed: env unset, anon, guests, or an
+        undeterminable /me id all read False. The id is cached in the session
+        after the first check (one borrowed-time /me call, then free)."""
+        owner = config.owner_spotify_id()
+        if not owner or not auth_web.is_authenticated(session):
+            return False
+        mid = session.get("me_id")
+        if not mid:
+            try:
+                mid = fetch_user_profile(
+                    auth_web.client_from_session(session)).get("user_id")
+            except Exception:  # noqa: BLE001 — /me is borrowed-time garnish
+                mid = None
+            if mid:
+                session["me_id"] = mid
+        return bool(mid) and mid == owner
+
+    def _needs_source(cache: FeatureCache, track_id: Optional[str] = None):
+        """The repair queue (D-56): ledgered acquisition failures that no
+        provenance row has since resolved. With `track_id` → that track's
+        reason or None (cheap single-row check); without → {id: reason}."""
+        try:
+            failed = (json.loads(_LEDGER_PATH.read_text(encoding="utf-8"))
+                      .get("failed") or {})
+        except (OSError, ValueError):
+            return None if track_id else {}
+        if track_id is not None:
+            reason = (failed.get(track_id) or {}).get("error")
+            if reason and cache.provenance_for(track_id) is None:
+                return reason
+            return None
+        done = {r["spotify_track_id"] for r in cache.all_provenance()}
+        return {t: (info or {}).get("error", "") for t, info in failed.items()
+                if t not in done}
 
     def _viewer_flags(session: dict[str, Any]) -> dict[str, Any]:
         """Template flags: `authed` = real login (Log out, personal actions),
@@ -1135,6 +1178,13 @@ def create_app() -> FastAPI:
         rows = library_view_mod.consolidate_rows(
             library_view_mod.annotate_dupes(cache.library_rows()),
             expand=expand_dupes)
+        # D-56: the owner's repair queue — acquisition failures awaiting a
+        # pasted link / uploaded file. Owner-only (ops data, fail-closed).
+        ns_reasons: dict[str, str] = {}
+        owner = _is_owner(session)
+        if owner and params.get("filter") == "needs-source":
+            ns_reasons = _needs_source(cache)
+            rows = [r for r in rows if r["id"] in ns_reasons]
         q = (params.get("q") or "").strip()
         sort = params.get("sort") or "name"
         order = params.get("order") or "asc"
@@ -1156,6 +1206,10 @@ def create_app() -> FastAPI:
             "sort_options": library_view_mod.sort_options(),
             "rows": v["rows"], "shown": v["shown"], "total": v["total"],
             "analyzed": v["analyzed"], "my_count": my_count,
+            # D-56: owner-only repair-queue affordances
+            "is_owner": owner, "ns_reasons": ns_reasons,
+            "ns_filtered": bool(ns_reasons),
+            "ns_count": len(_needs_source(cache)) if owner else 0,
         }
         if tab == "mine":
             mine_analyzed = sum(1 for r in v["rows"] if r["analyzed"])
@@ -1192,6 +1246,12 @@ def create_app() -> FastAPI:
             cmeta = cache.get_meta(canon_id) or {}
             ctx["canonical"] = {"id": canon_id,
                                 "name": cmeta.get("track_name") or canon_id}
+        # D-56: the owner sees the repair tools + this track's queue reason;
+        # the flash is server-built (never a query param — the |safe lesson).
+        ctx["is_owner"] = _is_owner(session)
+        if ctx["is_owner"]:
+            ctx["repair_msg"] = session.pop("repair_msg", None)
+            ctx["needs_source_reason"] = _needs_source(cache, track_id)
         if features is not None:
             ctx["summary"] = track_summary(features)
             ctx["radar"] = radar_svg(features)
@@ -1209,6 +1269,40 @@ def create_app() -> FastAPI:
                 for sid, _dist in cache.similar(track_id, k=6)
             ]
         return templates.TemplateResponse(request, "song.html", ctx)
+
+    @app.post("/song/{track_id}/repair-link")
+    def song_repair_link(request: Request, track_id: str, url: str = Form("")):
+        """D-56: owner pastes the correct YouTube link. The engine still runs
+        the full validation (host allowlist, duration HARD-REJECT, DSP swap)."""
+        session = request.state.session
+        if not _TRACK_ID_RE.fullmatch(track_id or ""):
+            return RedirectResponse("/library", status_code=303)
+        if not _is_owner(session):
+            return RedirectResponse(f"/song/{track_id}", status_code=303)
+        from ..store.repair import repair_from_link
+        ok, msg = repair_from_link(_feature_cache(), track_id, url,
+                                   audio_dir=_REPAIR_AUDIO_DIR,
+                                   spectrogram_dir=_SPECTROGRAM_DIR)
+        session["repair_msg"] = ("✓ " if ok else "✗ ") + msg
+        return RedirectResponse(f"/song/{track_id}", status_code=303)
+
+    @app.post("/song/{track_id}/repair-upload")
+    def song_repair_upload(request: Request, track_id: str,
+                           file: UploadFile = _UPLOAD_FILE):
+        """D-56: owner uploads the track's audio (for songs not on YouTube —
+        the Roots-by-WILDS case). Magic-byte sniff, streamed size cap, and the
+        duration HARD-REJECT all still apply."""
+        session = request.state.session
+        if not _TRACK_ID_RE.fullmatch(track_id or ""):
+            return RedirectResponse("/library", status_code=303)
+        if not _is_owner(session):
+            return RedirectResponse(f"/song/{track_id}", status_code=303)
+        from ..store.repair import repair_from_upload
+        ok, msg = repair_from_upload(_feature_cache(), track_id, file.file,
+                                     audio_dir=_REPAIR_AUDIO_DIR,
+                                     spectrogram_dir=_SPECTROGRAM_DIR)
+        session["repair_msg"] = ("✓ " if ok else "✗ ") + msg
+        return RedirectResponse(f"/song/{track_id}", status_code=303)
 
     @app.get("/spectrogram/{track_id}")
     def spectrogram(request: Request, track_id: str):

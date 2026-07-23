@@ -118,3 +118,10 @@ def tools_model() -> str:
 def ollama_host() -> str:
     """Base URL of the local Ollama server (A3). Override with OLLAMA_HOST."""
     return os.environ.get("OLLAMA_HOST", "http://localhost:11434").rstrip("/")
+
+
+def owner_spotify_id() -> str | None:
+    """The OWNER's Spotify user id (D-56) — gates the acquisition-repair
+    surfaces (paste-a-link / upload-own-audio). Unset → repair is DISABLED
+    for everyone (fail closed); set it in the gitignored .env."""
+    return os.environ.get("WEBAPP_OWNER_SPOTIFY_ID") or None
