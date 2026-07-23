@@ -430,6 +430,12 @@ def create_app() -> FastAPI:
                 mid = None
             if mid:
                 session["me_id"] = mid
+        if mid and mid != owner:
+            # Fail-closed is right, but silent-and-wrong is miserable to debug:
+            # say the id we SAW so a typo'd WEBAPP_OWNER_SPOTIFY_ID is a
+            # one-line log read, not a mystery. Local gitignored log only.
+            logger.info("repair gate: signed-in id %r != WEBAPP_OWNER_SPOTIFY_ID %r",
+                        mid, owner)
         return bool(mid) and mid == owner
 
     def _needs_source(cache: FeatureCache, track_id: Optional[str] = None):
