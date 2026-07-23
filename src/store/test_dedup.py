@@ -73,6 +73,21 @@ def test_cosine_tiebreak_rejects_distant_pair_only_when_both_cached():
     assert find_duplicate_clusters([far_a, _rec("b", cached=False)])[0].members == ("a", "b")
 
 
+def test_canonicalize_ids_order_and_collapse():
+    # O3a: twins collapse onto their canonical PRESERVING first-occurrence
+    # rank — a twin seen before its canonical takes the canonical's identity
+    # at the twin's position; later repeats drop.
+    from .dedup import canonicalize_ids, canonicalize_range_ids
+    dmap = {"twin1": "canon1", "twin2": "canon2"}
+    assert canonicalize_ids(["a", "twin1", "canon1", "b"], dmap) == ["a", "canon1", "b"]
+    assert canonicalize_ids(["canon2", "twin2"], dmap) == ["canon2"]
+    assert canonicalize_ids(["twin1"], dmap) == ["canon1"]     # twin-first keeps rank
+    assert canonicalize_ids([], dmap) == []
+    r = canonicalize_range_ids({"short_term": ["twin1", "x"],
+                                "long_term": ["canon1", "twin1"]}, dmap)
+    assert r == {"short_term": ["canon1", "x"], "long_term": ["canon1"]}
+
+
 def test_duplicate_of_map_and_empty_titles():
     dmap = duplicate_of_map([_rec("a", dur=210000, cached=True), _rec("b", dur=210500)])
     assert dmap == {"b": "a"}                                 # non-canonical → canonical

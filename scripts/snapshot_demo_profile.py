@@ -33,14 +33,18 @@ def main() -> int:
         print(f"no warehouse fact at {_FACT} — run the pipeline first", file=sys.stderr)
         return 1
     con = duckdb.connect()
-    cached = set(FeatureCache(url="sqlite:///data/feature_cache.db").all_features())
+    cache = FeatureCache(url="sqlite:///data/feature_cache.db")
+    cached = set(cache.all_features())
+    dupes = cache.duplicate_flags()  # O3a: the snapshot ships pre-canonical
 
+    from src.store.dedup import canonicalize_ids
     range_ids: dict[str, list[str]] = {}
     for rng in _RANGES:
         rows = con.execute(
             "SELECT spotify_track_id FROM read_parquet(?) WHERE time_range = ? ORDER BY rank",
             [str(_FACT), rng]).fetchall()
-        range_ids[rng] = [r[0] for r in rows if r[0] in cached]
+        range_ids[rng] = canonicalize_ids(
+            [r[0] for r in rows if r[0] in cached], dupes)
 
     artist_rows = con.execute(
         "SELECT primary_artist_name, count(*) c FROM read_parquet(?) "

@@ -748,6 +748,15 @@ class FeatureCache:
                              .where(TrackMeta.duplicate_of.isnot(None))).all()
         return {tid: canon for tid, canon in rows}
 
+    def twin_ids(self) -> set[str]:
+        """The flagged-duplicate id set — THE one twin filter every population
+        builder shares (O3, red-team #8): perceptual plane, cluster training,
+        similar(), the signature/nearest-artist populations. One definition
+        (dedup.py) → one stored flag → one filter; a second ad-hoc filter is
+        how exclusions drift apart. NOTE: _dedup_vectors must NEVER use this —
+        detection needs both members of a pair."""
+        return set(self.duplicate_flags())
+
     def refresh_duplicate_flags(self) -> dict:
         """Recompute duplicate_of over ALL metas (cosine refines pairs where both
         are cached). Idempotent; annotation-ONLY — never touches features, jobs,

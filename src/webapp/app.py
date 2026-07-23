@@ -40,6 +40,7 @@ from ..ingestion.fetchers import (
 )
 from ..store import clusters as cl
 from ..store.cache import FeatureCache
+from ..store.dedup import canonicalize_ids, canonicalize_range_ids
 from . import auth_web, config
 from . import library as library_view_mod
 from . import playlists as playlists_mod
@@ -179,6 +180,24 @@ def _feature_cache() -> FeatureCache:
     return FeatureCache()
 
 
+def _collapse_twin_rows(ranges: list[dict], dupes: dict[str, str]) -> list[dict]:
+    """Collapse a range's DISPLAY list to one row per recording (O3a): each
+    track takes its canonical id (so links/features resolve canonically) and
+    repeats are dropped keeping the first — the user's familiar rank and
+    fetched title survive on the surviving row."""
+    for rng in ranges:
+        seen: set[str] = set()
+        kept = []
+        for t in rng["tracks"]:
+            canon = dupes.get(t["id"], t["id"])
+            if canon in seen:
+                continue
+            seen.add(canon)
+            kept.append({**t, "id": canon})
+        rng["tracks"] = kept
+    return ranges
+
+
 def build_dashboard_context(client: Any, cache: FeatureCache) -> dict[str, Any]:
     """
     Fetch the visitor's top tracks (3 ranges) and describe their OWN analyzed
@@ -214,11 +233,18 @@ def build_dashboard_context(client: Any, cache: FeatureCache) -> dict[str, Any]:
         per_range_ids[key] = ids_here
         ranges.append({"key": key, "label": label, "tracks": tracks})
 
-    # The shared cache: remember metadata (for the worker's search), read hits,
-    # queue misses for extraction, report coverage.
+    # The shared cache: remember metadata (for the worker's search), queue
+    # misses, then canonicalize. ORDER MATTERS (O3a): enqueue's intake guard is
+    # what flags a brand-new twin, so canonicalization runs AFTER it — and all
+    # derived values (cached/coverage/profile/drift) are built from the
+    # CANONICAL ids so the same recording never votes twice (red-team #3).
     cache.remember_meta(meta_items)
-    cached = cache.get(all_ids)          # {id: features} — the visitor's OWN analyzed songs
     cache.enqueue(all_ids)               # misses → extraction queue (idempotent)
+    dupes = cache.duplicate_flags()
+    per_range_ids = canonicalize_range_ids(per_range_ids, dupes)
+    all_ids = canonicalize_ids(all_ids, dupes)
+    ranges = _collapse_twin_rows(ranges, dupes)
+    cached = cache.get(all_ids)          # {id: features} — the visitor's OWN analyzed songs
     coverage = cache.job_status(all_ids)
 
     analyzed = set(cached)
@@ -247,8 +273,12 @@ def guest_dashboard_context(prof: dict[str, Any], cache: FeatureCache) -> dict[s
     build_dashboard_context, built ENTIRELY from the snapshot's ids + the cache —
     zero Spotify calls, zero enqueue (guests are read-only, D-30). Display data
     is DERIVED, not carried in the snapshot (journal #27): art/popularity from
-    track_meta via library_rows, artist genres/images from artist_meta (P3.1)."""
-    range_ids = {w: list(ids) for w, ids in (prof.get("range_ids") or {}).items()}
+    track_meta via library_rows, artist genres/images from artist_meta (P3.1).
+    O3a: canonicalized at READ, so a pre-O3 snapshot (the live one carries 10
+    twins whose canonicals are also present) single-counts without re-snapshot."""
+    dupes = cache.duplicate_flags()
+    range_ids = canonicalize_range_ids(
+        {w: list(ids) for w, ids in (prof.get("range_ids") or {}).items()}, dupes)
     all_ids = [t for ids in range_ids.values() for t in ids]
     cached = cache.get(all_ids)
     meta = {r["id"]: r for r in cache.library_rows()}
@@ -430,7 +460,11 @@ def create_app() -> FastAPI:
         if prof is None:
             return RedirectResponse("/", status_code=303)
         cache = _feature_cache()
-        range_ids = {w: list(ids) for w, ids in (prof.get("range_ids") or {}).items()}
+        # O3a: canonicalize at READ (red-team #3 — the live snapshot carries 10
+        # twins whose canonicals are also present; guests double-counted).
+        range_ids = canonicalize_range_ids(
+            {w: list(ids) for w, ids in (prof.get("range_ids") or {}).items()},
+            cache.duplicate_flags())
         all_ids = [t for ids in range_ids.values() for t in ids]
         cached = cache.get(all_ids)
         per_range_rows = {w: [cached[i] for i in ids if i in cached]

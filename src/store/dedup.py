@@ -159,6 +159,27 @@ def find_duplicate_clusters(
     return clusters
 
 
+def canonicalize_ids(ids: Sequence[str], dupe_map: dict[str, str]) -> list[str]:
+    """Map each id to its canonical and dedupe PRESERVING first-occurrence order
+    (O3a): a twin whose canonical already appeared is dropped; a twin appearing
+    before its canonical takes the canonical's identity at the twin's rank.
+    Pure — the one canonicalization every range_ids producer shares."""
+    out: list[str] = []
+    seen: set[str] = set()
+    for tid in ids:
+        canon = dupe_map.get(tid, tid)
+        if canon not in seen:
+            seen.add(canon)
+            out.append(canon)
+    return out
+
+
+def canonicalize_range_ids(range_ids: dict[str, list[str]],
+                           dupe_map: dict[str, str]) -> dict[str, list[str]]:
+    """canonicalize_ids per time-range window (the taste plane's producers)."""
+    return {w: canonicalize_ids(ids, dupe_map) for w, ids in (range_ids or {}).items()}
+
+
 def duplicate_of_map(records: Sequence[DedupRecord], **kw) -> dict[str, str]:
     """{duplicate_id: canonical_id} for every non-canonical member. This is what
     the cache stores in TrackMeta.duplicate_of — canonical is always an existing

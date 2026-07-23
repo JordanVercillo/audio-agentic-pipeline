@@ -280,7 +280,13 @@ def rebuild_marts(cache: FeatureCache, marts_dir: Path) -> dict[str, Any]:
     tracks reach /explore with no operator step. Percentile-calibrated columns
     recalibrate against the grown population — the version travels on every
     row for exactly this reason. Empty cache → n_tracks 0, nothing written.
+
+    O3a: duplicate flags are refreshed FIRST, so every mart this rebuild
+    writes sees the current canonical plane. NOTE: this makes rebuild_marts a
+    DB WRITER (track_meta.duplicate_of) — idempotent and last-writer-wins
+    under WAL when the worker and the Q3 runner rebuild concurrently.
     """
+    cache.refresh_duplicate_flags()
     df = compute_perceptual(cache)
     if df.empty:
         return {"n_tracks": 0, "perceptual": df,

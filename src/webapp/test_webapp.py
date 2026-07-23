@@ -1026,6 +1026,42 @@ def test_build_dashboard_context(monkeypatch, tmp_path):
     assert cache.job_status(["newmiss"])["queued"] == 1
 
 
+def test_dashboard_single_counts_twins(monkeypatch, tmp_path):
+    # O3a (red-team #3): the same recording under two Spotify ids must vote
+    # ONCE — in the display lists, range_ids, coverage, and the profile. The
+    # intake guard flags the twin at enqueue; canonicalization runs after.
+    from ..store.cache import FeatureCache
+    cache = FeatureCache(url=f"sqlite:///{tmp_path / 'tw.db'}")
+    cache.upsert("canon1", _feat(120))
+    cache.remember_meta([{"spotify_track_id": "canon1", "track_name": "Hysteria",
+                          "artist_names": "Muse", "duration_ms": 200_000}])
+
+    def fake_tracks(time_range, limit=20, sp=None):
+        # Spotify lists BOTH releases of the same recording + one distinct song
+        return pd.DataFrame({
+            "spotify_track_id": ["canon1", "twinA", "other"],
+            "track_name": ["Hysteria", "Hysteria (Deluxe)", "Bliss"],
+            "artist_names": ["Muse", "Muse", "Muse"],
+            "duration_ms": [200_000, 200_400, 180_000],
+            "rank": [1, 2, 3], "album_image_url": [None] * 3,
+            "primary_artist_id": ["ar9"] * 3, "popularity": [70, 60, 50]})
+
+    monkeypatch.setattr("src.webapp.app.fetch_top_tracks", fake_tracks)
+    monkeypatch.setattr("src.webapp.app.fetch_top_artists",
+                        lambda **kw: pd.DataFrame())
+    ctx = build_dashboard_context(client=object(), cache=cache)
+
+    for w in ("short_term", "medium_term", "long_term"):
+        assert ctx["range_ids"][w] == ["canon1", "other"]      # twin collapsed
+    ids_shown = [t["id"] for t in ctx["ranges"][0]["tracks"]]
+    assert ids_shown == ["canon1", "other"]                    # display too
+    assert ctx["coverage"]["total"] == 2 and ctx["track_total"] == 2
+    assert ctx["profile"]["n"] == 1                            # one analyzed recording
+    # the twin was resolved at intake (flag + job done), never queued
+    assert cache.duplicate_flags() == {"twinA": "canon1"}
+    assert cache.job_status(["twinA"])["queued"] == 0
+
+
 # ── routes ─────────────────────────────────────────────────────────────────
 @pytest.fixture
 def client():
