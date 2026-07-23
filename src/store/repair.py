@@ -30,6 +30,7 @@ Security posture (D-45, reviewed):
 from __future__ import annotations
 
 import logging
+import os
 import subprocess
 from pathlib import Path
 from typing import Any, BinaryIO, Optional
@@ -41,7 +42,16 @@ from .re_extract import implausible_duration
 
 logger = logging.getLogger(__name__)
 
-MAX_UPLOAD_BYTES = 20 * 1024 * 1024          # D-45: 20 MB cap
+# The OWNER path's byte ceiling. D-45's 20 MB was specced for PUBLIC uploads
+# (many untrusted users = an abuse surface); D-56 is owner-only behind a
+# fail-closed gate, and the tracks that need it are exactly the ones with no
+# YouTube source — indie/unreleased masters, which arrive as LOSSLESS WAV at
+# ~10.6 MB per minute. 20 MB rejected a legitimate 3-minute master, so the
+# ceiling now covers a ~10-minute lossless file (matching D-45's duration
+# intent) with WEBAPP_MAX_UPLOAD_MB as the override. NOTE: if K4 ever opens
+# uploads to the public, that path needs its own SMALLER D-45 cap — this
+# number is safe only because the gate is owner-only.
+MAX_UPLOAD_BYTES = int(os.environ.get("WEBAPP_MAX_UPLOAD_MB", "120")) * 1024 * 1024
 _ALLOWED_HOSTS = frozenset({
     "youtube.com", "www.youtube.com", "m.youtube.com",
     "music.youtube.com", "youtu.be", "www.youtu.be",

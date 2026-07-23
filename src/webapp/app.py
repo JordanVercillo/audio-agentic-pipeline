@@ -1269,9 +1269,10 @@ def create_app() -> FastAPI:
         if ctx["is_owner"]:
             ctx["repair_msg"] = session.pop("repair_msg", None)
             ctx["needs_source_reason"] = _needs_source(cache, track_id)
-            from ..store.repair import find_owner_audio
+            from ..store.repair import MAX_UPLOAD_BYTES, find_owner_audio
             ctx["has_owner_audio"] = find_owner_audio(
                 _OWNER_AUDIO_DIR, track_id) is not None
+            ctx["max_upload_mb"] = MAX_UPLOAD_BYTES // (1024 * 1024)
         if features is not None:
             ctx["summary"] = track_summary(features)
             ctx["radar"] = radar_svg(features)

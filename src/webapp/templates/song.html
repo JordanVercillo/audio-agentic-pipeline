@@ -115,8 +115,8 @@
       <button type="submit">Repair from file</button>
     </form>
     <p class="cap">You vouch for identity; validation still runs — a source whose
-      length doesn't match this track's is rejected. mp3/wav/flac/m4a, 20 MB max
-      (content-sniffed, the filename doesn't matter).</p>
+      length doesn't match this track's is rejected. mp3/wav/flac/m4a, {{ max_upload_mb }} MB max
+      (content-sniffed, the filename doesn't matter) — lossless masters welcome.</p>
   </div>
   {% endif %}
 

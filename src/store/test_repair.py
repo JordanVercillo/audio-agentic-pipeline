@@ -128,11 +128,21 @@ def test_upload_rejects_non_audio_bytes(cache, tmp_path):
 
 
 def test_upload_enforces_size_cap_while_streaming(cache, tmp_path):
-    big = io.BytesIO(b"ID3\x04" + b"\x00" * (MAX_UPLOAD_BYTES + 1024))
+    # the cap is enforced against the STREAM (never buffer-then-check); use a
+    # small explicit cap so the test doesn't allocate the real ceiling
+    big = io.BytesIO(b"ID3\x04" + b"\x00" * (2 << 20))
     ok, msg = repair_from_upload(cache, "trk", big, audio_dir=tmp_path / "a",
-                                 spectrogram_dir=tmp_path / "s")
+                                 spectrogram_dir=tmp_path / "s",
+                                 max_bytes=1 << 20)
     assert not ok and "MB cap" in msg
     assert not list((tmp_path / "a").glob("trk.*"))         # partial file cleaned
+
+
+def test_upload_cap_fits_a_lossless_master(cache, tmp_path):
+    # D-56 is OWNER-only, and the tracks needing it are exactly those with no
+    # YouTube source — indie masters arrive as lossless WAV (~10.6 MB/min), so
+    # D-45's public-facing 20 MB would reject a legitimate 3-minute master.
+    assert MAX_UPLOAD_BYTES >= 100 * 1024 * 1024
 
 
 def test_upload_happy_path_real_wav_runs_real_dsp(cache, tmp_path, monkeypatch):
