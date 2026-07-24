@@ -8,17 +8,63 @@
 
 **🌐 Live at [vercilloanalytics.com](https://vercilloanalytics.com)** — self-hosted at $0, on-demand by design (a Cloudflare Worker serves an honest fallback when it's off). Browse the [song library](https://vercilloanalytics.com/library) and any track's acoustic deep-dive with no login; "View as guest" tours the full personalized dashboard; five PKCE pilot seats personalize it end-to-end (top tracks + playlist imports → local DSP → your own taste analytics). The build story: [`docs/CASE_STUDY.md`](docs/CASE_STUDY.md).
 
-![Taste map — 117 tracks in 77-dim acoustic space, clustered and genre-colored](artifacts/taste_map.png)
+![Taste map — the reproducible batch warehouse projected in 77-dim acoustic space, clustered and genre-colored](artifacts/taste_map.png)
 
-*Every track projected from its own 77-dimension acoustic fingerprint (UMAP + KMeans), colored by genre, sized by how many listening windows it persists in. Clusters are named by what **acoustically** distinguishes them — the vendor's genre tags were too sparse to do it.*
+*The committed batch artifact: every track in a reproducible warehouse snapshot projected from its own 77-dimension acoustic fingerprint (UMAP + KMeans), colored by genre, sized by how many listening windows it persists in. Clusters are named by what **acoustically** distinguishes them — the vendor's genre tags were too sparse to do it. The live app serves a larger, continuously-grown corpus (**771 analyzed tracks** today); the two planes are described below.*
 
 ---
 
 ## The 90-second tour
 
-**The result:** across three listening windows (last 4 weeks / 6 months / all-time), my taste drift score is **0.14σ — "remarkably stable"** (RMS per-feature shift between standardized acoustic centroids). The full analysis is a single self-contained file: [`artifacts/taste_report.html`](artifacts/taste_report.html) (0.99 MB, opens offline) and [`artifacts/INSIGHTS.md`](artifacts/INSIGHTS.md).
+**The corpus is real and its provenance is verified.** The live app serves
+**771 analyzed tracks**, grown from real logins and playlist imports.
+**731 have a recorded audio source** and shape every aggregate; the other 40
+are *withheld* — from display **and** from the clusters, percentiles and chat —
+until a source is verified. Every track that shapes a number can be traced,
+one click, to the exact YouTube recording its features were measured from:
 
-**One command rebuilds every artifact from a fresh warehouse:**
+```text
+$ uv run python scripts/qa_audit.py        # 9 checks over the LIVE corpus, exit 1 on any fail
+ ✓ PASS  duration_sanity      no track's audio is implausibly longer than its Spotify length
+ ✓ PASS  title_affinity       every machine-chosen acquisition still passes the affinity check
+ ✓ PASS  aggregate_exclusion  all withheld tracks are absent from every serving plane
+ ✓ PASS  plane_coherence      feature store, perceptual plane and analyst card agree
+ ✓ PASS  shared_gate          the live worker refuses a DJ set / wrong title before downloading
+ · NOTE  provenance_coverage  731/771 canonical analyzed have a source; 40 withheld
+ 0 failed · 7 passed · 2 notes
+```
+
+*(The 40 withheld are the ones excluded from the aggregates, so **every one of
+the 731 tracks that shapes a number has a verified source** — 100% of the
+serving corpus.)*
+
+**The result** (owner's snapshot, three listening windows — last 4 weeks / 6
+months / all-time): taste archetype **"The Drifting Loyalist"** — one sound owns
+most of the rotation, but the recent centroid has edged **0.185σ** from the
+all-time average (RMS per-feature shift between standardized acoustic centroids;
+a σ-shift, not a vibe). The full analysis is a single self-contained file:
+[`artifacts/taste_report.html`](artifacts/taste_report.html).
+
+**It's tested and audited — no secrets, no network needed for the test suite:**
+
+```text
+$ pytest
+579 passed
+
+$ uv run .claude/skills/warehouse-audit/audit_warehouse.py
+errors: none · bridge-key + fact↔dim integrity green · exact feature-contract verified
+2 advisory flags, both documented: 6 legitimately >1h DJ-mix durations · a frozen
+point-in-time star-schema snapshot (see "two data planes" below)
+```
+
+**Two data planes, one bridge key.** The **live serving plane** (SQLite+WAL
+cache + Parquet feature marts) is what the app renders and what the corpus
+numbers above describe — continuously grown, provenance-tracked. The **batch
+star-schema warehouse** (Bronze→Silver→Gold) is a *reproducible* artifact —
+one command rebuilds it from a fresh pull — and the committed snapshot the MCP
+server and the taste map read is a point-in-time build (118 tracks). Same
+bridge key, same 77-dim contract; unifying the two behind one materialization
+path is a tracked next slice.
 
 ```bash
 uv sync                         # reproducible env from uv.lock
@@ -26,17 +72,9 @@ python scripts/run_pipeline.py  # 8 steps: fetch → acquire audio → DSP → m
 python scripts/build_report.py  # taste map + charts + single-file taste_report.html
 ```
 
-**It's tested and audited — no secrets, no network needed for the test suite:**
-
-```text
-$ pytest
-417 passed
-
-$ uv run .claude/skills/warehouse-audit/audit_warehouse.py
-errors: none · flags: ALL-GREEN · fact 151×93 (82 DSP feature cols, exact-contract verified)
-```
-
-**And an AI agent can query it** — the MCP server exposes the gold warehouse as three read-only tools (`get_schema`, `query_warehouse`, `get_insights`):
+**And an AI agent can query the warehouse** — the MCP server exposes the gold
+star-schema (the reproducible batch snapshot) as three read-only tools
+(`get_schema`, `query_warehouse`, `get_insights`):
 
 ```text
 Q: What's my highest-energy track in each time range?
@@ -77,8 +115,9 @@ Spotify API (PKCE, no secret)        YouTube (yt-dlp + ffmpeg)
 | Signal | Where |
 |---|---|
 | **Reproducible env** | `pyproject.toml` + `uv.lock` (pinned graph); `requirements.txt` kept as a pip export |
-| **CI / quality gates** | GitHub Actions: `ruff` + `pytest` on every push & PR; 417 synthetic-data tests (no secrets, no network) |
+| **CI / quality gates** | GitHub Actions: `ruff` + `pytest` on every push & PR; 579 synthetic-data tests (no secrets, no network) |
 | **Data quality** | deterministic `warehouse-audit` + `app-verify` — bridge-key integrity, fact↔dim joins, **exact** feature-contract verification, live-system flags |
+| **Data provenance & lineage** | every acquisition writes an append-only `track_provenance` event (source URL, matcher, confidence, duration delta); a 9-check `qa_audit` sweep runs the whole regression set over **live** data and exits non-zero on any failure; unverified features are *withheld* from every aggregate, not just the display — a fail-safe stops an empty lineage table from emptying the corpus |
 | **Production at $0** | self-hosted multi-user FastAPI app: session-scoped PKCE (no client secret exists), SQLite+WAL serving cache, DB-as-queue extraction worker, Cloudflare Tunnel + an origin-down fallback Worker |
 | **Agents on data infra** | MCP server with a two-layer security model (SELECT-only guard + a capability-removed DuckDB sandbox) |
 | **Scale-ready** | PySpark jobs for the distributed centroid/transform path (`spark/`) |
@@ -88,7 +127,7 @@ Spotify API (PKCE, no secret)        YouTube (yt-dlp + ffmpeg)
 ## Repo map
 
 ```
-src/ingestion/   Spotify PKCE auth + fetchers + idempotent, duration-verified YouTube→MP3 acquisition
+src/ingestion/   Spotify PKCE auth + fetchers + one shared acquisition gate (title/artist/duration/reproduction) → idempotent YouTube→MP3
 src/dsp/         librosa 77-dim feature extraction (the layer that replaces the vendor API)
 src/warehouse/   medallion transforms: staging → cleansed → modeled (star schema)
 src/store/       the serving layer: SQLite+WAL feature cache, DB-as-queue worker, clustering, dedup
@@ -115,12 +154,13 @@ uv run python scripts/run_webapp.py       # the app on :8000 (guest mode works w
                                           #   once a demo snapshot exists; login needs your own dev-mode app)
 uv run python scripts/run_extraction_worker.py --loop   # the DSP worker (downloads + analyzes queued tracks)
 python scripts/run_pipeline.py            # or: the batch pipeline → warehouse → report
-pytest                                    # 417 tests — synthetic audio, no credentials, no network
+pytest                                    # 579 tests — synthetic audio, no credentials, no network
 ```
 
 ## Design docs
 
-- **[`SPEC.md`](SPEC.md)** — approved vision, phase plan (P0–P8), acceptance criteria, decision log.
+- **[`docs/CASE_STUDY.md`](docs/CASE_STUDY.md)** — the build story + the AI-assisted engineering methodology.
+- **[`docs/VISION_SPECS.md`](docs/VISION_SPECS.md)** — the live roadmap: phases, acceptance criteria, numbered decision log (D-1…D-57).
 - **[`notes/PROJECT_CONTEXT.md`](notes/PROJECT_CONTEXT.md)** — verified status + session log.
 - **[`CLAUDE_INSTRUCTIONS.md`](CLAUDE_INSTRUCTIONS.md)** — architecture manual + ADRs.
 

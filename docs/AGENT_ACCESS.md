@@ -64,8 +64,11 @@ Run standalone (stdio) for debugging: `python -m src.agent.mcp_server`.
 
 ## Demo transcript
 
-Verified against the live 117-track warehouse (`src/agent/warehouse_agent.py`
-called directly; the MCP path returns identical results):
+Verified against the committed batch star-schema snapshot (a reproducible
+point-in-time build, 117 tracks; `src/agent/warehouse_agent.py` called
+directly; the MCP path returns identical results). This is the batch plane
+described in the README's "two data planes" — the live app serves a larger,
+continuously-grown corpus:
 
 ```
 Q: What tables can I query?

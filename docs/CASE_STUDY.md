@@ -4,7 +4,7 @@
 have depended on — and the AI-assisted engineering methodology that built it.*
 
 **Live:** [vercilloanalytics.com](https://vercilloanalytics.com) ·
-**Author:** Jordan Vercillo · **Cost:** $0/month · **Tests:** 417, synthetic-only
+**Author:** Jordan Vercillo · **Cost:** $0/month · **Tests:** 579, synthetic-only
 
 ---
 
@@ -58,7 +58,44 @@ Spotify (PKCE, metadata only)      YouTube (yt-dlp, duration-verified match)
   to expose, from audio we analyzed ourselves. Audio is transient: features and
   spectrograms are the durable artifacts; the MP3 is deleted after extraction.
 
-## 3. Production at $0
+## 3. Provenance: making the corpus honest
+
+Becoming the producer created a producer's problem: **where did each track's
+audio actually come from, and is it the right song?** The corpus grew by
+matching Spotify metadata to YouTube uploads — and a matcher that only *ranks*
+will always return its least-bad guess, so an obscure track can silently
+acquire a two-hour DJ set or a same-length wrong song. Auditing the corpus by
+hand found exactly that: 27 wrong-song acquisitions and 19 mix-length ones.
+
+The fix is a data-quality spine, not a patch:
+
+- **Lineage at event grain.** Every acquisition writes an append-only
+  `track_provenance` row — source URL, channel, the matcher and its version,
+  match confidence, the duration delta against Spotify's own length. Nothing
+  the matcher knew is discarded. The `/song` page surfaces it as a one-click
+  "open the source and judge it yourself"; `/library` shows a per-row glyph.
+- **One acceptance gate, shared by every path.** Selection and *admissibility*
+  are different jobs: the matcher ranks, a single `match_gate` decides what may
+  become a track's audio at all (title containment, leading-artist attribution,
+  two-sided duration, reproduction-marker rejection). The live worker and the
+  batch re-extraction runner call the *same* gate — the earlier split, where
+  only the runner had guards, is precisely how the bad rows got in.
+- **Withhold, don't guess.** A track with no verified source has its features
+  withheld — from the display **and** from the clusters, percentiles, marts and
+  chat. Numbers the app won't show a visitor can't be allowed to shape the
+  archetype it shows them. A fail-safe caps the rule: with no lineage data at
+  all, it withholds *nothing*, so an empty table can never silently empty the
+  corpus.
+- **A regression sweep over live data.** `qa_audit.py` runs the whole class of
+  fixes — duration sanity, the affinity check, plane coherence, and a
+  *behavioural* test that drives the real worker path and asserts it refuses a
+  DJ set — against the production corpus, and exits non-zero on any failure.
+
+The outcome is a number the platform can stand behind: **100% of the
+aggregate corpus traces to a verified source**, and the remaining unverified
+tracks are visibly, honestly withheld rather than quietly averaged in.
+
+## 4. Production at $0
 
 The app serves real multi-user traffic from a residential PC:
 
@@ -79,7 +116,7 @@ The app serves real multi-user traffic from a residential PC:
   verification), cache backup on every stop, and a public `/queue` page that
   shows the worker's true FIFO state.
 
-## 4. Doctrines the build earned
+## 5. Doctrines the build earned
 
 Each of these came out of a real incident, is written down as a numbered
 journal lesson, and is enforced somewhere in code or tests:
@@ -93,8 +130,11 @@ journal lesson, and is enforced somewhere in code or tests:
 | **Validate the type the contract requires, not truthiness.** pandas turns `None` into a *truthy* `nan`; a bridge key is a non-empty string, and only `isinstance` checks catch the difference. | journal #30 |
 | **Re-derive alarms when a feature changes "normal."** A queue-stuck monitor calibrated for a near-empty queue false-alarmed on the first healthy 100-track import backlog; it now alerts on stalled progress, never on the size of a working backlog. | journal #31 |
 | **Estimator honesty.** Detected song sections are labeled by self-similarity only ("the same letter means the same-sounding part") — no "chorus/verse" claims the signal can't support; drift is an effect size, not a vibe. | journals #19, #21, #24 |
+| **A resume marker records that work happened, not that it was right.** A re-extraction that "completed" still had to be re-audited against the *current* acceptance bar; correctness is a separate claim from completion. | journal #46 |
+| **Rank and admit are different functions.** A system that only ranks returns its least-bad answer as if it were good. Filter every candidate through the gate *before* ranking — judging only the winner both hides the alternatives and makes the bar look more expensive than it is. | journal #48 |
+| **An exclusion rule must not be able to exclude everything.** A filter defined by subtraction inherits the failure modes of the set it subtracts from; "exclude the unverified" needs a floor, or an empty verification table wipes the corpus. | journal #50 |
 
-## 5. The methodology: AI-assisted engineering with a paper trail
+## 6. The methodology: AI-assisted engineering with a paper trail
 
 The repo's second product is *how it was built*. Development ran as a
 disciplined human+AI loop (Claude Code), and the harness is committed:
@@ -115,7 +155,7 @@ disciplined human+AI loop (Claude Code), and the harness is committed:
   design, security-adversarial review, and irreversibles; well-specced
   execution slices run on a cheaper tier. The routing table lives in the spec,
   per upcoming slice.
-- **A numbered lessons journal.** Thirty-one entries of *genuine surprises
+- **A numbered lessons journal.** Fifty entries of *genuine surprises
   only* — each one situation → realization → transferable rule. Several are
   now enforced by tripwire tests.
 
@@ -124,31 +164,40 @@ engineer can run a **governed engineering organization** — specs with numbered
 decisions, advisory review, deterministic quality gates, and a memory system —
 at the cost of one person's attention.
 
-## 6. Numbers
+## 7. Numbers
 
 | | |
 |---|---|
-| Acoustic corpus | 161 real tracks (grown by real users + playlist imports), 160 fully analyzed |
-| Feature space | 77-dim frozen vector · 82 numeric feature columns in the gold fact |
-| Tests | 417, all synthetic-data — no credentials or network needed |
+| Acoustic corpus | **771** analyzed tracks (grown by real users + playlist imports); **731** with a verified audio source shape every aggregate, 40 withheld until repaired |
+| Provenance | **100%** of the aggregate corpus traces to a recorded YouTube source (append-only lineage, one click to verify) |
+| Feature space | 77-dim frozen vector · 82 numeric feature columns · a reproducible batch star-schema snapshot (118 tracks) feeds the MCP layer |
+| Tests | **579**, all synthetic-data — no credentials or network needed; CI green on every push |
 | Serving | ~50 s/track download+DSP, serial worker, capped imports (100/playlist) |
 | Cost | $0/month (residential hosting, Cloudflare free tier, no paid APIs) |
 | Users | 5 PKCE pilot seats (Spotify dev-mode ceiling) + unlimited anonymous browsing |
 
-## 7. What's next
+## 8. Shipped since, and what's next
 
-- **Agentic chat over the warehouse** (design-first: evals before the thing
-  they judge) and **multimodal upload** — users analyze their *own* audio files,
-  the legally cleanest acquisition path there is.
+**Shipped:** a grounded, injection-gated, logged **"talk to your data" chat**
+(evals designed before the thing they judge; a read-only SQL tool loop over the
+semantic marts behind a binary never-averaged injection gate) and the full
+**provenance & data-quality spine** of §3. Chat runs on a local model at $0.
+
+**Next:**
+
+- **Unify the two data planes** — one materialization path from the live
+  serving corpus into the batch star-schema, so the MCP layer and the taste map
+  read the same 731 tracks the app does, and a plane-agreement check joins the
+  audit.
 - **The Million Playlist Dataset at Spark scale** — 66M real playlist-track
   rows for co-occurrence marts and track2vec embeddings, unlocked only when
-  real data volume demands it.
+  real data volume demands it (the honest at-scale benchmark, not a synthetic one).
 - **An ML capstone** on the owned feature space — the entire point of
   becoming the producer.
 
 ---
 
-*The decision log (D-1…D-41), phase plan, and acceptance criteria live in
-[`docs/VISION_SPECS.md`](VISION_SPECS.md); the session-by-session arc in
-[`docs/SESSION_CHRONICLE.md`](SESSION_CHRONICLE.md); the lessons in
+*The decision log (D-1…D-57), phase plan, and acceptance criteria live in
+[`docs/VISION_SPECS.md`](VISION_SPECS.md) and
+[`notes/PROJECT_CONTEXT.md`](../notes/PROJECT_CONTEXT.md); the lessons in
 [`notes/engineering_journal.md`](../notes/engineering_journal.md).*
