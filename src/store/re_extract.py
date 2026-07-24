@@ -73,13 +73,43 @@ __all__ = ["Ledger", "guarded_acquire", "implausible_duration", "re_extract_one"
            "title_affinity"]
 
 
+def artist_query_variants(artist: str) -> list[str]:
+    """The artist strings worth searching, most specific first.
+
+    Spotify hands us every credited artist ("Isenberg, Cecelia"); the batch
+    downloader has always searched only the primary. Neither is reliably
+    better — measured over the repair queue, each found recordings the other
+    missed ('Near U' needed the full credit, 'Twizzy' needed the primary) — so
+    acquisition tries both rather than betting on one. Deduped, order kept."""
+    full = " ".join(str(artist or "").split())
+    primary = full.split(",")[0].strip()
+    return [v for i, v in enumerate([full, primary]) if v and v not in [full, primary][:i]]
+
+
+def _search_all_variants(name: str, artist: str,
+                         duration_s: Optional[float]) -> list[dict]:
+    """Candidates from every artist-query variant, deduped by url (search order
+    kept). The second search only ever ADDS candidates — the gate still decides
+    admissibility, so a wider net cannot lower the bar."""
+    from ..ingestion.audio_downloader import resolve_youtube_candidates
+    seen: set[str] = set()
+    merged: list[dict] = []
+    for variant in artist_query_variants(artist):
+        for rec in resolve_youtube_candidates(name, variant, duration_s=duration_s):
+            url = str(rec.get("url") or "")
+            if url and url not in seen:
+                seen.add(url)
+                merged.append(rec)
+    return merged
+
+
 def guarded_acquire(track_id: str, name: str, artist: str, dest_dir: Path,
                     duration_s: Optional[float] = None, *,
                     require_channel: bool = False,
                     tol_s: Optional[float] = None,
                     ) -> tuple[Optional[Path], Optional[dict]]:
-    """The shared acquire: search once, admit only a candidate that passes the
-    QA2 gate, then download. Same (path, match) contract as before.
+    """The shared acquire: search, admit only a candidate that passes the QA2
+    gate, then download. Same (path, match) contract as before.
 
     FILTER-THEN-RANK (QA2): every candidate faces the gate and the best
     survivor wins. The old order — rank first, judge the winner — discarded a
@@ -90,12 +120,8 @@ def guarded_acquire(track_id: str, name: str, artist: str, dest_dir: Path,
     `youtube_duration_s` from Q1a, so the check is free and saves both the
     ~170 MB fetch and the ~9 GB DSP). On rejection the returned record carries
     `_rejected` + a `_reason` that names the real cause."""
-    from ..ingestion.audio_downloader import (
-        DownloadConfig,
-        download_track_audio,
-        resolve_youtube_candidates,
-    )
-    candidates = resolve_youtube_candidates(name, artist or "", duration_s=duration_s)
+    from ..ingestion.audio_downloader import DownloadConfig, download_track_audio
+    candidates = _search_all_variants(name, artist or "", duration_s)
     if not candidates:
         return None, None
     chosen = select_confident(candidates, name, artist, duration_s,
@@ -112,6 +138,24 @@ def guarded_acquire(track_id: str, name: str, artist: str, dest_dir: Path,
     path = download_track_audio(chosen["url"], track_id,
                                 DownloadConfig(output_dir=Path(dest_dir)))
     return path, chosen
+
+
+# UNATTENDED-REPAIR BAR (owner call, 2026-07-23). Draining the needs-source
+# queue writes audio for tracks a human never sees, so it runs stricter than
+# live ingestion: the video must sit on the ARTIST'S OWN (or auto-generated
+# "X - Topic") channel, and the length must match within 10 s. Measured on the
+# real queue, this admits 5 of 72 and zero known-wrong; the looser bar admitted
+# 11 including a remake and two wrong songs. The other 67 are the D-56 manual
+# flow's job — a wrong write here is worse than no write.
+_REPAIR_TOL_S = 10.0
+
+
+def repair_acquire(track_id: str, name: str, artist: str, dest_dir: Path,
+                   duration_s: Optional[float] = None,
+                   ) -> tuple[Optional[Path], Optional[dict]]:
+    """`guarded_acquire` at the unattended-repair bar (channel-verified)."""
+    return guarded_acquire(track_id, name, artist, dest_dir, duration_s,
+                           require_channel=True, tol_s=_REPAIR_TOL_S)
 
 
 def _utc() -> str:
@@ -266,16 +310,22 @@ def re_extract_one(cache: FeatureCache, track_id: str, *, audio_dir: Path,
 def run(cache: FeatureCache, *, audio_dir: Path, spectrogram_dir: Path,
         ledger: Ledger, limit: Optional[int] = 25, retry_failed: bool = False,
         acquire: AcquireFn = guarded_acquire, marts_dir: Optional[Path] = None,
+        targets: Optional[list[str]] = None,
         ) -> dict[str, Any]:
     """One resumable invocation: pick up to `limit` un-done targets, swap them,
-    ledger the failures, rebuild marts once at the end if anything changed."""
+    ledger the failures, rebuild marts once at the end if anything changed.
+
+    `targets` overrides the corpus sweep with an explicit list — the repair
+    drain passes the needs-source queue, whose QUARANTINED members have no
+    features and so are invisible to `select_targets` by construction."""
     done_ids = {r["spotify_track_id"] for r in cache.all_provenance()}
     # reconciliation (red-team #7a): provenance ALWAYS wins — a track that has
     # since succeeded (any path) sheds its stale ledger entry.
     for tid in ledger.failed_ids() & done_ids:
         ledger.clear_failure(tid)
     skip_failed = set() if retry_failed else ledger.failed_ids()
-    targets = [t for t in select_targets(cache)
+    pool = select_targets(cache) if targets is None else list(targets)
+    targets = [t for t in pool
                if t not in done_ids and t not in skip_failed]
     remaining_before = len(targets)
     if limit is not None:

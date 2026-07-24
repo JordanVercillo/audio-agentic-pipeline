@@ -258,6 +258,36 @@ def test_wrong_version_is_rejected_before_download(cache, tmp_path, monkeypatch)
     assert downloads == []                               # never fetched the 170 MB
 
 
+def test_artist_query_variants_tries_full_credit_then_primary():
+    from .re_extract import artist_query_variants
+    assert artist_query_variants("Isenberg, Cecelia") == ["Isenberg, Cecelia",
+                                                          "Isenberg"]
+    assert artist_query_variants("Muse") == ["Muse"]          # deduped, not twice
+    assert artist_query_variants("") == []
+    assert artist_query_variants(None) == []
+
+
+def test_search_merges_both_variants_and_dedupes(monkeypatch):
+    # Measured: each query form found recordings the other missed, and the
+    # runner searched the full credit while the batch path searched only the
+    # primary — so the two disagreed about what was repairable.
+    from . import re_extract as rx
+    queries: list[str] = []
+
+    def fake(name, artist, duration_s=None, **kw):
+        queries.append(artist)
+        if artist == "Isenberg, Cecelia":
+            return [{"url": "https://y/a", "title": "Near U", "score": 5}]
+        return [{"url": "https://y/a", "title": "Near U", "score": 5},
+                {"url": "https://y/b", "title": "Near U (Official)", "score": 9}]
+
+    monkeypatch.setattr("src.ingestion.audio_downloader.resolve_youtube_candidates",
+                        fake)
+    merged = rx._search_all_variants("Near U", "Isenberg, Cecelia", 272.0)
+    assert queries == ["Isenberg, Cecelia", "Isenberg"]        # both tried
+    assert [c["url"] for c in merged] == ["https://y/a", "https://y/b"]  # deduped
+
+
 def test_guarded_acquire_downloads_the_survivor_not_the_top_score(
         cache, tmp_path, monkeypatch):
     # QA2's whole point: the highest-scoring candidate is a DJ set, but a real
