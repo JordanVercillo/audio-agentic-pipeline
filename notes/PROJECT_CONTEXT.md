@@ -818,6 +818,64 @@
   set == track_card set (catches the exporter going stale). Exporter idempotent
   (byte-identical rerun). **BOTH AUDITS CLEAR: warehouse ALL FLAGS FALSE,
   qa_audit 0-failed. All 7 D-55 criteria met.**
+  ✅ **EPIC O4 + QA-2 SHIPPED (2026-07-24, session 59, Opus + orchestrator;
+  commits 9d7a980→618c4d7, 771 tests, ruff clean, both audits clear, deployed,
+  browser-validated): AGGRESSIVE DEDUP CONSOLIDATION + FULL-SURFACE VALIDATION.**
+  Owner ask: "all duplicate tracks consolidated aggressively — album vs single is
+  one track; the only difference is different audio for a different version
+  (remix/live/acoustic)." **THE FINDING (journal #54): `dedup.py` did the exact
+  OPPOSITE of both halves** — `normalize_title` STRIPPED version qualifiers (so a
+  remix and its original shared a bucket) and required exact full-artist-string
+  equality (which blocks the album-vs-single merges the ask wants). The corpus
+  had no wrongly-merged remixes only by ACCIDENT: 5 pairs were saved by a
+  credited remixer changing the artist string, and 2 — "Air Maxes"/"- KETTAMA
+  MIX", "Everchanging"/"- Acoustic" — by nothing but a 30 s duration gap at
+  IDENTICAL artist strings. **O4a** `parse_title()` EXTRACTS the qualifier;
+  merge needs base AND version_tag equal — tag EQUALITY not absence ("It Gets
+  Better - Forever Mix" ships on two releases, both tagged). Brackets strip only
+  when their content is a known qualifier, fixing a real collapse ("JOY (If You
+  Want)"/"JOY (By My Side)" both normalized to "joy"). **O4b** release-blind +
+  credit-blind keying (primary_artist_id else LEADING credit) guarded by
+  `CREDIT_BLIND_WINDOW_MS=1500` — measured: every credit-differing same-base pair
+  is a REMIX, one only 6860 ms away, INSIDE the 7 s window. **O4c** duration-led
+  second pass under ONE union-find: exact-duration equality makes two SPELLINGS
+  candidates ("Airmaxes" shares no token with "Air Maxes"). **O4d**
+  `find_disagreements` — metadata says one recording, acoustics refuse ⇒ a
+  PROVENANCE defect, its own mart (never rows in `duplicate_flags`, which would
+  trip TWIN_LEAKAGE) + `DEDUP_DISAGREEMENT` asserting mutual exclusivity.
+  **SHIP-BLOCKER (red-team): flagging a twin writes a TERMINAL `done` job**, so a
+  cleared flag would strand the track forever (25 of 35 twins uncached) —
+  `refresh_duplicate_flags` now re-opens the job it authored, and only that one.
+  **LIVE: 730→728 canonical, exactly as pre-measured** (+`Here's Lookin/Looking
+  At You, Kid`, +`Air Maxes/Airmaxes`, −`Bliss` un-flagged from the RemiXX, which
+  came back `queued` — the blocker fix proving itself). O4d found the 1 predicted
+  pair: Muse "Won't Stand Down" ×2, identical Spotify duration, z-cosine 0.667.
+  **OWNER CALL: DJ "- Mixed" edits SPLIT** (different audio, the rule as
+  written). The synthetic warehouse fixture caught a false-merge class the corpus
+  lacks ("Club 0"/"Club 1" = 0.83 difflib) → digit-sequence guard.
+  **QA-2:** `test_route_matrix.py` — 28 routes × 4 personas, coverage enforced by
+  SET EQUALITY, plus the **side-effects column** (a repair route returns the SAME
+  303 to all four personas; only "did the engine run" separates blocked from
+  executed). Closed **17 blind gate cells across 12 routes**, incl. `POST
+  /song/{id}/repair-upload` which had NO test of any kind. **TWO BUGS FIXED:**
+  `/guest` hijacked a logged-in session (overwrote taste with the owner's
+  snapshot + set is_guest for anyone) and `/openapi.json` served the full surface
+  map anonymously (200→404 verified live across the redeploy).
+  `test_dedup_golden.py` encodes the owner's rule over REAL corpus pairs (+2 live
+  sweeps that skip on CI); `scripts/smoke_public.py` = the standing
+  browser-validation practice scripted (GET-only, credential-free, exit 2 =
+  ORIGIN DOWN vs 1 = BROKEN, proves the ORIGIN rendered each page via
+  base.html's stylesheet tag). **Live smoke 14/14 through the public edge.**
+  **journal #55: the matrix's first act was catching a machine-dependency in
+  ITSELF** — the owner cell read the real re-extract ledger on disk, so it passed
+  here and failed on CI; fixture now owns its ledger + tmp audio/spectrogram
+  dirs, with a count assertion proving the patch took. Browser-validated live:
+  `?q=looking at you` → ONE row + "2 releases of this recording" (matched via the
+  OTHER spelling); `?q=everchanging` → TWO rows whose BPMs (144 vs 123) confirm
+  the acoustic take IS different audio. Audit adds `DEDUP_DISAGREEMENT` (20 flags,
+  all false); `check_duplicates` gained its known blind spot IN WRITING (it runs
+  the rule over a population the rule already filtered, so it cannot see a false
+  merge — only the pair tests can).
   **➡️ NEXT ACTION — PHASE 5: MPD/Spark (metadata-only, D-26…D-29), launching
   from a defensibly-complete base as D-55 intended.** First slice per
   `docs/VISION_SPECS.md` §Phase 5: **verify the AIcrowd MPD dataset is still
@@ -2558,3 +2616,21 @@ narrative goes to `notes/engineering_journal.md`, plans to
   work, verified by audits). NEXT = Phase 5 (MPD/Spark); FIRST verify the AIcrowd
   MPD dataset + license (research-expert) before committing the phase. NEW
   SESSION: run `/resume`.**
+- **2026-07-24 (session 59 — Epic O4 + QA-2, Opus + orchestrator):** owner asked
+  for aggressive duplicate consolidation + a full feature-validation QA run.
+  Consulted `data-platform-expert` and `webapp-expert` in parallel; both
+  red-teamed their own plans and each found a ship-blocker. **O4 inverted the
+  dedup doctrine** (versions split, releases merge) after measuring that the old
+  rule was right only by ACCIDENT — see journal #54. Live: 730→728 canonical,
+  exactly the pre-measured diff; the twin-un-stranding fix proved itself on real
+  data. **QA-2 built the route matrix** (28×4 with a side-effects column),
+  closing 17 blind gate cells and fixing two real bugs (`/guest` session hijack,
+  `/openapi.json` exposure), plus the dedup golden set and a scripted public
+  smoke (14/14 live). CI caught a machine-dependency in the matrix itself
+  (journal #55). **Left off: 771 tests, ruff clean, warehouse 20 flags ALL FALSE,
+  qa_audit 0-failed, live smoke 14/14, app UP and redeployed onto current code,
+  browser-validated. NEXT is unchanged = Phase 5 (MPD/Spark), starting with the
+  AIcrowd dataset + license check (research-expert) before committing the phase.
+  Owner track, at leisure: the ~65 needs-source queue; the one O4d disagreement
+  (Muse "Won't Stand Down") is a D-56 repair, not a dedup decision. NEW SESSION:
+  run `/resume`.**

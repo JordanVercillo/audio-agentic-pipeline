@@ -82,6 +82,16 @@ are the D-56 flow's job: `/library?filter=needs-source` → paste a link or
 upload audio. Each repair refreshes the derived planes and returns the track to
 every aggregate.
 
+### ✅ B8 — CLOSED. Gate coverage is provable (QA-2, 2026-07-24).
+`src/webapp/test_route_matrix.py` — 28 routes x 4 personas, coverage enforced by
+set equality, plus a **side-effects column** (a repair route returns the same 303
+to everyone; only "did the engine run" separates blocked from executed). Closed
+17 blind cells, including `POST /song/{id}/repair-upload`, which had no test of
+any kind. Two bugs found and fixed: `/guest` hijacked a logged-in session, and
+`/openapi.json` served the full surface map anonymously. Live layer:
+`scripts/smoke_public.py` (14 checks, GET-only, distinguishes ORIGIN DOWN from
+BROKEN). See journal #55 for why CI, not this machine, is what proved it.
+
 ### B4 — the 6 long-duration tracks *(open, low)*
 `FEATURE_DISTRIBUTION` is true solely because 6 tracks exceed 1 h (longest now
 ~2 h). They pass title affinity, so they're plausibly real DJ-mix releases —

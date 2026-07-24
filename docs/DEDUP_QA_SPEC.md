@@ -157,3 +157,35 @@ Five layers; the first two exist today, the rest are the build.
 Both audits clean · suite green · every route in the matrix · the dedup golden
 set passing · live smoke green · the corpus numbers restated honestly on
 `/library` and in `corpus_facts`.
+
+---
+
+## 5. Outcome (shipped 2026-07-24)
+
+**O4 is live.** Corpus 730 → **728** canonical, exactly as measured in advance:
+
+| change | pair |
+|---|---|
+| + merged | `Here's Lookin At You, Kid` → `Here's Looking At You, Kid` (spelling) |
+| + merged | `Air Maxes - KETTAMA MIX` → `Airmaxes - KETTAMA Mix` (spacing) |
+| − split | `Bliss` un-flagged from `Bliss - XX Anniversary RemiXX` (a remix is different audio) |
+| O4d | `Won't Stand Down` ×2 — one acquisition is the wrong audio, now surfaced |
+
+Owner call on the open question: **continuous DJ "- Mixed" edits SPLIT** — they
+are different audio, which is the rule as written.
+
+The red-team's ship-blocker proved itself on real data: `Bliss` came back
+`queued` rather than stranded at terminal `done`. A false-merge class the corpus
+does not contain (`Club 0`/`Club 1` at 0.83 difflib) was caught by the synthetic
+warehouse fixture and closed with a digit-sequence guard.
+
+**QA-2 is live.** 771 tests green · ruff clean · warehouse audit **20 flags, all
+false** · `qa_audit` 0 failed · live smoke **14/14 through the public edge**.
+Two bugs found and fixed (`/guest` session hijack, `/openapi.json` exposure), and
+the matrix's first act was catching a machine-dependency in itself — see journal
+#54 and #55.
+
+Verified on the live site, both halves of the rule:
+`"looking at you"` → **one** row, "2 releases of this recording", matched via the
+other spelling; `"everchanging"` → **two** rows, whose measured BPMs (144 vs 123)
+confirm the acoustic take really is different audio.

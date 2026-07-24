@@ -1414,3 +1414,69 @@ more authority it accretes and the less anyone thinks to probe it.
 > re-checked is a hypothesis wearing a fact's clothes. And when clearing a
 > quality flag, prefer fixing the data over relaxing the check: a green audit is
 > only worth anything if going green required the world to actually improve.*
+
+## 54 — The rule was right by accident, and the accident was load-bearing (2026-07-24, O4)
+
+The owner asked for aggressive duplicate consolidation: same song on an album and
+a single is one track; a remix or live or acoustic version is not. Reading
+`dedup.py` against that sentence, the implementation did the exact opposite of
+both halves. `normalize_title` STRIPPED "- Live", "- Acoustic", "- BUNT. Remix",
+so a remix and its original landed in the same bucket; and it required exact
+full-artist-string equality, which blocks precisely the album-vs-single merges
+the owner wanted, because a single often credits a guest the album does not.
+
+Yet the corpus had no wrongly-merged remixes. Probing why was the useful part:
+every version pair was saved by something incidental. Five were saved because the
+remixer's name changed the artist string. Two — "Air Maxes"/"Air Maxes - KETTAMA
+MIX" and "Everchanging"/"Everchanging - Acoustic" — were saved by nothing but a
+30-second duration gap, with identical artist strings. A remix of similar length,
+credited identically, would have merged: inheriting the original's features, and
+writing a terminal `done` job that no `enqueue` could ever re-open.
+
+**The realization:** "no observed failures" was measuring the corpus, not the
+rule. The guards that happened to hold were the ones nobody designed for this
+job — an artist string doing duplicate duty as a version discriminator, a
+duration window built for remasters catching remixes by luck. The rule had been
+correct only for inputs that happened not to probe it, and the aggressive ask
+was what removed the luck: keying on the leading artist alone would have deleted
+the accidental guard on five pairs at once.
+
+> *When a rule survives on inputs that never test it, hardening it and loosening
+> it are the same move — both remove the accident. Before you relax any
+> constraint, find out which constraint is ACTUALLY doing the work: enumerate the
+> cases that pass and ask, for each, what would have to change for it to fail.
+> If the answer is "a coincidence in the data", you don't have a rule yet.*
+
+## 55 — A harness built to kill "works on my box" had works-on-my-box in it (2026-07-24, QA-2)
+
+The route matrix exists because gate coverage wasn't provable — its whole
+premise is that environment-dependent testing hides real defects (journal #51,
+the cookie jar that kept CI red for twelve commits). 112 cells green locally. CI
+failed two of them: the owner's `/library` cells.
+
+The D-56 "Needs source" tab renders only when the repair queue is non-empty, and
+that queue is read from the re-extraction LEDGER ON DISK. This repo's `data/`
+holds one with ~65 entries; a fresh CI checkout has no file at all. So the tab
+was present for me and absent there, and the assertion I'd written to prove the
+owner gate OPENS was really asserting that my laptop has a repair backlog.
+
+The fix was not to soften the assertion but to delete the dependency — the
+fixture writes its own one-entry ledger, and the owner-audio and spectrogram
+directories point at tmp so no cell can stat `data/` at all. Then a new test
+asserts the count is exactly the fixture's ONE, so if the real ledger ever leaks
+back in it reads ~65 and fails loudly instead of the two environments quietly
+disagreeing again.
+
+**The realization:** I patched the sources I was thinking about — Spotify, the
+LLM, the marts, the cache — and missed the ones the ROUTE reaches past them:
+files a template's `{% if %}` happens to depend on. The fixture's boundary was
+drawn around the app's obvious integrations, not around "everything that makes
+this process's answer differ from another machine's". A test's environment
+surface is not its imports; it's every byte of state the request path touches.
+
+> *A fixture is only isolated if you can name every piece of machine state the
+> request can reach — and templates reach further than routes do, through
+> `{% if count %}` guards over files nobody listed as a dependency. When a cell
+> asserts a UI affordance appears, assert the DATA that summons it too: a
+> presence check passes for the right reason on one machine and the wrong reason
+> on another, and only the second machine tells you which.*
