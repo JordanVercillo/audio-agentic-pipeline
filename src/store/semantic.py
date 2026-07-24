@@ -297,6 +297,24 @@ def build_duplicate_flags_mart(cache: Any) -> pd.DataFrame:
         key=lambda r: r["duplicate_id"]))
 
 
+def build_dedup_disagreements_mart(cache: Any) -> pd.DataFrame:
+    """O4d — pairs the metadata calls one recording and the acoustics refuse.
+
+    Its own mart, NOT extra rows in duplicate_flags: the audit reads
+    `set(duplicate_flags["duplicate_id"])` as THE twin set and fires TWIN_LEAKAGE
+    for any twin present in track_card. A disagreeing track is not a twin and IS
+    in track_card, so smuggling it in there would trip the leakage check that
+    protects every canonical population — and the "fix" would be to weaken it.
+
+    Column names deliberately avoid `spotify_track_id` so no bridge-key sweep,
+    uniqueness check or leakage loop can mistake this for a canonical
+    population (the `duplicate_flags` precedent)."""
+    rows = cache.acoustic_disagreements()
+    if not rows:
+        return pd.DataFrame()
+    return pd.DataFrame(sorted(rows, key=lambda r: (r["track_id_a"], r["track_id_b"])))
+
+
 def build_semantic_marts(cache: Any, perceptual_df: pd.DataFrame,
                          marts_dir: Path) -> dict[str, int]:
     """Write the semantic marts (atomic, idempotent). Called from rebuild_marts
@@ -314,6 +332,7 @@ def build_semantic_marts(cache: Any, perceptual_df: pd.DataFrame,
     cp = build_cluster_profile(cache, tc)
     pv = build_provenance_mart(cache)
     dfm = build_duplicate_flags_mart(cache)
+    dis = build_dedup_disagreements_mart(cache)
     _write_atomic(fd, marts_dir / "feature_dictionary.parquet")
     if not tc.empty:
         _write_atomic(tc, marts_dir / "track_card.parquet")
@@ -327,7 +346,9 @@ def build_semantic_marts(cache: Any, perceptual_df: pd.DataFrame,
         _write_atomic(pv, marts_dir / "track_provenance.parquet")
     if not dfm.empty:
         _write_atomic(dfm, marts_dir / "duplicate_flags.parquet")
+    if not dis.empty:
+        _write_atomic(dis, marts_dir / "dedup_disagreements.parquet")
     return {"feature_dictionary": len(fd), "track_card": len(tc),
             "artist_rollup": len(ar), "corpus_facts": len(cf),
             "cluster_profile": len(cp), "track_provenance": len(pv),
-            "duplicate_flags": len(dfm)}
+            "duplicate_flags": len(dfm), "dedup_disagreements": len(dis)}

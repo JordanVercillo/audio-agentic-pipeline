@@ -28,7 +28,7 @@ from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import sessionmaker
 
-from .dedup import DedupRecord, duplicate_of_map
+from .dedup import DedupRecord, duplicate_of_map, find_disagreements
 from .models import (
     ArtistMeta,
     Base,
@@ -818,6 +818,26 @@ class FeatureCache:
                     resolved[twin] = canon
             s.commit()
         return resolved
+
+    def acoustic_disagreements(self) -> list[dict]:
+        """O4d — pairs whose METADATA says one recording and whose ACOUSTICS
+        refuse. DERIVED at read time from the same records `refresh_duplicate_
+        flags` uses; nothing is stored, because a persisted pair id would be
+        exactly the second id system the bridge key exists to prevent.
+
+        This is a provenance defect, not a dedup decision: the merge was blocked
+        by the cosine gate alone, which means at least one of the two
+        acquisitions is the wrong audio."""
+        with self._Session() as s:
+            metas = s.execute(select(TrackMeta)).scalars().all()
+            cached_ids = set(s.execute(select(TrackFeatures.spotify_track_id)).scalars())
+            vecs = self._dedup_vectors(s, cached_ids)
+            names = {m.spotify_track_id: (m.track_name, m.artist_names) for m in metas}
+            return [{"track_id_a": d.track_id_a, "track_id_b": d.track_id_b,
+                     "z_cosine": d.z_cosine, "duration_delta_ms": d.duration_delta_ms,
+                     "track_name": names.get(d.track_id_a, (None, None))[0],
+                     "artist_names": names.get(d.track_id_a, (None, None))[1]}
+                    for d in find_disagreements(self._records(metas, cached_ids, vecs))]
 
     def duplicate_flags(self) -> dict:
         """{duplicate_id: canonical_id} from the stored flags — display/analysis + audit."""

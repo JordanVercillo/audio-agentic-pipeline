@@ -376,7 +376,14 @@ def check_duplicates(modeled_dir: Path):
     tracks (same normalized name+artist within a duration window) in dim_tracks.
     Advisory — dupes are a data-quality SIGNAL, not an invariant break, so this is
     a WARNING (zero errors), same severity class as AUDIO_ORPHANS. Metadata-only;
-    the acoustic cosine tiebreak lives in the serving layer where vectors exist."""
+    the acoustic cosine tiebreak lives in the serving layer where vectors exist.
+
+    KNOWN BLIND SPOT — do not read a green flag as "the rule is correct". This
+    check runs the shared rule over `dim_tracks`, a population that rule has
+    ALREADY filtered, so it reads 0 both when the rule is right and when the rule
+    is over-merging: it cannot see a false merge at all. Only the pair-level
+    tests in src/store/test_dedup.py can. This flag answers "did a twin leak into
+    the catalog", not "is the dedup rule sound"."""
     report: dict = {}
     warns: list[str] = []
     flags = {"DUPLICATE_TRACKS": False}
@@ -390,7 +397,11 @@ def check_duplicates(modeled_dir: Path):
     records = [dedup.DedupRecord(
         track_id=str(r[BRIDGE]), title=r.get("track_name"),
         artist=r.get("artist_names") or r.get("primary_artist_name"),
-        duration_ms=(int(r["duration_ms"]) if pd.notna(r.get("duration_ms")) else None))
+        duration_ms=(int(r["duration_ms"]) if pd.notna(r.get("duration_ms")) else None),
+        # O4b: dim_tracks already carries the artist id — pass it so the audit
+        # keys the artist the same way the serving cache does.
+        primary_artist_id=(str(r["primary_artist_id"])
+                           if pd.notna(r.get("primary_artist_id")) else None))
         for _, r in df.iterrows()]
     clusters = dedup.find_duplicate_clusters(records)
     report["n_clusters"] = len(clusters)
@@ -404,6 +415,69 @@ def check_duplicates(modeled_dir: Path):
             f"{report['n_duplicate_tracks']} redundant track(s) — e.g. {sample} "
             "— DUPLICATE_TRACKS")
         flags["DUPLICATE_TRACKS"] = True
+    return report, warns, flags
+
+
+def check_dedup_disagreement(marts_dir: Path):
+    """DEDUP_DISAGREEMENT (O4d): pairs the metadata calls one recording and the
+    acoustics refuse — same base title, same version tag, same artist, inside the
+    duration window, both analyzed, and yet acoustically distant. At least one of
+    the two acquisitions is the wrong audio.
+
+    The COUNT is advisory (a note, never a failure — same class as
+    DUPLICATE_TRACKS): a disagreement is a provenance defect for a human to
+    repair, not a broken invariant.
+
+    The HARD assertion is MUTUAL EXCLUSIVITY: a pair may be a duplicate OR a
+    disagreement, never both. Both marts are produced from ONE cosine_min in
+    dedup.py, so a pair appearing in both means the merger and the detector have
+    drifted apart — which is exactly the regression that would let a wrong
+    acquisition get merged away and stop being visible.
+
+    Deliberately does NOT assert that either id is in track_card: the live case's
+    guilty partner is source-unvalidated (B2) and appears in no canonical mart,
+    so a membership assertion would false-fire on the very first real run."""
+    warns: list[str] = []
+    flags = {"DEDUP_DISAGREEMENT": False}
+    path = marts_dir / "dedup_disagreements.parquet"
+    if not path.exists():
+        return {}, warns, flags
+    df = pd.read_parquet(path)
+    report = {"n_pairs": int(len(df))}
+    if df.empty:
+        return report, warns, flags
+
+    pairs = {tuple(sorted((str(a), str(b))))
+             for a, b in zip(df["track_id_a"], df["track_id_b"])}
+    hard: list[str] = []
+    if (df["track_id_a"] == df["track_id_b"]).any():
+        hard.append("a pair references one id twice")
+    if len(pairs) != len(df):
+        hard.append("duplicate pair rows (must be one row per unordered pair)")
+
+    dedup = _load_dedup()
+    if dedup is not None and (df["z_cosine"] >= dedup.DEFAULT_COSINE_MIN).any():
+        hard.append(f"a pair scores >= cosine_min ({dedup.DEFAULT_COSINE_MIN}) — "
+                    "the detector and the merger disagree on the threshold")
+
+    fpath = marts_dir / "duplicate_flags.parquet"
+    if fpath.exists():
+        ff = pd.read_parquet(fpath)
+        merged = {tuple(sorted((str(d), str(c))))
+                  for d, c in zip(ff["duplicate_id"], ff["canonical_id"])}
+        both = pairs & merged
+        if both:
+            hard.append(f"{len(both)} pair(s) are BOTH merged and disagreeing")
+
+    if hard:
+        warns.append("marts\\dedup_disagreements: " + "; ".join(hard)
+                     + " — DEDUP_DISAGREEMENT")
+        flags["DEDUP_DISAGREEMENT"] = True
+    else:
+        warns.append(f"marts\\dedup_disagreements: {len(df)} pair(s) where the "
+                     "metadata says one recording and the acoustics disagree — at "
+                     "least one acquisition per pair wants human eyes (note, not "
+                     "a failure)")
     return report, warns, flags
 
 
@@ -587,6 +661,10 @@ def main() -> int:
     dup_report, d_warnings, d_flags = check_duplicates(WAREHOUSE / "modeled")
     warnings.extend(d_warnings)
 
+    # --- metadata-says-one / acoustics-say-two (O4d) ------------------------
+    dis_report, dis_warnings, dis_flags = check_dedup_disagreement(MARTS)
+    warnings.extend(dis_warnings)
+
     # --- gold catalog <-> serving marts agreement (D-60) --------------------
     pa_warnings, pa_flags = check_plane_agreement(WAREHOUSE / "modeled", MARTS)
     warnings.extend(pa_warnings)
@@ -603,10 +681,12 @@ def main() -> int:
         "FEATURE_DRIFT": feature_drift,
         **m_flags,
         **d_flags,
+        **dis_flags,
         **pa_flags,
     }
     print(json.dumps({"layers": layers, "audio": audio, "marts": marts_report,
-                      "duplicates": dup_report, "errors": errors,
+                      "duplicates": dup_report, "disagreements": dis_report,
+                      "errors": errors,
                       "warnings": warnings, "flags": flags}, indent=2))
     return 0
 

@@ -341,6 +341,57 @@ def test_provenance_mart_excludes_twins(corpus):
     assert dfm.iloc[0]["duplicate_id"] == "k2" and dfm.iloc[0]["canonical_id"] == "k1"
 
 
+# ── O4d: the acoustic-disagreement mart ──────────────────────────────────────
+def test_disagreement_mart_is_empty_and_silent_when_nothing_disagrees(corpus, tmp_path):
+    from .semantic import build_dedup_disagreements_mart
+    assert build_dedup_disagreements_mart(corpus).empty
+    report, _, flags = _audit().check_dedup_disagreement(tmp_path)
+    assert flags["DEDUP_DISAGREEMENT"] is False and report == {}   # absent mart → silent
+
+
+def test_disagreement_mart_never_shares_a_pair_with_duplicate_flags(corpus, tmp_path):
+    """THE regression DEDUP_DISAGREEMENT exists to catch: the merger and the
+    detector read ONE threshold, so a pair may be merged OR disagreeing, never
+    both. If they ever drift, a wrong acquisition could be merged away and stop
+    being visible — the exact failure O4d exists to surface."""
+    import pandas as pd
+    marts = _write_semantic_marts(tmp_path, corpus)
+    pd.DataFrame([{"duplicate_id": "x", "canonical_id": "y"}]).to_parquet(
+        marts / "duplicate_flags.parquet", index=False)
+    pd.DataFrame([{"track_id_a": "x", "track_id_b": "y", "z_cosine": 0.66,
+                   "duration_delta_ms": 0}]).to_parquet(
+        marts / "dedup_disagreements.parquet", index=False)
+    _, warnings, flags = _audit().check_dedup_disagreement(marts)
+    assert flags["DEDUP_DISAGREEMENT"] is True
+    assert any("BOTH merged and disagreeing" in w for w in warnings)
+
+
+def test_disagreement_mart_rejects_a_pair_above_the_merge_threshold(tmp_path):
+    """A row scoring above cosine_min means the detector and the merger no longer
+    share a threshold — the mart is describing something the merger would have
+    merged."""
+    import pandas as pd
+    pd.DataFrame([{"track_id_a": "a", "track_id_b": "b", "z_cosine": 0.99,
+                   "duration_delta_ms": 0}]).to_parquet(
+        tmp_path / "dedup_disagreements.parquet", index=False)
+    _, warnings, flags = _audit().check_dedup_disagreement(tmp_path)
+    assert flags["DEDUP_DISAGREEMENT"] is True
+    assert any("cosine_min" in w for w in warnings)
+
+
+def test_a_healthy_disagreement_is_a_note_not_a_failure(tmp_path):
+    """A real disagreement is a provenance defect for a human, not a broken
+    invariant — it must NOT fail the audit, or the honest state (one known bad
+    acquisition awaiting repair) would read as a red warehouse."""
+    import pandas as pd
+    pd.DataFrame([{"track_id_a": "a", "track_id_b": "b", "z_cosine": 0.667,
+                   "duration_delta_ms": 0}]).to_parquet(
+        tmp_path / "dedup_disagreements.parquet", index=False)
+    report, warnings, flags = _audit().check_dedup_disagreement(tmp_path)
+    assert flags["DEDUP_DISAGREEMENT"] is False and report["n_pairs"] == 1
+    assert any("wants human eyes" in w for w in warnings)
+
+
 def test_audit_catches_plane_incoherence(corpus, tmp_path):
     marts = _write_semantic_marts(tmp_path, corpus, drop_card_row=True)
     _, warnings, _, flags = _audit().check_marts(marts)
