@@ -58,6 +58,10 @@ _DEFAULT_SQLITE = f"sqlite:///{_PROJECT_ROOT / 'data' / 'feature_cache.db'}"
 
 _PROMOTED = ("tempo_bpm", "rms_mean", "spectral_centroid_mean")
 JOB_QUEUED, JOB_RUNNING, JOB_DONE, JOB_FAILED = "queued", "running", "done", "failed"
+# The note `_resolve_as_duplicate` writes on a dedup-closed job. Shared with the
+# un-stranding path in `refresh_duplicate_flags` so the writer and the reader
+# cannot drift: only a job WE closed may be re-opened when its flag clears.
+_DEDUP_NOTE_PREFIX = "deduped: "
 # A track that fails this many times is dead-lettered — a permanently-unfetchable
 # track (deleted/region-locked YouTube video, always-erroring DSP) must NOT
 # hot-loop re-download+re-DSP on every dashboard visit. attempts is preserved
@@ -744,9 +748,14 @@ class FeatureCache:
             for r in rows}
 
     def _records(self, metas, cached_ids: set, vecs: dict) -> list:
+        # primary_artist_id is the 7th POSITIONAL (O4b): it hardens the artist
+        # join so an album's "A" matches a single's "A, B" without trusting the
+        # credit string. Appended last in DedupRecord so the uv-isolated audit,
+        # which builds records with keywords, keeps working.
         return [DedupRecord(m.spotify_track_id, m.track_name or "", m.artist_names or "",
                             m.duration_ms, vecs.get(m.spotify_track_id),
-                            m.spotify_track_id in cached_ids) for m in metas]
+                            m.spotify_track_id in cached_ids,
+                            m.primary_artist_id) for m in metas]
 
     def _resolve_as_duplicate(self, s, twin_id: str, canonical_id: str) -> None:
         """Flag twin_id → canonical_id and mark its job done, WITHOUT touching any
@@ -754,7 +763,7 @@ class FeatureCache:
         meta = s.get(TrackMeta, twin_id)
         if meta is not None:
             meta.duplicate_of = canonical_id
-        note = f"deduped: same recording as {canonical_id}"
+        note = f"{_DEDUP_NOTE_PREFIX}same recording as {canonical_id}"
         job = s.get(ExtractionJob, twin_id)
         if job is None:
             s.add(ExtractionJob(spotify_track_id=twin_id, status=JOB_DONE,
@@ -871,22 +880,44 @@ class FeatureCache:
 
     def refresh_duplicate_flags(self) -> dict:
         """Recompute duplicate_of over ALL metas (cosine refines pairs where both
-        are cached). Idempotent; annotation-ONLY — never touches features, jobs,
-        or ids."""
+        are cached). Idempotent; annotation-only for FEATURES and ids — the one
+        thing it does touch is un-stranding, below.
+
+        UN-STRANDING (O4): flagging a twin marks its job `done` with a "deduped:"
+        note so the download is skipped. `done` is TERMINAL — `enqueue` skips it
+        and there is no reset path — so if a later rule change CLEARS the flag,
+        the track becomes a distinct, un-analyzed song that can never be queued
+        again: a permanent ghost counted in the corpus and fillable by nothing.
+        25 of the 35 pre-O4 twins are uncached, so this is not hypothetical. A
+        cleared flag therefore re-opens its own dedup-authored job, which is the
+        self-healing counterpart to `requeue_stale_running`. Only jobs whose
+        note we WROTE are touched: a real failure keeps its error and its
+        attempt count."""
         with self._Session() as s:
             metas = s.execute(select(TrackMeta)).scalars().all()
             cached_ids = set(s.execute(select(TrackFeatures.spotify_track_id)).scalars())
             vecs = self._dedup_vectors(s, cached_ids)
             dmap = duplicate_of_map(self._records(metas, cached_ids, vecs))
-            updated = 0
+            updated, unstranded = 0, []
             for m in metas:
                 new_val = dmap.get(m.spotify_track_id)
-                if m.duplicate_of != new_val:
-                    m.duplicate_of = new_val  # set canonical OR clear a stale flag
-                    updated += 1
+                if m.duplicate_of == new_val:
+                    continue
+                if m.duplicate_of and not new_val:  # a flag is being CLEARED
+                    tid = m.spotify_track_id
+                    job = s.get(ExtractionJob, tid)
+                    if (job is not None and job.status == JOB_DONE
+                            and (job.last_error or "").startswith(_DEDUP_NOTE_PREFIX)
+                            and tid not in cached_ids):
+                        job.status = JOB_QUEUED
+                        job.last_error = ""
+                        unstranded.append(tid)
+                m.duplicate_of = new_val  # set canonical OR clear a stale flag
+                updated += 1
             s.commit()
         return {"n_metas": len(metas), "n_duplicates": len(dmap),
-                "n_clusters": len(set(dmap.values())), "n_updated": updated}
+                "n_clusters": len(set(dmap.values())), "n_updated": updated,
+                "n_unstranded": len(unstranded), "unstranded": sorted(unstranded)}
 
     # ── queue ──────────────────────────────────────────────────────────────
     def enqueue(self, track_ids: list[str]) -> list[str]:

@@ -543,10 +543,23 @@ def test_find_cached_twin_matches_cached_recording(cache):
     cache.upsert("first", _FEATURES)
     cache.remember_meta([
         {"spotify_track_id": "first", "track_name": "Starlight", "artist_names": "Muse", "duration_ms": 240000},
-        {"spotify_track_id": "second", "track_name": "Starlight - Live", "artist_names": "Muse", "duration_ms": 240300}])
+        {"spotify_track_id": "second", "track_name": "Starlight - Remastered 2019", "artist_names": "Muse", "duration_ms": 240300}])
     assert cache.find_cached_twin("second") == "first"       # → extract_one reuses first, skips DSP
     assert cache.find_cached_twin("first") is None           # canonical has no cached twin
     assert cache.find_cached_twin("unknown") is None         # unknown id → None, never raises
+
+
+def test_find_cached_twin_refuses_a_different_version(cache):
+    """O4: a live take is DIFFERENT AUDIO, so the acquisition guard must let it
+    download. Pre-O4 this returned the studio original and the live version
+    silently inherited its features — the false-merge direction, which also
+    writes a terminal `done` job."""
+    cache.upsert("studio", _FEATURES)
+    cache.remember_meta([
+        {"spotify_track_id": "studio", "track_name": "Starlight", "artist_names": "Muse", "duration_ms": 240000},
+        {"spotify_track_id": "onstage", "track_name": "Starlight - Live", "artist_names": "Muse", "duration_ms": 240300}])
+    assert cache.find_cached_twin("onstage") is None
+    assert cache.enqueue(["onstage"]) == ["onstage"]         # it gets its own audio
 
 
 def test_enqueue_guard_does_not_flag_distinct_track(cache):
@@ -574,6 +587,43 @@ def test_refresh_duplicate_flags_idempotent_and_annotation_only(cache):
     assert set(cache.get(["a", "b", "c"])) == {"a", "b", "c"}  # features untouched (annotation-only)
     flags = cache.duplicate_flags()
     assert len(flags) == 1 and set(flags) <= {"a", "b"} and set(flags.values()) <= {"a", "b"}
+
+
+def test_clearing_a_twin_flag_does_not_strand_the_track(cache):
+    """A twin resolved at enqueue time gets job=done with a "deduped:" note. If a
+    later rule change CLEARS that flag, the track becomes a distinct un-analyzed
+    song — and `done` is terminal, so `enqueue` would never queue it again: a
+    permanent ghost, counted in the corpus and fillable by nothing. The refresh
+    must re-open the job it authored."""
+    cache.upsert("canon", _FEATURES)
+    cache.remember_meta([
+        {"spotify_track_id": "canon", "track_name": "Bliss", "artist_names": "Muse", "duration_ms": 240000},
+        {"spotify_track_id": "twin", "track_name": "Bliss - Deluxe", "artist_names": "Muse", "duration_ms": 240100}])
+    assert cache.enqueue(["twin"]) == []                      # guarded away, job closed
+    assert cache.duplicate_flags() == {"twin": "canon"}
+    assert cache.job_states()["twin"][0] == "done"
+
+    # the rule changes its mind: the twin is really a different recording
+    cache.remember_meta([{"spotify_track_id": "twin", "track_name": "Bliss - Live",
+                          "artist_names": "Muse", "duration_ms": 240100}])
+    r = cache.refresh_duplicate_flags()
+    assert cache.duplicate_flags() == {}                      # flag cleared
+    assert r["n_unstranded"] == 1 and r["unstranded"] == ["twin"]
+    assert cache.job_states()["twin"][0] == "queued"          # re-openable, not a ghost
+    assert cache.enqueue(["twin"]) == [] or cache.job_states()["twin"][0] == "queued"
+
+
+def test_unstranding_never_reopens_a_real_failure(cache):
+    """Only jobs the dedup path authored may be re-opened. A genuine failure
+    keeps its error and its attempt count — otherwise a dead-lettered track
+    would hot-loop again (the journal-#22 availability bug)."""
+    cache.remember_meta([{"spotify_track_id": "bad", "track_name": "Nope",
+                          "artist_names": "Muse", "duration_ms": 100000}])
+    cache.enqueue(["bad"])
+    cache.fail("bad", "no usable source — title mismatch")
+    before = cache.job_states()["bad"]
+    cache.refresh_duplicate_flags()
+    assert cache.job_states()["bad"] == before
 
 
 # ── artist metadata (P3.1 / D-36) ────────────────────────────────────────────
