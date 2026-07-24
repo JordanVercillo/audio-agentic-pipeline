@@ -426,6 +426,36 @@ def test_repair_fails_closed_without_owner_env(client, monkeypatch, tmp_path):
     assert "Repair source" not in client.get("/song/fixme").text
 
 
+def _become(client, session_value):
+    """Replace the session cookie OUTRIGHT — the only safe way to switch
+    identity mid-test.
+
+    A response rotates the session, so httpx's jar ends up holding two cookies
+    named `va_sid`: the one `cookies.set()` wrote (no domain) and the server's
+    (domain `testserver.local`). A later `cookies.set()` updates only the
+    former, and which of the two is sent back is httpx-version-dependent — so
+    "log in as someone else" silently kept the PREVIOUS user on CI while
+    passing locally. Clearing first removes the ambiguity.
+    """
+    client.cookies.clear()
+    client.cookies.set(config.SESSION_COOKIE, session_value)
+
+
+def test_identity_switch_leaves_exactly_one_session_cookie(client):
+    # The regression this guards is invisible to an assertion about behaviour:
+    # locally the jar's duplicate resolved to the NEW cookie and every
+    # owner-gate test passed, while CI resolved to the stale one and two of
+    # them failed for months. The version-independent property is the jar
+    # holding ONE session cookie, so assert that directly.
+    _become(client, _seed_session(taste=_TASTE, extra={"me_id": "someone_else"}))
+    client.get("/library")                       # a response rotates the session
+    assert len([c for c in client.cookies.jar
+                if c.name == config.SESSION_COOKIE]) >= 1
+    _become(client, _seed_session(taste=_TASTE, extra={"me_id": "jordan_id"}))
+    jar = [c for c in client.cookies.jar if c.name == config.SESSION_COOKIE]
+    assert len(jar) == 1, f"duplicate session cookies: {[(c.domain, c.path) for c in jar]}"
+
+
 def test_repair_refuses_non_owner_and_accepts_owner(client, monkeypatch, tmp_path):
     monkeypatch.setenv("WEBAPP_OWNER_SPOTIFY_ID", "jordan_id")
     tc = _repair_cache(tmp_path)
@@ -435,14 +465,12 @@ def test_repair_refuses_non_owner_and_accepts_owner(client, monkeypatch, tmp_pat
                         lambda cache, tid, url, **kw: calls.append((tid, url))
                         or (True, "repaired"))
     # a DIFFERENT authed pilot user → refused, engine untouched
-    client.cookies.set(config.SESSION_COOKIE,
-                       _seed_session(taste=_TASTE, extra={"me_id": "someone_else"}))
+    _become(client, _seed_session(taste=_TASTE, extra={"me_id": "someone_else"}))
     client.post("/song/fixme/repair-link", data={"url": "https://youtu.be/x"},
                 follow_redirects=False)
     assert calls == []
     # the owner → engine runs, PRG + flash
-    client.cookies.set(config.SESSION_COOKIE,
-                       _seed_session(taste=_TASTE, extra={"me_id": "jordan_id"}))
+    _become(client, _seed_session(taste=_TASTE, extra={"me_id": "jordan_id"}))
     r = client.post("/song/fixme/repair-link", data={"url": "https://youtu.be/x"},
                     follow_redirects=False)
     assert r.status_code == 303 and calls == [("fixme", "https://youtu.be/x")]
@@ -464,12 +492,10 @@ def test_owner_audio_is_owner_gated(client, monkeypatch, tmp_path):
     r = client.get("/audio/fixme", follow_redirects=False)
     assert r.status_code == 303
     # authed non-owner → same
-    client.cookies.set(config.SESSION_COOKIE,
-                       _seed_session(taste=_TASTE, extra={"me_id": "someone_else"}))
+    _become(client, _seed_session(taste=_TASTE, extra={"me_id": "someone_else"}))
     assert client.get("/audio/fixme", follow_redirects=False).status_code == 303
     # owner → the bytes, and the play control renders on /song
-    client.cookies.set(config.SESSION_COOKIE,
-                       _seed_session(taste=_TASTE, extra={"me_id": "jordan_id"}))
+    _become(client, _seed_session(taste=_TASTE, extra={"me_id": "jordan_id"}))
     ok = client.get("/audio/fixme")
     assert ok.status_code == 200 and ok.content.startswith(b"RIFF")
     assert '<audio' in client.get("/song/fixme").text
@@ -505,14 +531,12 @@ def test_owner_gate_forgives_case_and_padding_only(client, monkeypatch, tmp_path
     monkeypatch.setattr("src.store.repair.repair_from_link",
                         lambda cache, tid, url, **kw: calls.append(tid)
                         or (True, "repaired"))
-    client.cookies.set(config.SESSION_COOKIE,
-                       _seed_session(taste=_TASTE, extra={"me_id": "jordan_vercillo"}))
+    _become(client, _seed_session(taste=_TASTE, extra={"me_id": "jordan_vercillo"}))
     client.post("/song/fixme/repair-link", data={"url": "https://youtu.be/x"},
                 follow_redirects=False)
     assert calls == ["fixme"]                       # case/padding forgiven
     # a genuinely different id is still refused
-    client.cookies.set(config.SESSION_COOKIE,
-                       _seed_session(taste=_TASTE, extra={"me_id": "jordan_vercill"}))
+    _become(client, _seed_session(taste=_TASTE, extra={"me_id": "jordan_vercill"}))
     client.post("/song/fixme/repair-link", data={"url": "https://youtu.be/x"},
                 follow_redirects=False)
     assert calls == ["fixme"]                       # unchanged — no second call
@@ -532,8 +556,7 @@ def test_library_needs_source_filter_owner_only(client, monkeypatch, tmp_path):
     r = client.get("/library?filter=needs-source")
     assert "Needs source" not in r.text
     # owner: the tab + the filtered view with the reason
-    client.cookies.set(config.SESSION_COOKIE,
-                       _seed_session(taste=_TASTE, extra={"me_id": "jordan_id"}))
+    _become(client, _seed_session(taste=_TASTE, extra={"me_id": "jordan_id"}))
     r2 = client.get("/library?filter=needs-source")
     assert "Needs source" in r2.text and "no-affinity rejected" in r2.text
     assert "Roots" in r2.text
