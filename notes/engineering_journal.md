@@ -1345,3 +1345,38 @@ cookie. That test fails on both machines or neither.
 > ("exactly one session cookie"), not just the behaviour that happens to follow
 > from the interpretation you got — a green behavioural assertion over an
 > ambiguous fixture is proving the fixture, not the code.*
+
+## 52 — A write gate and a health verdict want different bars (2026-07-24, session 58)
+
+QA3 characterizes the acquisition corpus: of the tracks that predate the strict
+`match_gate`, which would still pass it, and of the tail that wouldn't — legit
+remixes or real misses? The obvious first cut reused `confident_match` (the
+auto-accept gate) as the verdict: passes → good, fails → its sub-clauses tell
+you why. The unit tests were green.
+
+Then I ran `--sample` against the real 733 rows, and the "review" tier — the
+worklist a human is supposed to trust — was 69 rows, most of them WRONG.
+"Black Sheep - Metric" flagged as suspect (Title-Artist word order). "Rumors"
+vs "Rumours" (one letter). "Sudden Life" on a lyric channel (artist only in the
+channel). Every one plainly the right song.
+
+**The realization:** `confident_match` is a gate for an unattended WRITE, and
+its whole design stance is *when unsure, reject to a human* — so it deliberately
+fails right songs on order, spelling, and channel-only artists, because a
+wrong auto-download is worse than a deferral. Borrowing that exact bar to
+answer *"is this probably wrong?"* inverts the cost model: now a rejection
+means "bother a human," and false rejections aren't safe, they're noise that
+inflates the health number and trains you to ignore the worklist. The honest
+signal for the review question was narrower and different — is the SONG TITLE
+recognisable? (a soft `title_recall` over the core title, order/spelling
+tolerant). Re-tiering on that took the worklist 69 → 7, and all 7 were genuine
+wrong-song candidates.
+
+> *The same predicate serves opposite goals badly. A gate on a WRITE optimizes
+> "never do the wrong thing unattended" — it should over-reject. A classifier
+> for a HUMAN worklist optimizes "don't waste the human" — it should
+> over-admit only what's genuinely doubtful. Before reusing a decision function
+> in a second place, check whether the cost of its two error types is the same
+> in both — if a false-reject was cheap over there and expensive here, you need
+> a different bar, not the same one. And you only see it by running the thing on
+> real data: the unit tests passed because they asserted the mislabelling.*

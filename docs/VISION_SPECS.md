@@ -1193,6 +1193,21 @@ song") and Artists 2.0 ("the artist tab overall 2.0"). Decisions D-51…D-54.
 
 ### Epic R — Artists 2.0 (the artist knowledge base)
 
+> **⏸️ DEFERRED (owner, 2026-07-24 — D-58) — the explicit honest deferral that
+> satisfies D-55 criterion ③.** Epic R does NOT gate the working prototype. The
+> existing artist surface is already credible for a stranger validating the
+> thesis: the D-33 DERIVED "your top tracks by X" (0 API calls), genre chips
+> with a "known for N of M" honesty caption, acoustic "similar in your library"
+> (the honest related-artists replacement), and analyze-on-demand. Epic R adds
+> discography depth (MusicBrainz albums/recordings, in-corpus badges) — real
+> product value, but **product depth, not platform evidence**, and it introduces
+> a second identity system (`mbid` as an attribute) + two tables + a third-party
+> client for what is essentially one richer page. Portfolio-wise a defensible
+> descope is itself a signal. Revisit as post-prototype enrichment (its own
+> appetite gate), not before Phase 5. The D-53/D-54 design below stands, unbuilt,
+> for when it's picked up. (One cheap piece already shipped separately: the
+> dashboard top-artist cards now link to `/artist/{id}` — session 57.)
+
 - **D-53 — MusicBrainz spine + Spotify garnish, on-demand + cache-forever
   (owner).** The discography truth source is **MusicBrainz** (open, free,
   auth-less, ~1 req/s etiquette, can't be deprecated out from under us):
@@ -1241,6 +1256,42 @@ the current surface · ⑦ the last slice meets the full working-agreement DoD.
 Explicitly OUT of "prototype done": K4 uploads, K5/K6, MPD — enrichment, not
 prototype. **This bar gates Phase 5: MPD/Spark launches from a
 defensibly-complete base, not mid-air.**
+
+**EXIT-DECISION PASS (owner, 2026-07-24 — D-58…D-60; DoD now 5/7, the rest is
+the plan below).** Met since ratification: ⑤ (K0–K3), ⑥ (README + case study
+refreshed, session 57), ⑦ (QA3, 591 tests). ① holds (guest is the stranger
+path). Resolved:
+- **② "bounded" RATIFIED (D-58a):** the ∅ tier is *bounded* = features withheld
+  from display AND aggregates + counted in `corpus_facts.n_withheld_unvalidated`
+  + repairable via D-56. It does NOT have to reach zero — 44 of the withheld
+  have no findable source (QA3), so "gone" is unreachable and "bounded, counted,
+  repairable" is the honest bar. Met today (40 withheld, counted).
+- **③ Epic R DEFERRED (D-58):** the explicit honest deferral above satisfies
+  the criterion. Met.
+- **④ AMENDED + the two flags resolved.** "Both audits ALL-GREEN" was
+  unpassable as written (B4's 6 tracks are *legitimately* >1 h). New wording:
+  **no unexplained flags — every true flag is either fixed at the rule or a
+  ratified documented advisory, and the 2 broken extractions stay permanently
+  fixed (0 tempo-0).** Two committed exit slices carry it:
+  - **D-59 — B4: FIX THE AUDIT RULE.** Teach `FEATURE_DISTRIBUTION` that a
+    long-form release whose measured duration AGREES with its recorded
+    provenance duration is legal, so the flag clears honestly (a
+    permanently-true flag trains you to stop reading the audit). data-platform,
+    small + a test.
+  - **D-60 — B5: BUILD THE cache→staging EXPORTER.** One materialization path
+    from the live serving corpus (731) into the batch star-schema so the MCP
+    layer + taste map read the same tracks the app does; a plane-agreement
+    check joins the audit; `DUPLICATE_TRACKS` clears when the gold plane
+    rebuilds from the deduped serving corpus. This is the platform-engineering
+    narrative (declare one source of truth, materialize it, assert agreement)
+    and it's now a "tracked next slice" the README publicly names. Scope the
+    82-col cache-dict ↔ 93-col frozen-fact-contract reconciliation FIRST
+    (data-platform consult) — that decides small-vs-large. Bridge key + Parquet
+    + frozen 77-dim contract untouched (ground rules).
+
+  **Exit order:** this decision record (③ satisfied now) → D-59 (small) →
+  D-60 (the real slice) → re-run both audits ALL-clear → Phase 4.5 EXITS →
+  Phase 5 (MPD).
 
 ## Phase 5 — MPD (Epic J, un-changed shape, now sequenced)
 
