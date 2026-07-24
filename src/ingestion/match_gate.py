@@ -86,15 +86,33 @@ def _squash(s: Optional[str]) -> str:
     return re.sub(r"[^a-z0-9]+", "", t)
 
 
+# No SINGLE released track runs this long — an acquisition beyond it is a
+# full album / DJ set / podcast, even when we have no per-track ground truth to
+# compare against. The live finding (D-59, 2026-07-24): Taylor Swift's "TTPD"
+# came in at 7300 s (2 h) because Spotify's duration_ms was 0/missing, so the
+# ratio guard below could not fire — "unknown → never guess" quietly admitted a
+# 2-hour album as a 4-minute song. 30 min is generously past prog epics and most
+# classical single movements; a legit longer piece with a missing Spotify length
+# reasonably routes to manual repair rather than auto-accepting silently.
+_ABSOLUTE_MAX_TRACK_S = 1800.0
+
+
 def implausible_duration(actual_s: Optional[float],
                          expected_s: Optional[float]) -> bool:
     """True when acquired audio is far too long to be this track (a DJ set /
-    full-album upload). Unknown either side → not implausible (never guess).
+    full-album upload).
 
     ONE-SIDED by design — this is the post-download backstop, and audio that is
-    too SHORT is caught by `duration_mismatch` at the auto-accept gate."""
-    if not actual_s or not expected_s or actual_s <= 0 or expected_s <= 0:
+    too SHORT is caught by `duration_mismatch` at the auto-accept gate.
+
+    With a known Spotify length, "far too long" is relative to it. WITHOUT one
+    (missing/zero duration_ms), we still reject audio longer than any plausible
+    single track — the only case where "never guess" was wrong, because a 2-hour
+    file is not a 4-minute song regardless of what we don't know (D-59)."""
+    if not actual_s or actual_s <= 0:
         return False
+    if not expected_s or expected_s <= 0:
+        return actual_s > _ABSOLUTE_MAX_TRACK_S
     return actual_s > max(_DURATION_MAX_RATIO * expected_s,
                           expected_s + _DURATION_MAX_EXTRA_S)
 

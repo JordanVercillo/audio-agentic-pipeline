@@ -188,11 +188,17 @@ def test_implausible_duration_rule():
     assert not implausible_duration(240.0, 200.0)       # a slightly longer take
     assert not implausible_duration(330.0, 200.0)       # extended mix, <2x AND <+120s
     assert not implausible_duration(200.0, 200.0)
-    assert not implausible_duration(None, 200.0)        # unknown → never guess
-    assert not implausible_duration(400.0, None)
+    assert not implausible_duration(None, 200.0)        # unknown actual → can't judge
     assert not implausible_duration(0.0, 200.0)
     # a genuinely long track is judged against ITS OWN spotify length
     assert not implausible_duration(600.0, 590.0)
+    # D-59: with NO spotify length, a normal-length track is still fine…
+    assert not implausible_duration(400.0, None)
+    assert not implausible_duration(1200.0, 0.0)        # 20 min, under the absolute cap
+    # …but 2 hours is not a 4-minute song no matter what we don't know (the TTPD
+    # case: Spotify duration_ms was 0, so the ratio guard couldn't fire)
+    assert implausible_duration(7300.0, None)
+    assert implausible_duration(7300.0, 0.0)
 
 
 def test_title_affinity_on_the_real_wrong_song_pairs():
