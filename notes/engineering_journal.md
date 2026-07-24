@@ -1314,3 +1314,34 @@ Nothing would error. The app would just quietly know nothing.
 > verification data at all, verify nothing rather than reject everything —
 > absence of evidence must not become evidence of absence. Failing tests that
 > all fail the same way are usually describing the design, not the fixtures.*
+
+## 51 — A test that asserts behaviour can hide a bug the environment resolves in your favour (2026-07-24, session 57)
+
+CI had been red for twelve commits — since before this session — on two
+owner-gate tests that passed on my machine every time. The tests switched
+identity mid-run ("now log in as someone else") by calling `cookies.set()`
+again. But a response rotates the session, so httpx's jar ended up holding
+*two* cookies named `va_sid`: the domain-less one the test wrote, and the
+server's `testserver.local` one. `cookies.set()` updated only the first, and
+which of the two duplicates gets sent back is httpx-version-dependent. Locally
+it resolved to the new cookie and everything passed; on CI it resolved to the
+stale one, so the "different user" was silently the previous user — and in one
+case a genuinely different Spotify id sailed through the D-56 owner gate the
+test was supposed to be proving.
+
+**The realization:** the tests asserted *behaviour* ("the owner is accepted,
+the stranger is refused"), and behaviour is exactly what an ambiguous fixture
+can fake when the ambiguity happens to break your way. The bug lived in the
+test's own setup, invisible because the assertion it fed still came out green
+on the one machine anyone ran it on. The fix that holds isn't a better
+behavioural assertion — it's asserting the version-independent *invariant*
+directly: after an identity switch the jar must hold exactly one session
+cookie. That test fails on both machines or neither.
+
+> *When a test passes locally and fails in CI, suspect an ambiguity in the
+> test's own state that the two environments resolve differently — before you
+> suspect the code under test. And when a setup step can leave more than one
+> way for the system to interpret it, assert the invariant that pins it to one
+> ("exactly one session cookie"), not just the behaviour that happens to follow
+> from the interpretation you got — a green behavioural assertion over an
+> ambiguous fixture is proving the fixture, not the code.*

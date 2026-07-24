@@ -752,18 +752,54 @@
   by them. **Warehouse audit: provenance coverage 731/731 of the aggregate
   corpus (100%)**; the only true flags are the documented B4 (6 legit >1 h
   DJ-mix durations) and B5 (frozen Jul-4 star-schema advisory).
-  **➡️ NEXT ACTION — QA3, the last Epic-Q item: `scripts/review_provenance.py`**
+  ✅ **CI HEALTH RESTORED + THE HONESTY PAIR + DoD ⑥ (2026-07-24, session 57
+  cont'd, Opus + agile-coach consult; commits 02408ec/a8ccbe9/eb1ed37, 579
+  tests, CI GREEN ×3, app-verify ALL-FALSE).** **CI had been RED for 12
+  commits** — since before this session — on two owner-gate tests that passed
+  locally: after a response rotates the session, httpx keeps TWO `va_sid`
+  cookies (the test's domain-less one + the server's `testserver.local` one),
+  `cookies.set()` updates only the first, and which is sent is
+  version-dependent, so "log in as someone else" silently kept the PREVIOUS
+  user on CI (one case even let a DIFFERENT id pass the D-56 owner gate in the
+  test). Fix: `_become()` clears the jar before setting; a new test asserts the
+  version-independent invariant (exactly ONE session cookie), because asserting
+  behaviour is what hid it (journal #51). **The honesty pair (a8ccbe9):**
+  `/library` rendered "analyzing…" for ANY unanalyzed track including 40+
+  dead-lettered ones — `cache.job_states()` + pure `library.annotate_queue_state`
+  now split queued/running/under-cap ("analyzing…") from failed-at-MAX_ATTEMPTS
+  ("no source"); and D-54 finally shipped (dashboard top-artist cards link to
+  `/artist/{id}` — the id was already in the fetched frame, zero API calls; guest
+  path too). **DoD ⑥ (eb1ed37):** README + `docs/CASE_STUDY.md` were frozen at
+  2026-07-16 (417 tests, 117 tracks, "ALL-GREEN", 0.14σ) — refreshed to the
+  current surface, every number traced to a live command (579 tests, 771/731
+  corpus, 0.185σ "The Drifting Loyalist", 100% aggregate provenance); the
+  frozen gold plane handled with an explicit **two-plane** framing (live serving
+  771/731 vs a reproducible 118-track batch star-schema snapshot the MCP demo +
+  taste map read); the provenance/QA spine is now a full case-study §3. **The
+  agile-coach consult corrected a stale fact this session had written: Phase 4.5
+  is NOT closeable after QA3** — it holds Epic Q AND **Epic R (Artists 2.0 —
+  0 lines of code, NO recorded deferral)**, and the D-55 prototype DoD is 4/7
+  (⑥ now done; ③ Epic-R-or-deferral and ④ "audits ALL-GREEN" — unpassable as
+  worded — remain). "Then Phase 5 is next" was wrong; the prototype gate is not
+  yet met.
+  **➡️ NEXT ACTION — QA3, the last Epic-Q BUILD item: `scripts/review_provenance.py`**
   — a stratified sample of the provenance mart + duration audit →
   aggregates-only dated health artifact in `evals/runs/`, mirroring the D-47
   chat-review flywheel. `qa_audit.py` already covers the INVARIANTS; QA3 is
-  the sampled human read on match QUALITY (the `confident_match` note says
-  82.3% of recorded acquisitions would pass today's stricter bar — QA3 is how
-  we learn whether the other 17.7% are legitimate remixes/label uploads or
-  real misses). Then Epic Q closes and Phase 5 (MPD) is next per D-55's
-  "working prototype" gate. Read [`docs/QA_PLAN.md`](../docs/QA_PLAN.md) for
-  the full state. Owner track, at leisure: the 65-track needs-source queue via
-  `/library?filter=needs-source` (paste a link / upload audio; each repair
-  refreshes the derived planes and returns the track to every aggregate).
+  the sampled human read on match QUALITY (`qa_audit`'s `confident_match` note:
+  82.3% of recorded acquisitions would pass today's stricter bar — QA3 learns
+  whether the other 17.7% are legit remixes/label uploads or real misses).
+  **THREE OWNER DECISIONS gate the Phase-4.5 exit** (agile-coach read, this
+  session): (a) **Epic R** — defer with written reasoning (recommended: it's
+  product depth, the derived artist surface is already credible) or build R1–R3;
+  (b) **DoD ④** — FIX the audit so a provenance-agreed >1 h release is legal
+  (flag goes false honestly) rather than document a permanently-true flag
+  (B4); (c) **B5** — a cache→staging exporter that UNIFIES the two planes (now
+  publicly named a "tracked next slice" in the README) or a ratified freeze.
+  Read [`docs/QA_PLAN.md`](../docs/QA_PLAN.md) for the full state. Owner track,
+  at leisure: the 65-track needs-source queue via `/library?filter=needs-source`
+  (paste a link / upload audio; each repair refreshes the derived planes and
+  returns the track to every aggregate).
   DEFERRED (not blocking):
   O3d — the acoustic recall miner (cross-name same-audio candidates from the
   77-dim vectors, review-report-only, after Q3's uniform re-extraction);
@@ -2445,3 +2481,28 @@ narrative goes to `notes/engineering_journal.md`, plans to
   clickable-verifiable provenance. NEXT = (owner) drain the 73-track repair
   queue at leisure; (build) Q4. Recommended: adopt the acquisition guards in
   the live worker. NEW SESSION: run `/resume`.**
+- **2026-07-24 (session 57 — Epic QA: QA1/QA2/B1/B2 + drain + CI + docs, Opus
+  + agile-coach consult; commits c7ad7ad→eb1ed37, 579 tests, CI green):**
+  Owner ratified both open decisions (B1 adopt, B2 exclude). **Measured the
+  guards before building: the Q3 gates still admitted 4 wrong songs in 11**
+  (journal #48) → one shared `match_gate` (title containment, leading-artist,
+  two-sided duration, reproduction markers), **filter-then-rank**, and
+  `default_acquire` (the live worker — the path with NO guards) now delegates
+  to it (QA2/B1). **Drain 72→65 converged** (channel-verified bar; 7 repaired,
+  each hand-verified; 44 have no findable source — the honest floor); found the
+  full-credit-vs-primary search divergence en route (journal #49). **B2:**
+  `excluded_from_aggregates` = twins | unvalidated; corpus 771→731 aggregate,
+  retrain silhouette 0.172→0.174, archetype UNCHANGED; fail-safe = no
+  provenance rows → exclude nothing (journal #50). **QA1** `scripts/qa_audit.py`
+  (9 checks, exit-1; live 0 failed/7 passed/2 notes; provenance coverage of the
+  aggregate corpus = 100%). **CI had been RED 12 commits** on a cookie-jar
+  duplicate that passed locally (journal #51). **The honesty pair:** /library
+  "no source" vs "analyzing…" for dead-letters + D-54 dashboard→/artist links.
+  **DoD ⑥:** README + case study refreshed (two-plane framing for the frozen
+  gold plane; provenance spine as case-study §3). agile-coach consult corrected
+  a stale fact: Phase 4.5 also holds Epic R (unbuilt, no deferral); D-55 DoD is
+  4/7. **Left off: Epic Q is 9/10 (QA3 remains); app-verify ALL-FALSE, audit
+  clean but for the 2 documented advisories, tree synced. NEXT build = QA3
+  `review_provenance.py`. THREE owner decisions gate the Phase-4.5 exit: Epic R
+  defer-or-build · DoD ④ fix-the-audit vs accept B4 · B5 exporter-vs-freeze.
+  NEW SESSION: run `/resume`.**
