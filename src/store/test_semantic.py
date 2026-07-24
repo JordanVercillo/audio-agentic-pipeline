@@ -44,6 +44,50 @@ def corpus(tmp_path):
     return cache
 
 
+# ── B2: unvalidated features leave the AGGREGATES, not just the display ──────
+def test_unvalidated_tracks_leave_every_aggregate(corpus):
+    # D-57 withheld these from display while they still shaped the clusters,
+    # the percentiles and corpus_facts — numbers we refuse to show a visitor
+    # were still deciding the archetype they were shown. Owner call: exclude.
+    for i in range(4):
+        corpus.remember_provenance(spotify_track_id=f"club{i}",
+                                   youtube_url=f"https://y/{i}")
+    unvalidated = corpus.unvalidated_ids()
+    assert "folk0" in unvalidated and "club0" not in unvalidated
+
+    perc = compute_perceptual(corpus)
+    assert set(perc["spotify_track_id"]) == {f"club{i}" for i in range(4)}
+
+    tc = build_track_card(corpus, perc)
+    assert set(tc["spotify_track_id"]) == {f"club{i}" for i in range(4)}
+
+    # the withheld count rides along, so "withheld" stays distinguishable from
+    # "gone" — a corpus that quietly shrinks is a corpus nobody can audit
+    cf = build_corpus_facts(tc, build_artist_rollup(corpus, perc),
+                            n_withheld_unvalidated=len(unvalidated)).iloc[0]
+    assert cf["n_tracks"] == 4 and cf["n_withheld_unvalidated"] == len(unvalidated)
+
+
+def test_no_provenance_at_all_excludes_nothing(corpus):
+    # THE fail-safe. An empty/unreadable track_provenance table would otherwise
+    # mark the whole corpus unvalidated and empty the clusters, /explore and
+    # the chat in one rebuild. An exclusion rule must not be able to exclude
+    # everything.
+    assert corpus.source_validated_ids() == set()
+    assert corpus.unvalidated_ids() == set()
+    assert corpus.excluded_from_aggregates() == corpus.twin_ids()
+    assert not compute_perceptual(corpus).empty
+
+
+def test_a_repair_returns_a_track_to_the_aggregates(corpus):
+    # the queue is drainable: writing provenance is what lets a track back in
+    for i in range(4):
+        corpus.remember_provenance(spotify_track_id=f"club{i}", youtube_url="u")
+    assert "folk1" not in set(compute_perceptual(corpus)["spotify_track_id"])
+    corpus.remember_provenance(spotify_track_id="folk1", youtube_url="u")
+    assert "folk1" in set(compute_perceptual(corpus)["spotify_track_id"])
+
+
 # ── the pure dictionary ──────────────────────────────────────────────────────
 def test_feature_dictionary_carries_the_rule3_caveat():
     fd = feature_dictionary_frame().set_index("column")

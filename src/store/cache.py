@@ -829,6 +829,37 @@ class FeatureCache:
         detection needs both members of a pair."""
         return set(self.duplicate_flags())
 
+    def unvalidated_ids(self) -> set[str]:
+        """Analyzed tracks whose audio traces to no recorded source (D-57).
+
+        FAIL-SAFE: with NO provenance rows at all, nothing is "unvalidated" —
+        that is the pre-Q1 corpus, where the category does not yet mean
+        anything. Without this, an empty or unreadable track_provenance table
+        (a restore, a migration, a bug) would mark the ENTIRE corpus
+        unvalidated and B2 would silently empty the clusters, /explore and the
+        chat. An exclusion rule must never be able to exclude everything."""
+        validated = self.source_validated_ids()
+        if not validated:
+            return set()
+        return set(self.all_features()) - validated
+
+    def excluded_from_aggregates(self) -> set[str]:
+        """THE population filter every aggregate shares: flagged twins +
+        source-unvalidated tracks (B2, owner call 2026-07-23).
+
+        D-57 withheld unvalidated features from DISPLAY, but they still fed the
+        clusters, the /explore percentiles, corpus_facts and the chat's SQL —
+        so numbers we refuse to show a visitor were still shaping the archetype
+        they were shown. Those features came from the same unguarded matcher
+        that produced 27 proven wrong songs, so if they are not good enough to
+        display they are not good enough to aggregate.
+
+        Deliberately the SAME one-filter discipline as twin_ids: one definition
+        used by the perceptual plane, cluster training, the semantic marts and
+        similar(). A repair writes provenance, which removes a track from this
+        set and returns it to every aggregate at the next rebuild."""
+        return self.twin_ids() | self.unvalidated_ids()
+
     def refresh_duplicate_flags(self) -> dict:
         """Recompute duplicate_of over ALL metas (cosine refines pairs where both
         are cached). Idempotent; annotation-ONLY — never touches features, jobs,
@@ -957,8 +988,7 @@ class FeatureCache:
         tracks sit out too — recommending a neighbour is presenting its
         features as fact, which is exactly what we don't do until validated.
         """
-        twins = self.twin_ids() | (
-            set(self.all_features()) - self.source_validated_ids())
+        twins = self.excluded_from_aggregates()
         with self._Session() as s:
             target = s.get(TrackFeatures, track_id)
             if target is None:

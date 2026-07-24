@@ -172,13 +172,17 @@ def build_artist_rollup(cache: Any, perceptual_df: pd.DataFrame) -> pd.DataFrame
 def build_corpus_facts(track_card: pd.DataFrame,
                        artist_rollup: pd.DataFrame,
                        n_duplicates_flagged: int = 0,
-                       n_analyzed_twins: int = 0) -> pd.DataFrame:
+                       n_analyzed_twins: int = 0,
+                       n_withheld_unvalidated: int = 0) -> pd.DataFrame:
     """One-row corpus-facts mart (K2.0): the analyst's totals, derived from the
     frames this rebuild already built — no recompute. Acoustic stats run over
     feature_valid rows only, so a dead extraction can't tilt a corpus mean;
     counts report the invalid rows honestly instead of hiding them.
     O3b honesty: the card is twin-free, so n_tracks = UNIQUE recordings; the
-    duplicate counts ride along so "N analyzed · M unique" is stateable."""
+    duplicate counts ride along so "N analyzed · M unique" is stateable.
+    B2 honesty: source-unvalidated tracks are no longer IN the card, so their
+    count rides along too — otherwise the corpus would appear to shrink for no
+    stateable reason, and "withheld" would be indistinguishable from "gone"."""
     if track_card is None or track_card.empty:
         return pd.DataFrame()
     valid = track_card[track_card["feature_valid"]]
@@ -191,6 +195,7 @@ def build_corpus_facts(track_card: pd.DataFrame,
         "n_unique_recordings": int(len(track_card)),   # the card is twin-free (O3b)
         "n_analyzed_incl_duplicates": int(len(track_card)) + int(n_analyzed_twins),
         "n_duplicates_flagged": int(n_duplicates_flagged),
+        "n_withheld_unvalidated": int(n_withheld_unvalidated),
         "n_feature_valid": int(track_card["feature_valid"].sum()),
         "n_artists": 0 if artist_rollup is None or artist_rollup.empty
         else int(len(artist_rollup)),
@@ -304,7 +309,8 @@ def build_semantic_marts(cache: Any, perceptual_df: pd.DataFrame,
     tc = build_track_card(cache, perceptual_df)
     ar = build_artist_rollup(cache, perceptual_df)
     cf = build_corpus_facts(tc, ar, n_duplicates_flagged=len(flags),
-                            n_analyzed_twins=n_analyzed_twins)
+                            n_analyzed_twins=n_analyzed_twins,
+                            n_withheld_unvalidated=len(cache.unvalidated_ids()))
     cp = build_cluster_profile(cache, tc)
     pv = build_provenance_mart(cache)
     dfm = build_duplicate_flags_mart(cache)

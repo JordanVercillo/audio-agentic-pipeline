@@ -117,10 +117,12 @@ def compute_perceptual(cache: FeatureCache) -> pd.DataFrame:
     Returns a DataFrame keyed on the bridge key with every CATALOG column +
     ``version``. Incomplete rows (e.g. never-acquired tracks) sit out.
     O3b: flagged duplicate twins sit out too — the perceptual plane counts
-    each RECORDING once (cache.twin_ids is the one shared filter, red-team #8).
+    each RECORDING once. B2: so do source-unvalidated tracks, so a percentile
+    is computed only over audio we can point at (cache.excluded_from_aggregates
+    is the one shared filter, red-team #8).
     """
     feats = cache.all_features()
-    twins = cache.twin_ids()
+    twins = cache.excluded_from_aggregates()
     ts_map = cache.all_time_signatures()  # promoted column, joined by bridge key
     rows = [{"spotify_track_id": tid, **f} for tid, f in feats.items()
             if tid not in twins
@@ -298,7 +300,9 @@ def rebuild_marts(cache: FeatureCache, marts_dir: Path) -> dict[str, Any]:
     n = persist_perceptual(cache, df)
     # O3b (red-team #2): the table must match the frame — merge-only persistence
     # would leave a newly-flagged twin's stale row serving /explore + /recommend.
-    cache.prune_perceptual(cache.twin_ids())
+    # B2 widens it to the unvalidated: withholding a track from display while
+    # its stale perceptual row still answers /explore is the same trap.
+    cache.prune_perceptual(cache.excluded_from_aggregates())
     marts_dir = Path(marts_dir)
     marts_dir.mkdir(parents=True, exist_ok=True)
     catalog = catalog_frame()

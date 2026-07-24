@@ -47,10 +47,12 @@ def _drop_broken(feats: dict[str, dict]) -> dict[str, dict]:
                     and f["tempo_bpm"] <= _MIN_VALID_TEMPO_BPM)}
 
 
-def _drop_twins(feats: dict[str, dict], twins: set[str]) -> dict[str, dict]:
+def _drop_twins(feats: dict[str, dict], excluded: set[str]) -> dict[str, dict]:
     """O3b: flagged duplicates sit out of TRAINING — the same recording twice
-    would double-weight a centroid (11 analyzed twins rode the last retrain)."""
-    return {tid: f for tid, f in feats.items() if tid not in twins}
+    would double-weight a centroid (11 analyzed twins rode the last retrain).
+    B2: source-unvalidated tracks sit out too — callers pass
+    `cache.excluded_from_aggregates()`, the one shared population filter."""
+    return {tid: f for tid, f in feats.items() if tid not in excluded}
 
 
 # ── feature selection & scaling ─────────────────────────────────────────────
@@ -151,7 +153,8 @@ def _map_coords(X: np.ndarray, method: str = "pca") -> Optional[np.ndarray]:
 def train_song_clusters(cache: FeatureCache, *, k_range: tuple[int, int] = (2, 6),
                         coords: str = "pca") -> Optional[dict[str, Any]]:
     """Cluster ALL cached tracks; persist the model + per-track assignments."""
-    feats = _drop_twins(_drop_broken(cache.all_features()), cache.twin_ids())
+    feats = _drop_twins(_drop_broken(cache.all_features()),
+                        cache.excluded_from_aggregates())
     if len(feats) < _MIN_TRACKS:
         logger.info("song clustering skipped: %d < %d cached tracks", len(feats), _MIN_TRACKS)
         return None
@@ -196,7 +199,8 @@ def train_song_clusters(cache: FeatureCache, *, k_range: tuple[int, int] = (2, 6
 def train_artist_clusters(cache: FeatureCache, *, k_range: tuple[int, int] = (2, 5),
                           ) -> Optional[dict[str, Any]]:
     """Cluster artists by their acoustic centroid (mean of their cached tracks)."""
-    feats = _drop_twins(_drop_broken(cache.all_features()), cache.twin_ids())
+    feats = _drop_twins(_drop_broken(cache.all_features()),
+                        cache.excluded_from_aggregates())
     meta = cache.all_meta()
     by_artist: dict[str, list[dict]] = {}
     for tid, f in feats.items():
