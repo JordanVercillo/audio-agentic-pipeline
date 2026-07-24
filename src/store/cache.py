@@ -276,6 +276,15 @@ class FeatureCache:
             "track_name": m.track_name, "artist_names": m.artist_names,
         } for m in rows}
 
+    def all_durations_ms(self) -> dict[str, Optional[int]]:
+        """{track_id: duration_ms} in bulk — the match's duration target (O2).
+        Kept out of the hot-path `all_meta` 2-field dict; the provenance review
+        needs it to score every row's length against Spotify's own."""
+        with self._Session() as s:
+            rows = s.execute(select(TrackMeta.spotify_track_id,
+                                    TrackMeta.duration_ms)).all()
+        return {tid: dur for tid, dur in rows}
+
     def library_rows(self) -> list[dict]:
         """Every cached track as a flat display row for the /library catalog (H1):
         metadata + the promoted feature columns + the analyzed flag + the dedup

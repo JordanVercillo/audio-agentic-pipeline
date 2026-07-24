@@ -149,16 +149,21 @@ def is_reproduction(youtube_title: Optional[str],
     return any(marker in hay for marker in _REPRODUCTION_MARKERS)
 
 
-def core_title(track_name: Optional[str]) -> str:
-    """The track title with Spotify's version suffix and any parenthetical
-    dropped, squashed for comparison. 'Wompa - Mixed' → 'wompa'."""
+def _core_title_text(track_name: Optional[str]) -> str:
+    """The song title with Spotify's version suffix and any parenthetical
+    dropped, but words kept: 'Bliss - XX Anniversary RemiXX' → 'Bliss',
+    '5 Star (feat. Fayyaz Virji)' → '5 Star '."""
     name = str(track_name or "")
     for sep in _TITLE_SEPARATORS:
         if sep in name:
             name = name.split(sep)[0]
             break
-    name = re.sub(r"[(\[][^)\]]*[)\]]", " ", name)  # (feat. X) / [Radio Edit]
-    return _squash(name)
+    return re.sub(r"[(\[][^)\]]*[)\]]", " ", name)  # (feat. X) / [Radio Edit]
+
+
+def core_title(track_name: Optional[str]) -> str:
+    """The core title squashed for comparison. 'Wompa - Mixed' → 'wompa'."""
+    return _squash(_core_title_text(track_name))
 
 
 def title_contained(track_name: Optional[str],
@@ -171,6 +176,29 @@ def title_contained(track_name: Optional[str],
     if len(core) < 2:                       # a 1-char title proves nothing
         return False
     return core in _squash(youtube_title)
+
+
+def title_recall(track_name: Optional[str],
+                 youtube_title: Optional[str]) -> float:
+    """Fraction of the track's meaningful title tokens present in the candidate.
+
+    A SOFTER measure than `title_contained` for the provenance REVIEW (not the
+    auto-accept gate): it tolerates word order ('Black Sheep - Metric'),
+    spelling ('Rumors' vs 'Rumours' — 3 of 4 tokens still land), and measures
+    only the CORE title so a remix/feat suffix on our side can't dilute it
+    ('Bliss - XX Anniversary RemiXX' → just 'bliss', which 'Muse - Bliss'
+    fully contains). Short tokens (<4 chars) must match a whole token; longer
+    ones may match inside the squashed title ('airmaxes' ⊇ 'air maxes').
+    1.0 = every word is there; 0.0 = the song's name is not recognisably in the
+    candidate — the real-miss signal."""
+    toks = _tokens(_core_title_text(track_name))
+    if not toks:
+        return 0.0
+    yt_toks = _tokens(youtube_title)
+    yt_squash = _squash(youtube_title)
+    present = sum(1 for t in toks
+                  if t in yt_toks or (len(t) >= 4 and t in yt_squash))
+    return present / len(toks)
 
 
 def leading_artist_segment(youtube_title: Optional[str]) -> Optional[str]:

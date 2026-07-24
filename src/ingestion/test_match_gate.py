@@ -85,6 +85,21 @@ def test_core_title_strips_spotify_version_and_parentheticals():
     assert core_title(None) == ""
 
 
+def test_title_recall_tolerates_order_spelling_and_version():
+    from .match_gate import title_recall
+    # every word present, any order
+    assert title_recall("Black Sheep", "Black Sheep - Metric") == 1.0
+    # one spelling slip in a long title still lands most tokens
+    assert title_recall(
+        "Rumors Of My Demise Have Been Greatly Exaggerated",
+        "Rise Against - Rumours of my Demise Have Been Greatly Exaggerated") >= 0.6
+    # a version suffix on our side doesn't count against recall
+    assert title_recall("Wompa - Mixed", "Wompa (Mixed)") == 1.0
+    # the real miss: the song's name simply isn't there
+    assert title_recall("Up & Down", "Sammy Virji - Spice Up My Life") < 0.6
+    assert title_recall("", "anything") == 0.0
+
+
 def test_title_contained_needs_the_song_name_not_a_shared_word():
     assert title_contained("Lights On", "The Blue Stones - Lights On (Official)")
     assert title_contained("Q&A", "Drake - Q&A Lyrics (DLyrics01)")
