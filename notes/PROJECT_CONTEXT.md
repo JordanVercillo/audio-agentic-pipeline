@@ -701,21 +701,70 @@
   not-on-YouTube case D-56 exists for). **CORPUS TRUTH: 770 canonical analyzed
   · 724 source-validated · 46 unvalidated (withheld) · 72 needs-source · 35
   twins.**
-  **➡️ NEXT ACTION — EPIC QA: read [`docs/QA_PLAN.md`](../docs/QA_PLAN.md)
-  FIRST — it is the full bug/QA brief written for this pickup** (§A the 8
-  fixed bugs each needing a live regression check, §B the ranked open items,
-  §C the proposed build). The build order it proposes: **QA1** `scripts/
-  qa_audit.py` — ONE command running every A1–A8 regression against LIVE data
-  with a pass/fail table (makes "is the corpus honest?" a 30-second question);
-  **QA2 = B1, the highest-value open bug** — the LIVE WORKER (`extractor.
-  default_acquire`) still has NEITHER acquisition guard, so every new login
-  can re-introduce the DJ-sets and wrong-songs we just spent a session
-  removing (owner call: it changes live ingestion); **QA3** `review_
-  provenance.py` (the original Q4 health flywheel); **QA4** = B2, the owner
-  decision on whether the 46 unvalidated tracks also leave the AGGREGATES
-  (clusters/explore/chat) — costs corpus 770→724 and another archetype shift.
-  Owner track, at leisure: drain the 72-track needs-source queue via
-  `/library?filter=needs-source`. DEFERRED (not blocking):
+  ✅ **EPIC QA — QA1 + QA2/B1 + B2 + THE DRAIN ALL SHIPPED (2026-07-23,
+  session 57, Opus; commits c7ad7ad→2d1a0cf, 573 tests, ruff clean, deployed,
+  browser-validated through the public edge).** Owner ratified both open
+  decisions (B1 adopt, B2 exclude). **The session's finding, measured before
+  building anything: the Q3 guards STILL admitted wrong songs** — swept over
+  the 72-track queue, 4 of the 11 candidates they passed were wrong (journal
+  #48). Title affinity fired on a single common token ("Up & Down" ←
+  "Spice Up My Life" on `up`; "I need to know" ← "I never had" on `i`), the
+  duration guard was ONE-SIDED (built against DJ sets, so an 83 s "Logic Pro
+  Remake" of a 182 s track passed), and nothing knew what a *remake* was
+  (KETTAMA "Fly Away XTC (Ableton Remake)" matched title+artist+duration to
+  1 s). **QA2/B1:** `src/ingestion/match_gate.py` is now the ONE acceptance
+  policy (title CONTAINMENT, leading-artist attribution, two-sided duration,
+  reproduction markers) and `extractor.default_acquire` — the path every real
+  login and playlist import uses, which had NO guards at all — delegates to
+  `re_extract.guarded_acquire`. `implausible_duration`/`title_affinity` keep
+  their exact old semantics (repair.py + quarantine_wrong_songs.py depend on
+  them). Order INVERTED to **filter-then-rank**: every candidate faces the
+  gate and the best survivor wins, where before the winner was picked first
+  and then judged, discarding a usable recording at position 2 of the same
+  search; search depth 5→10. **THE DRAIN (B3): 72 → 65, converged** —
+  `scripts/drain_repair_queue.py` at the owner's channel-verified bar
+  (artist's own/`X - Topic` channel, Δ≤10 s, no remakes); 7 repaired, each
+  verified by hand against stored provenance (Lights On·Blue Stones,
+  EL MUNDO ES MÍO·Bad Bunny, Near U·Isenberg, Ripples In The Timeline·Mall
+  Grab, Peace of Mind·Hutcher, Wompa·MPH, Twizzy·Panteros666). **The
+  remaining 65 are the honest floor, not a backlog: 44 have NO plausible
+  YouTube candidate at all** (obscure UK garage/bassline) — D-56 manual flow
+  only. Found mid-drain (journal #49): the dry run and real run disagreed
+  because the runner searched Spotify's FULL credit list while the batch
+  downloader searched only the primary artist — two conventions, materially
+  different results; acquisition now searches BOTH and selects over the
+  deduped union (that fix alone recovered 4 tracks at the same bar).
+  **B2:** `cache.excluded_from_aggregates()` = twins | unvalidated is THE one
+  population filter (perceptual plane + prune, both cluster trainings,
+  `similar()`); aggregate corpus **771 → 731**, retrained model #9 silhouette
+  0.172→**0.174**, buckets UNCHANGED, **archetype UNCHANGED (The Drifting
+  Loyalist)**; `corpus_facts` gained `n_withheld_unvalidated`. **FAIL-SAFE
+  (journal #50): with zero provenance rows nothing counts as unvalidated** —
+  without it an empty/unreadable `track_provenance` (restore, migration, bug)
+  would silently empty the clusters, /explore and the chat in one rebuild.
+  **QA1: `scripts/qa_audit.py`** — one command, 9 checks against LIVE data,
+  exit 1 on any FAIL (**live: 0 failed · 7 passed · 2 notes**); the `B1` check
+  is BEHAVIOURAL (drives `default_acquire` with a rigged in-process search and
+  asserts nothing downloads). It found a bug in itself on first run: it
+  reported the owner's uploaded WAV master as a wrong song, since a D-56
+  manual repair stores the constant "Owner-supplied audio file" as its title —
+  manual provenance is now skipped by the matcher-quality checks, never judged
+  by them. **Warehouse audit: provenance coverage 731/731 of the aggregate
+  corpus (100%)**; the only true flags are the documented B4 (6 legit >1 h
+  DJ-mix durations) and B5 (frozen Jul-4 star-schema advisory).
+  **➡️ NEXT ACTION — QA3, the last Epic-Q item: `scripts/review_provenance.py`**
+  — a stratified sample of the provenance mart + duration audit →
+  aggregates-only dated health artifact in `evals/runs/`, mirroring the D-47
+  chat-review flywheel. `qa_audit.py` already covers the INVARIANTS; QA3 is
+  the sampled human read on match QUALITY (the `confident_match` note says
+  82.3% of recorded acquisitions would pass today's stricter bar — QA3 is how
+  we learn whether the other 17.7% are legitimate remixes/label uploads or
+  real misses). Then Epic Q closes and Phase 5 (MPD) is next per D-55's
+  "working prototype" gate. Read [`docs/QA_PLAN.md`](../docs/QA_PLAN.md) for
+  the full state. Owner track, at leisure: the 65-track needs-source queue via
+  `/library?filter=needs-source` (paste a link / upload audio; each repair
+  refreshes the derived planes and returns the track to every aggregate).
+  DEFERRED (not blocking):
   O3d — the acoustic recall miner (cross-name same-audio candidates from the
   77-dim vectors, review-report-only, after Q3's uniform re-extraction);
   S4 DMARC reject-flip (owner, ~Jul-25 after clean reports); cluster_profile

@@ -1243,3 +1243,74 @@ had the bug was the one environment I never tested in.
 > behaviour you just rejected. And verify environment-dependent fixes in the
 > environment that has the problem: reproduce the broken PATH, don't test the
 > healthy one and infer.*
+
+## 48 — A gate that ranks is not a gate that rejects (2026-07-23, session 57)
+
+Epic Q ended with two guards: reject audio implausibly longer than the track,
+and require a meaningful title token to overlap the candidate's. Both were
+written against real failures and both worked. Before draining the 72-track
+repair queue I swept them over the whole queue rather than trusting them —
+and **4 of the 11 candidates they admitted were still the wrong song**. Title
+affinity fired on the token `"up"` ("Up & Down" → "Spice Up My Life") and on
+`"i"` ("I need to know" → "I never had"); the duration guard was one-sided,
+built against DJ sets, so an 83 s "Logic Pro Remake" of a 182 s track passed
+as easily as a real recording; and nothing knew what a *remake* was, so
+KETTAMA's "Fly Away XTC (Ableton Remake)" matched title, artist and duration
+to within one second.
+
+The deeper structure: the matcher **ranked** five candidates and the guards
+then judged the single winner. So a usable recording sitting at position 2 of
+the very same search was discarded unseen, while the top-scoring one got a
+yes/no it could only fail. Inverting it — filter every candidate through the
+gate, then rank the survivors — made the gate both stricter *and* more
+productive, which felt contradictory until it didn't: precision and recall
+were being traded by the ordering, not by the threshold.
+
+> *A ranking function and an admissibility function are different things, and
+> a system that only has the first will always return its least-bad answer as
+> if it were a good one. When you add a bar, apply it to the whole candidate
+> set before ranking — judging only the winner both hides the alternatives and
+> makes the bar look more expensive than it is. And sweep a new rule over
+> existing data before shipping it: the four wrong songs were found by
+> measuring the guards, not by reasoning about them.*
+
+## 49 — The dry run that couldn't predict the real run (2026-07-23, session 57)
+
+The drain's `--dry-run` said 5 tracks were repairable. The real run repaired 3,
+and **not the same 3**. I assumed YouTube search results were rotating between
+calls and told the owner so. They weren't. The runner searched with Spotify's
+full credit list (`"Isenberg, Cecelia Near U"`) while my dry-run — copying the
+batch downloader — searched only the primary artist (`"Isenberg Near U"`). Two
+conventions for the same query, living in the same codebase, producing
+materially different result sets.
+
+Neither is better. Each found recordings the other missed: 'Near U' needed the
+full credit, 'Twizzy' needed the primary. Searching both and selecting over
+the deduped union recovered 4 more tracks at the identical bar — the fix for
+the inconsistency was also the fix for the recall.
+
+> *When two code paths that should agree disagree, suspect a divergence in
+> your own inputs before blaming non-determinism in someone else's system —
+> "the API is flaky" is the comfortable explanation and it stopped me looking.
+> A dry run must execute the real path, not a re-implementation of it;
+> the moment it re-derives the logic it is testing a different program.*
+
+## 50 — An exclusion rule must not be able to exclude everything (2026-07-23)
+
+B2 said: features with no recorded source stop feeding the clusters, the
+percentiles and the chat. Implemented as `all_features − source_validated`,
+it dropped 30 tests instantly — every fixture builds features without
+provenance, so the rule excluded the entire corpus and every aggregate came
+back empty.
+
+The reflex was to fix the fixtures. The right read was that the fixtures had
+found a production landmine: if `track_provenance` were ever empty or
+unreadable — a restore, a migration, a bug in the writer — the same rule would
+silently empty the live clusters, `/explore` and the chat on the next rebuild.
+Nothing would error. The app would just quietly know nothing.
+
+> *A filter defined by subtraction inherits the failure modes of the set it
+> subtracts from. Give any "exclude the unverified" rule a floor: with no
+> verification data at all, verify nothing rather than reject everything —
+> absence of evidence must not become evidence of absence. Failing tests that
+> all fail the same way are usually describing the design, not the fixtures.*
