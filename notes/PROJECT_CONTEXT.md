@@ -782,24 +782,57 @@
   (⑥ now done; ③ Epic-R-or-deferral and ④ "audits ALL-GREEN" — unpassable as
   worded — remain). "Then Phase 5 is next" was wrong; the prototype gate is not
   yet met.
-  **➡️ NEXT ACTION — QA3, the last Epic-Q BUILD item: `scripts/review_provenance.py`**
-  — a stratified sample of the provenance mart + duration audit →
-  aggregates-only dated health artifact in `evals/runs/`, mirroring the D-47
-  chat-review flywheel. `qa_audit.py` already covers the INVARIANTS; QA3 is
-  the sampled human read on match QUALITY (`qa_audit`'s `confident_match` note:
-  82.3% of recorded acquisitions would pass today's stricter bar — QA3 learns
-  whether the other 17.7% are legit remixes/label uploads or real misses).
-  **THREE OWNER DECISIONS gate the Phase-4.5 exit** (agile-coach read, this
-  session): (a) **Epic R** — defer with written reasoning (recommended: it's
-  product depth, the derived artist surface is already credible) or build R1–R3;
-  (b) **DoD ④** — FIX the audit so a provenance-agreed >1 h release is legal
-  (flag goes false honestly) rather than document a permanently-true flag
-  (B4); (c) **B5** — a cache→staging exporter that UNIFIES the two planes (now
-  publicly named a "tracked next slice" in the README) or a ratified freeze.
-  Read [`docs/QA_PLAN.md`](../docs/QA_PLAN.md) for the full state. Owner track,
-  at leisure: the 65-track needs-source queue via `/library?filter=needs-source`
-  (paste a link / upload audio; each repair refreshes the derived planes and
-  returns the track to every aggregate).
+  ✅ **QA3 SHIPPED + 🏁 PHASE 4.5 EXITED (2026-07-24, sessions 57 cont'd–58,
+  Opus + data-platform consult; commits af…→c1c91f9, 597 tests, CI green, both
+  audits clear).** **QA3 (12ae966):** `scripts/review_provenance.py` +
+  `src/store/provenance_review.py` (pure) mirror the D-47 flywheel for
+  provenance — the sampled match-QUALITY read (`--report` → dated `evals/runs/`
+  artifact, `--sample` → gitignored worksheet). **The design lesson (journal
+  #52):** the first cut reused `confident_match` (the strict WRITE gate) as the
+  health verdict → its "review" tier was 69 rows, MOSTLY FALSE POSITIVES (the
+  gate over-rejects right songs on word order/spelling/channel because for an
+  unattended write "reject to a human" is correct). Re-tiered on a purpose-built
+  `match_gate.title_recall` (is the SONG recognisable?) → worklist 69→7, all
+  genuine. Live: 731 events, 82% would re-pass, 7 want-a-look. **The exit needed
+  real work, not a re-run** (owner: "re-run both audits clear → exit"). **THREE
+  DECISIONS ratified (D-58…D-60):** Epic R DEFERRED with written reasoning
+  (satisfies DoD ③), DoD ④ amended, B4 fixed by data-repair, B5 by the exporter.
+  **D-59 (cd9dfb9) — B4 was NOT "6 legit DJ mixes"** (an unverified QA_PLAN
+  assumption): probing found ONE bad row — Taylor Swift "TTPD", a 2 h source
+  stored as a 4-min song, slipped the guard because Spotify `duration_ms`=0 so
+  "unknown→never guess" admitted it. Loosening the audit would gate-mask it
+  (violates ④), so instead: `implausible_duration` hardened for the unknown-
+  length case (`_ABSOLUTE_MAX_TRACK_S`=30 min) + `scripts/quarantine_bad_durations.py`
+  (reuses the guard, journal #46 discipline; aggregate-affecting scope) →
+  quarantined TTPD alone → **FEATURE_DISTRIBUTION cleared honestly**, corpus
+  731→730. **D-60 (601e0ac) — the cache→gold exporter** (`src/warehouse/from_cache.py`
+  + `scripts/export_gold_from_cache.py`, data-platform consult Design 2): reads
+  the cache → current-canonical `dim_tracks`(730) + track-grain
+  `fact_track_features`(730) + refreshed `dim_artists`; **DUPLICATE_TRACKS
+  cleared.** THE GRAIN CALL: `fact_listening_features` LEFT UNTOUCHED — its
+  per-user time_range grain can't be honestly reproduced for the user-agnostic
+  corpus without fabricating ranks (REAL-data-only), so the CATALOG unifies, the
+  drift plane stays an honest snapshot (README/case-study corrected — the taste
+  map does NOT read 730). New audit: `JOIN_ORPHANS` targets the current catalog
+  fact (drift fact exempt, self-contained); **`GOLD_PLANE_STALE`** = dim_tracks
+  set == track_card set (catches the exporter going stale). Exporter idempotent
+  (byte-identical rerun). **BOTH AUDITS CLEAR: warehouse ALL FLAGS FALSE,
+  qa_audit 0-failed. All 7 D-55 criteria met.**
+  **➡️ NEXT ACTION — PHASE 5: MPD/Spark (metadata-only, D-26…D-29), launching
+  from a defensibly-complete base as D-55 intended.** First slice per
+  `docs/VISION_SPECS.md` §Phase 5: **verify the AIcrowd MPD dataset is still
+  obtainable + its license (research-expert, ~30 min) BEFORE committing the
+  phase** — if that door's closed, Phase 5 as specced evaporates. Then **J0**
+  intake script (local, gitignored, idempotent) → **J0.5** the overlap
+  measurement (how many of the 730 bridge keys appear in MPD — this NUMBER
+  decides whether J2 hybrid reco is worth building; agile-coach's addition) →
+  J1 Spark co-occurrence + track2vec on real 66M rows → J2 hybrid acoustic×
+  behavioural reco → J3 the honest at-scale benchmark. Spark NEVER on the
+  download path. Owner track, at leisure: the ~66-track needs-source queue via
+  `/library?filter=needs-source`; the 12 already-withheld bad-duration tracks
+  (`quarantine_bad_durations.py --include-withheld`) are optional cleanup.
+  DEFERRED — post-prototype enrichment, not blocking: Epic R (Artists 2.0,
+  MusicBrainz — D-58 deferral); K4 uploads (Phase LLM-2, appetite gate); K5/K6.
   DEFERRED (not blocking):
   O3d — the acoustic recall miner (cross-name same-audio candidates from the
   77-dim vectors, review-report-only, after Q3's uniform re-extraction);
@@ -2506,3 +2539,22 @@ narrative goes to `notes/engineering_journal.md`, plans to
   `review_provenance.py`. THREE owner decisions gate the Phase-4.5 exit: Epic R
   defer-or-build · DoD ④ fix-the-audit vs accept B4 · B5 exporter-vs-freeze.
   NEW SESSION: run `/resume`.**
+- **2026-07-24 (session 58 — QA3 + the Phase-4.5 EXIT: Opus + data-platform
+  consult; commits 12ae966/914f76b/cd9dfb9/601e0ac/c1c91f9, 597 tests, CI
+  green, both audits clear):** Shipped QA3 (the provenance-health flywheel;
+  journal #52 — a strict WRITE gate reused as a health VERDICT cried wolf, 69
+  false-positive "review" rows → 7 real via `title_recall`). Owner ratified the
+  three exit decisions; recorded them (D-58 Epic R deferral satisfies DoD ③).
+  Then the two audit slices: **D-59** probed B4 and found the "6 legit DJ mixes"
+  assumption was never verified and WRONG — one bad row (TTPD, a 2 h source that
+  slipped the guard on Spotify duration=0); quarantined it + hardened
+  `implausible_duration` (unknown-length cap) rather than loosen the audit
+  (gate-masking violates ④) → FEATURE_DISTRIBUTION cleared. **D-60** built the
+  cache→gold exporter (Design 2: unify the CATALOG to 730; leave the drift
+  plane's per-user grain alone — reproducing it would fabricate ranks) →
+  DUPLICATE_TRACKS cleared + `GOLD_PLANE_STALE` agreement check. **Left off:
+  🏁 PHASE 4.5 EXITED — all 7 D-55 criteria met, warehouse ALL FLAGS FALSE,
+  qa_audit 0-failed, 597 tests, tree synced. App on-demand (was down — data-only
+  work, verified by audits). NEXT = Phase 5 (MPD/Spark); FIRST verify the AIcrowd
+  MPD dataset + license (research-expert) before committing the phase. NEW
+  SESSION: run `/resume`.**

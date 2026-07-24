@@ -1380,3 +1380,37 @@ wrong-song candidates.
 > in both — if a false-reject was cheap over there and expensive here, you need
 > a different bar, not the same one. And you only see it by running the thing on
 > real data: the unit tests passed because they asserted the mislabelling.*
+
+## 53 — A standing advisory can be a standing wrong assumption (2026-07-24, session 58)
+
+Phase 4.5's exit needed both audits clear. The FEATURE_DISTRIBUTION flag (B4)
+had a documented explanation, carried across three session wraps and a QA_PLAN:
+"6 tracks legitimately exceed 1h — real DJ-mix releases." The owner, reasonably,
+decided to clear it by loosening the audit rule to accept long durations. I was
+about to implement exactly that.
+
+Then I probed the actual tracks before writing the rule. The "6 legit DJ mixes"
+were four wrong acquisitions, and only ONE was even in the aggregate corpus:
+Taylor Swift's "The Tortured Poets Department", stored at 7300s — a 2-hour
+source (the album, or a long compilation), not the 4.5-minute song. It had
+slipped the duration guard because Spotify's own duration_ms was 0/missing, so
+the guard's "unknown → never guess" quietly admitted it. Loosening the audit
+would have gate-masked a genuinely-broken row — the exact thing the exit
+criterion (④, "permanently fixed, not gate-masked") forbids. The honest fix was
+the opposite of the decision: repair the data (quarantine the row, harden the
+guard for the missing-length case) and leave the audit strict, so it went green
+because the corpus got better, not because the check got weaker.
+
+**The realization:** the explanation had been written down early, propagated by
+every wrap that cited the previous wrap, and never re-checked against the actual
+rows — so a plausible-sounding assumption calcified into "documented fact," and
+a real decision got built on top of it. An advisory that persists is not the
+same as an advisory that's true; the longer it rides in the docs unexamined, the
+more authority it accretes and the less anyone thinks to probe it.
+
+> *Before you act on a decision built on a standing explanation — especially one
+> that's been in the docs long enough to feel settled — re-derive the
+> explanation from the live data, by name. A "known issue" that no one has
+> re-checked is a hypothesis wearing a fact's clothes. And when clearing a
+> quality flag, prefer fixing the data over relaxing the check: a green audit is
+> only worth anything if going green required the world to actually improve.*
