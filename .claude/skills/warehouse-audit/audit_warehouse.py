@@ -407,6 +407,39 @@ def check_duplicates(modeled_dir: Path):
     return report, warns, flags
 
 
+def check_plane_agreement(modeled_dir: Path, marts_dir: Path):
+    """GOLD_PLANE_STALE (D-60): the batch gold catalog and the serving marts must
+    describe the SAME canonical corpus.
+
+    `dim_tracks` (materialized from the cache by `export_gold_from_cache.py`) and
+    `track_card` (the serving analyst mart) are each the current canonical,
+    twin-free, source-validated population. If their bridge-key sets diverge, the
+    gold plane is STALE — the exporter didn't run after the corpus changed, which
+    is the exact two-plane divergence D-60 exists to prevent. Standalone (parquet
+    only, no DB — the audit can't read the serving SQLite)."""
+    warns: list[str] = []
+    flags = {"GOLD_PLANE_STALE": False}
+    dt_path, tc_path = modeled_dir / "dim_tracks.parquet", marts_dir / "track_card.parquet"
+    if not dt_path.exists() or not tc_path.exists():
+        return warns, flags     # a pre-D-60 warehouse has no catalog fact to compare
+    dt, tc = pd.read_parquet(dt_path), pd.read_parquet(tc_path)
+    if BRIDGE not in dt.columns or BRIDGE not in tc.columns:
+        return warns, flags
+    # the gold catalog only claims to track fact_track_features' population; if
+    # dim_tracks still carries the pre-D-60 vintage (a fact-only frozen plane),
+    # there's nothing to agree with yet.
+    if not (modeled_dir / "fact_track_features.parquet").exists():
+        return warns, flags
+    dt_ids, tc_ids = set(dt[BRIDGE].dropna()), set(tc[BRIDGE].dropna())
+    if dt_ids != tc_ids:
+        warns.append(
+            f"modeled/dim_tracks vs marts/track_card: catalog planes diverge "
+            f"({len(dt_ids - tc_ids)} only in gold, {len(tc_ids - dt_ids)} only in "
+            f"serving) — run scripts/export_gold_from_cache.py — GOLD_PLANE_STALE")
+        flags["GOLD_PLANE_STALE"] = True
+    return warns, flags
+
+
 def main() -> int:
     errors: list[str] = []
     warnings: list[str] = []
@@ -499,9 +532,20 @@ def main() -> int:
                         feature_drift = True
 
     # --- fact <-> dim join coverage ----------------------------------------
+    # The coverage invariant is checked against the CURRENT catalog fact
+    # (fact_track_features, D-60 — materialized from the serving cache). The
+    # historical fact_listening_features is a self-contained Jul-4 drift snapshot
+    # (it denormalizes track_name/artist into the fact and its vintage predates
+    # the current dedup), so it is NOT pinned to the current dim_tracks — a few
+    # of its tracks are now flagged twins/quarantined and that's honest history,
+    # not an orphan. Older warehouses (no track-grain fact) fall back to the only
+    # fact present.
     join_orphans = False
     fact = next((df for k, df in tables.items()
-                 if k.startswith("modeled/") and "fact" in k.lower()), None)
+                 if k.startswith("modeled/") and "fact_track_features" in k.lower()), None)
+    if fact is None:
+        fact = next((df for k, df in tables.items()
+                     if k.startswith("modeled/") and "fact" in k.lower()), None)
     dim_tracks = next((df for k, df in tables.items()
                        if k.startswith("modeled/") and "dim" in k.lower()
                        and "track" in k.lower()), None)
@@ -543,6 +587,10 @@ def main() -> int:
     dup_report, d_warnings, d_flags = check_duplicates(WAREHOUSE / "modeled")
     warnings.extend(d_warnings)
 
+    # --- gold catalog <-> serving marts agreement (D-60) --------------------
+    pa_warnings, pa_flags = check_plane_agreement(WAREHOUSE / "modeled", MARTS)
+    warnings.extend(pa_warnings)
+
     flags = {
         "NO_WAREHOUSE": False,
         "MISSING_LAYER": missing_layer,
@@ -555,6 +603,7 @@ def main() -> int:
         "FEATURE_DRIFT": feature_drift,
         **m_flags,
         **d_flags,
+        **pa_flags,
     }
     print(json.dumps({"layers": layers, "audio": audio, "marts": marts_report,
                       "duplicates": dup_report, "errors": errors,
