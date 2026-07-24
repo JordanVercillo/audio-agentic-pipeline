@@ -384,7 +384,13 @@ def _slim_taste(ctx: dict[str, Any]) -> dict[str, Any]:
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="Vercillo Analytics", docs_url=None, redoc_url=None)
+    # QA-2: openapi_url=None completes the intent docs_url/redoc_url already
+    # expressed. /docs was closed but /openapi.json still served the full schema
+    # to anonymous callers — every path including the owner-only repair routes,
+    # with parameter shapes. The gates hold regardless, so this is hardening, not
+    # a vulnerability: it stops handing out the owner-surface map for free.
+    app = FastAPI(title="Vercillo Analytics", docs_url=None, redoc_url=None,
+                  openapi_url=None)
     app.mount("/static", StaticFiles(directory=str(_BASE / "static")), name="static")
 
     @app.middleware("http")
@@ -526,6 +532,14 @@ def create_app() -> FastAPI:
         5-seat gate. The interview showpiece. Guests never fetch Spotify or
         enqueue (all snapshot tracks are already cached)."""
         session = request.state.session
+        # QA-2: never clobber a LOGGED-IN session. This route overwrites
+        # session["taste"] with the owner's published snapshot and sets is_guest,
+        # so a pilot user who clicked the demo link saw the owner's snapshot
+        # rendered as their own on /analytics, /explore, /artists and in their
+        # /chat grounding until they next hit /dashboard. No token leaked and no
+        # privilege changed — a trust bug, not a breach, and one line to close.
+        if auth_web.is_authenticated(session):
+            return RedirectResponse("/dashboard", status_code=303)
         prof = load_demo_profile()
         if prof is None:
             return RedirectResponse("/", status_code=303)

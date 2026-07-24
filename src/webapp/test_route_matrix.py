@@ -1,0 +1,618 @@
+"""
+test_route_matrix.py — QA-2 layer 3: every route x every persona, as a table.
+
+The route tests that existed before this file were per-FEATURE and scattered, so
+access-gate coverage was not PROVABLE. That gap is what produced bug A7 (the
+D-56 owner gate wrapped the whole analyzed block and hid the owner's own repair
+tools) and it left 17 gate cells across 12 routes with no assertion at all —
+four of them on corpus-mutating writes, including `POST /song/{id}/repair-upload`
+which had no test of any kind.
+
+Three properties make this a security artifact rather than a status-code diary:
+
+  1. COVERAGE IS ENFORCED, not aspirational. The matrix's (path, method) set must
+     EQUAL the app's registered set, so a new route fails as missing and a
+     deleted one fails as stale.
+  2. THE `effects` COLUMN. `POST /song/{id}/repair-link` returns the SAME
+     303 -> /song/{id} to anon, guest, user and owner. Status and Location cannot
+     tell a blocked request from an executed one; only "did the engine run"
+     can. Every anon and guest cell declares effects=NONE, which turns "PKCE
+     means no app token exists, so a guest live-call is the owner's credential
+     leaking" into an assertion instead of a comment.
+  3. PERSONAS PROVE THEMSELVES. Journal #51: a duplicate `va_sid` in the httpx
+     jar meant "log in as someone else" silently kept the previous user on CI
+     for twelve commits. A fresh client per cell removes the shared jar, and the
+     sid echo asserts which session the SERVER actually resolved.
+
+Synthetic only — tmp sqlite cache, stubbed marts/LLM/fetchers — so it runs in
+the existing CI job with no corpus, no Ollama and no network.
+"""
+from __future__ import annotations
+
+import collections
+from dataclasses import dataclass
+from types import SimpleNamespace
+from typing import Any, Optional
+
+import pandas as pd
+import pytest
+from fastapi.routing import APIRoute
+from fastapi.testclient import TestClient
+
+from . import config
+from .app import create_app
+
+OWNER_ID = "jordan_id"
+ANON, GUEST, USER, OWNER = "anon", "guest", "user", "owner"
+PERSONAS = (ANON, GUEST, USER, OWNER)
+# NOTE ON NAMING: `USER` is a logged-in NON-OWNER pilot user. The app's own
+# `_is_viewer()` means GUEST-or-above, which is a different set — so this file
+# never says "viewer" for a persona.
+
+TRACK = "sng1"
+ARTIST = "ar1AAAAAA"
+PLAYLIST = "pl1"
+
+# ── markers ──────────────────────────────────────────────────────────────────
+# A marker is an HTML attribute the app's own behaviour depends on — a form
+# action, an href the nav needs, a class the CSS binds. NEVER a sentence: copy
+# changes freely, `action="/classify"` cannot change without behaviour changing.
+MARKERS = {
+    "page_shell": '<link rel="stylesheet" href="/static/style.css">',
+    "logout_form": 'action="/logout"',
+    "login_cta": 'href="/login"',
+    "error_page": "Something went sideways",
+    "ask_form": 'action="/ask"',
+    "classify_form": 'action="/classify"',
+    "chat_form": 'action="/chat"',
+    "needs_source_tab": 'href="/library?filter=needs-source"',
+    "repair_link_form": f'action="/song/{TRACK}/repair-link"',
+    "repair_upload_form": f'action="/song/{TRACK}/repair-upload"',
+}
+# Auto-applied to every cell expecting a 200 HTML page, so "200" can never mean
+# "an error page rendered with a 200" or "a truncated shell".
+GLOBAL_REQUIRE_HTML = ("page_shell",)
+GLOBAL_FORBID_HTML = ("error_page",)
+
+# effect names the `wiring` fixture counts
+SPOTIFY, ENQUEUE, LLM, REPAIR = "spotify", "enqueue", "llm", "repair"
+NONE: frozenset[str] = frozenset()
+
+
+@dataclass(frozen=True)
+class Expect:
+    status: int
+    location: Optional[str] = None
+    location_has: tuple[str, ...] = ()
+    require: tuple[str, ...] = ()
+    forbid: tuple[str, ...] = ()
+    json_has: tuple[tuple[str, Any], ...] = ()
+    forbid_text: tuple[str, ...] = ()
+    effects: frozenset[str] = NONE
+
+
+@dataclass(frozen=True)
+class Row:
+    path: str            # the REGISTERED path — the coverage key
+    method: str
+    url: str             # the concrete URL to call
+    decision: str        # the decision this row encodes
+    by: dict[str, Expect]
+    rotates: bool = False
+    data: Optional[dict] = None
+    files: Optional[dict] = None
+    html: bool = True    # participates in the global HTML invariants
+    skip_oracle: str = ""
+
+
+def _gate(to: str) -> Expect:
+    """A blocked request: redirect home, and NOTHING may have run."""
+    return Expect(303, location=to, effects=NONE)
+
+
+MATRIX: list[Row] = [
+    Row("/", "GET", "/", "public landing", {
+        ANON: Expect(200, require=("login_cta",), forbid=("logout_form",)),
+        GUEST: Expect(200),
+        USER: Expect(200, require=("logout_form",)),
+        OWNER: Expect(200, require=("logout_form",))}),
+
+    Row("/login", "GET", "/login", "D-8 PKCE, no secret", {
+        p: Expect(307, location_has=("accounts.spotify.com", "code_challenge=",
+                                     "state="),
+                  forbid_text=("client_secret",))
+        for p in PERSONAS}, html=False),
+
+    Row("/guest", "GET", "/guest", "H7 demo entry, never clobbers an authed session", {
+        p: Expect(303, location="/dashboard", effects=NONE) for p in PERSONAS},
+        html=False),
+
+    Row("/callback", "GET", "/callback?code=abc&state=evil", "CSRF state gate", {
+        p: Expect(400, require=("error_page",), effects=NONE) for p in PERSONAS}),
+
+    Row("/dashboard", "GET", "/dashboard", "H7 viewer split", {
+        ANON: _gate("/"),
+        GUEST: Expect(200, forbid=("ask_form",), effects=NONE),
+        USER: Expect(200, require=("ask_form",), effects=frozenset({SPOTIFY, ENQUEUE})),
+        OWNER: Expect(200, effects=frozenset({SPOTIFY, ENQUEUE}))}),
+
+    Row("/status", "GET", "/status", "authed JSON", {
+        ANON: Expect(200, json_has=(("authed", False),), effects=NONE),
+        GUEST: Expect(200, json_has=(("authed", False),), effects=NONE),
+        USER: Expect(200, json_has=(("authed", True),)),
+        OWNER: Expect(200, json_has=(("authed", True),))}, html=False),
+
+    Row("/ask", "POST", "/ask", "authed + token action", {
+        ANON: _gate("/"),
+        GUEST: _gate("/"),
+        USER: Expect(200, effects=frozenset({LLM})),
+        OWNER: Expect(200, effects=frozenset({LLM}))}, data={"q": "what is my tempo"}),
+
+    Row("/chat", "GET", "/chat", "K1c viewer-gated", {
+        ANON: _gate("/"),
+        GUEST: Expect(200, require=("chat_form",), effects=frozenset({LLM})),
+        USER: Expect(200, require=("chat_form",), effects=frozenset({LLM})),
+        OWNER: Expect(200, effects=frozenset({LLM}))}),
+
+    Row("/chat", "POST", "/chat", "K1c viewer-gated", {
+        ANON: _gate("/"),
+        GUEST: Expect(303, location="/chat", effects=frozenset({LLM})),
+        USER: Expect(303, location="/chat", effects=frozenset({LLM})),
+        OWNER: Expect(303, location="/chat", effects=frozenset({LLM}))},
+        data={"q": "hello"}, html=False),
+
+    Row("/analytics", "GET", "/analytics", "viewer-gated", {
+        ANON: _gate("/"),
+        GUEST: Expect(200, forbid=("classify_form",), effects=NONE),
+        USER: Expect(200, require=("classify_form",)),
+        OWNER: Expect(200, require=("classify_form",))}),
+
+    Row("/classify", "POST", "/classify", "authed + token action", {
+        ANON: _gate("/"),
+        GUEST: _gate("/"),
+        USER: Expect(200, effects=frozenset({LLM})),
+        OWNER: Expect(200, effects=frozenset({LLM}))}),
+
+    Row("/artists", "GET", "/artists", "viewer-gated", {
+        ANON: _gate("/"),
+        GUEST: Expect(200, effects=NONE),
+        USER: Expect(200),
+        OWNER: Expect(200)}),
+
+    Row("/artist/{artist_id}", "GET", f"/artist/{ARTIST}", "viewer-gated", {
+        ANON: _gate("/"),
+        GUEST: Expect(200, effects=NONE),
+        USER: Expect(200, effects=frozenset({SPOTIFY})),
+        OWNER: Expect(200, effects=frozenset({SPOTIFY}))}),
+
+    Row("/artist/{artist_id}/analyze", "POST", f"/artist/{ARTIST}/analyze",
+        "authed + corpus write", {
+            ANON: _gate("/"),
+            GUEST: _gate("/"),
+            USER: Expect(303, location=f"/artist/{ARTIST}",
+                         effects=frozenset({SPOTIFY, ENQUEUE})),
+            OWNER: Expect(303, location=f"/artist/{ARTIST}",
+                          effects=frozenset({SPOTIFY, ENQUEUE}))}, html=False),
+
+    Row("/recommend", "GET", "/recommend", "viewer-gated", {
+        ANON: _gate("/"),
+        GUEST: Expect(200, effects=NONE),
+        USER: Expect(200),
+        OWNER: Expect(200)}),
+
+    Row("/explore", "GET", "/explore", "viewer-gated", {
+        ANON: _gate("/"),
+        GUEST: Expect(200, effects=NONE),
+        USER: Expect(200),
+        OWNER: Expect(200)}),
+
+    Row("/playlists", "GET", "/playlists", "authed + scope", {
+        ANON: _gate("/"),
+        GUEST: _gate("/"),
+        USER: Expect(200, effects=frozenset({SPOTIFY})),
+        OWNER: Expect(200, effects=frozenset({SPOTIFY}))}),
+
+    Row("/playlists/{playlist_id}/analyze", "POST", f"/playlists/{PLAYLIST}/analyze",
+        "authed + scope + membership + corpus write", {
+            ANON: _gate("/"),
+            GUEST: _gate("/"),
+            USER: Expect(303, location="/playlists",
+                         effects=frozenset({SPOTIFY, ENQUEUE})),
+            OWNER: Expect(303, location="/playlists",
+                          effects=frozenset({SPOTIFY, ENQUEUE}))}, html=False),
+
+    Row("/queue", "GET", "/queue", "D-40 public", {
+        p: Expect(200, effects=NONE) for p in PERSONAS}),
+
+    # THE A7 BUG CLASS, both directions: the owner must SEE the repair queue and
+    # nobody else may. Before this row, only the env-unset case was asserted.
+    Row("/library", "GET", "/library", "D-18 public + D-56 owner affordance", {
+        ANON: Expect(200, forbid=("needs_source_tab",), effects=NONE),
+        GUEST: Expect(200, forbid=("needs_source_tab",), effects=NONE),
+        USER: Expect(200, forbid=("needs_source_tab",)),
+        OWNER: Expect(200, require=("needs_source_tab",))}),
+
+    Row("/song/{track_id}", "GET", f"/song/{TRACK}", "D-18 public + D-56 owner tools", {
+        ANON: Expect(200, forbid=("repair_link_form", "repair_upload_form"), effects=NONE),
+        GUEST: Expect(200, forbid=("repair_link_form", "repair_upload_form"), effects=NONE),
+        USER: Expect(200, forbid=("repair_link_form", "repair_upload_form")),
+        OWNER: Expect(200, require=("repair_link_form", "repair_upload_form"))}),
+
+    # V2: we HOST an uploaded file, so serving it publicly is a licensing
+    # exposure. A YouTube-sourced track is verifiable via its public link.
+    Row("/audio/{track_id}", "GET", f"/audio/{TRACK}", "V2 owner-only playback", {
+        ANON: Expect(303, location=f"/song/{TRACK}", effects=NONE),
+        GUEST: Expect(303, location=f"/song/{TRACK}", effects=NONE),
+        USER: Expect(303, location=f"/song/{TRACK}", effects=NONE),
+        OWNER: Expect(404, effects=NONE)}, html=False),  # gate passes, no file retained
+
+    # Identical status AND location for all four personas — only `effects`
+    # separates a blocked request from an executed one.
+    Row("/song/{track_id}/repair-link", "POST", f"/song/{TRACK}/repair-link",
+        "D-56 owner, fail-closed", {
+            ANON: Expect(303, location=f"/song/{TRACK}", effects=NONE),
+            GUEST: Expect(303, location=f"/song/{TRACK}", effects=NONE),
+            USER: Expect(303, location=f"/song/{TRACK}", effects=NONE),
+            OWNER: Expect(303, location=f"/song/{TRACK}",
+                          effects=frozenset({REPAIR}))},
+        data={"url": "https://youtu.be/x"}, html=False),
+
+    Row("/song/{track_id}/repair-upload", "POST", f"/song/{TRACK}/repair-upload",
+        "D-56 owner, fail-closed", {
+            ANON: Expect(303, location=f"/song/{TRACK}", effects=NONE),
+            GUEST: Expect(303, location=f"/song/{TRACK}", effects=NONE),
+            USER: Expect(303, location=f"/song/{TRACK}", effects=NONE),
+            OWNER: Expect(303, location=f"/song/{TRACK}",
+                          effects=frozenset({REPAIR}))},
+        files={"file": ("a.mp3", b"ID3fake", "audio/mpeg")}, html=False),
+
+    Row("/spectrogram/{track_id}", "GET", f"/spectrogram/{TRACK}", "D-18 public", {
+        p: Expect(404, effects=NONE) for p in PERSONAS}, html=False,
+        skip_oracle="public by D-18: 200-vs-404 is intended, not an oracle"),
+
+    Row("/logout", "POST", "/logout", "POST-only, CSRF", {
+        p: Expect(303, location="/", effects=NONE) for p in PERSONAS},
+        rotates=True, html=False),
+
+    Row("/privacy", "GET", "/privacy", "public disclosure", {
+        p: Expect(200, effects=NONE) for p in PERSONAS}),
+
+    Row("/healthz", "GET", "/healthz", "public", {
+        p: Expect(200, json_has=(("ok", True),), effects=NONE) for p in PERSONAS},
+        html=False),
+]
+
+
+# ── coverage: the matrix must EQUAL the app's route set ──────────────────────
+def test_matrix_covers_every_registered_route():
+    app = create_app()
+    live = {(r.path, m) for r in app.routes if isinstance(r, APIRoute)
+            for m in r.methods if m not in ("HEAD", "OPTIONS")}
+    covered = {(r.path, r.method) for r in MATRIX}
+    assert covered == live, (
+        f"NEW route(s) missing from the matrix: {sorted(live - covered)}; "
+        f"STALE row(s): {sorted(covered - live)}")
+    assert len(live) == 28, "route count changed — update docs/DEDUP_QA_SPEC.md too"
+
+
+def test_non_apiroute_surface_stays_an_allowlist():
+    """A Mount or a bare Starlette route is INVISIBLE to APIRoute enumeration —
+    `app.mount("/admin", admin_app)` would leave coverage green with an entire
+    un-gated sub-app live. Naming the surface makes that a failure."""
+    app = create_app()
+    others = {getattr(r, "path", str(r)) for r in app.routes
+              if not isinstance(r, APIRoute)}
+    assert others == {"/static"}, f"unlisted surface: {others}"
+
+
+def test_openapi_schema_is_not_served(matrix_app):
+    """QA-2: /docs and /redoc were closed but /openapi.json still handed any
+    anonymous caller the full surface map — every path including the owner-only
+    repair routes, with parameter shapes. The gates hold either way; this keeps
+    the map private and matches the intent already in the constructor."""
+    client, _ = client_as(matrix_app, ANON)
+    assert client.get("/openapi.json").status_code == 404
+
+
+def test_every_forbidden_marker_is_required_somewhere():
+    """THE anti-vacuity guard. If a template refactor renames a marker, every
+    `forbid` assertion using it passes trivially — the matrix stays green while
+    the gate may now leak. Requiring each forbidden marker to be REQUIRED by
+    some other cell means the rename fails loudly there instead."""
+    forbidden = {m for r in MATRIX for e in r.by.values() for m in e.forbid}
+    required = {m for r in MATRIX for e in r.by.values() for m in e.require}
+    assert forbidden <= required, f"unprovable forbids: {sorted(forbidden - required)}"
+
+
+# ── wiring: patch DATA SOURCES only, never a gate ────────────────────────────
+_CLUSTERED = [f"{p}{i}" for p in "ab" for i in range(6)]
+_TASTE = {
+    "range_ids": {"short_term": [TRACK, *_CLUSTERED[:6]],
+                  "long_term": _CLUSTERED[6:]},
+    "coverage": {"analyzed": 1, "total": 1, "analyzing": 0},
+    "profile": {"n": 1, "highlights": ["Tempo: 120 bpm — steady"],
+                "message": "Across your 1 analyzed track: steady tempo."},
+    "drift": {"label": "Low drift", "score": 0.1, "n_short": 1, "n_long": 1},
+    "artists": [{"name": "Band", "genres": "rock"}],
+    "ranges": [{"label": "Last 4 weeks",
+                "tracks": [{"name": "Hush", "artist": "Band", "analyzed": True}]}],
+}
+_FEATURES = {"tempo_bpm": 120.0, "rms_mean": 0.2, "spectral_centroid_mean": 2000.0,
+             "spectral_rolloff_mean": 4000.0, "zcr_mean": 0.05, "duration_sec": 200.0,
+             "harmonic_ratio": 0.5, "onset_strength_mean": 1.2,
+             **{f"mfcc_mean_{i}": float(i) for i in range(5)}}
+_DEMO = {"range_ids": {"short_term": [TRACK, *_CLUSTERED[:6]],
+                       "long_term": _CLUSTERED[6:]},
+         "artists": [{"name": "Band", "genres": "rock"}]}
+_CATALOG = pd.DataFrame([
+    {"column": "tempo", "tier": "measured", "unit": "bpm", "friendly": "Tempo",
+     "description": "Estimated tempo from beat tracking."},
+    {"column": "energy", "tier": "derived", "unit": "0-1", "friendly": "Energy",
+     "description": "Perceived intensity."}])
+_STATS = _CATALOG.assign(
+    n=1, mean=0.5, std=0.1, min=0.0, p5=0.1, p25=0.2, p50=0.5, p75=0.8, p95=0.9,
+    max=1.0, version="perceptual-v1",
+    bin_edges=[[0.0, 0.5, 1.0]] * 2, bin_counts=[[1, 1]] * 2)
+
+
+def _counting(name: str, fired: collections.Counter, result):
+    def _fn(*a, **k):
+        fired[name] += 1
+        return result() if callable(result) else result
+    return _fn
+
+
+@pytest.fixture
+def wiring(monkeypatch, tmp_path):
+    """Patch DATA SOURCES ONLY.
+
+    NEVER patch `is_authenticated`, `_is_viewer` or `_is_owner` here — stubbing a
+    gate would make all 112 cells a tautology. `test_owner_gate_fails_closed_
+    without_env` is the control that flips if someone does it anyway."""
+    from ..store.cache import FeatureCache
+    from ..store.clusters import train_song_clusters
+    from ..store.test_clusters import _blob_a, _blob_b
+    from .rag import TasteRAG
+
+    fired: collections.Counter = collections.Counter()
+    monkeypatch.setenv("SPOTIPY_CLIENT_ID", "test_public_client_id")
+    monkeypatch.setenv("WEBAPP_REDIRECT_URI", "http://127.0.0.1:8000/callback")
+    monkeypatch.setenv("WEBAPP_OWNER_SPOTIFY_ID", OWNER_ID)
+
+    cache = FeatureCache(f"sqlite:///{tmp_path / 'c.db'}")
+    cache.upsert(TRACK, _FEATURES)
+    cache.remember_meta([{"spotify_track_id": TRACK, "track_name": "Hush",
+                          "artist_names": "Band", "duration_ms": 200000,
+                          "primary_artist_id": ARTIST}])
+    cache.remember_provenance(spotify_track_id=TRACK, youtube_url="https://youtu.be/x",
+                              youtube_title="Hush", match_confidence=0.9)
+    cache.remember_artists([{"artist_id": ARTIST, "artist_name": "Band",
+                             "genres": "rock"}])
+    # A TRAINED cluster model, so /analytics renders its archetype block. Without
+    # one the block is absent and "guest must not see the classify form" would
+    # pass because the form isn't there for ANYONE — a vacuous gate assertion.
+    for i in range(6):
+        cache.upsert(f"a{i}", _blob_a(i))
+        cache.upsert(f"b{i}", _blob_b(i))
+    cache.remember_meta([{"spotify_track_id": f"{p}{i}", "track_name": f"T{p}{i}",
+                          "artist_names": "Band"} for p in "ab" for i in range(6)])
+    for p in "ab":
+        for i in range(6):
+            cache.remember_provenance(spotify_track_id=f"{p}{i}",
+                                      youtube_url=f"https://youtu.be/{p}{i}")
+    assert train_song_clusters(cache, coords="pca") is not None
+    real_enqueue = cache.enqueue
+
+    def counting_enqueue(ids):
+        fired[ENQUEUE] += 1
+        return real_enqueue(ids)
+    monkeypatch.setattr(cache, "enqueue", counting_enqueue)
+    monkeypatch.setattr("src.webapp.app._feature_cache", lambda: cache)
+
+    for fn, result in (("fetch_top_tracks", lambda: pd.DataFrame()),
+                       ("fetch_top_artists", lambda: pd.DataFrame()),
+                       ("fetch_artist_top_tracks", lambda: pd.DataFrame()),
+                       ("fetch_user_playlists", lambda: []),
+                       ("fetch_playlist_tracks", lambda: [])):
+        monkeypatch.setattr(f"src.webapp.app.{fn}", _counting(SPOTIFY, fired, result))
+    monkeypatch.setattr("src.webapp.app.auth_web.client_from_session",
+                        lambda s, **k: SimpleNamespace(
+                            me=lambda: {"id": s.get("me_id") or "someone"}))
+
+    # Each surface reads a different key off the reply — stub the real shapes so
+    # a cell fails on its GATE, never on a mis-shaped fixture.
+    reply = {"answer": "steady tempo", "source": "fallback", "model": None,
+             "grounding": "", "raw": "", "cited": []}
+    for meth in ("answer", "story"):
+        monkeypatch.setattr(TasteRAG, meth, _counting(LLM, fired, lambda: dict(reply)))
+    monkeypatch.setattr(TasteRAG, "classify", _counting(
+        LLM, fired, lambda: {**reply, "narrative": "You are a steady listener."}))
+    monkeypatch.setattr("src.store.repair.repair_from_link",
+                        _counting(REPAIR, fired, (True, "ok")))
+    monkeypatch.setattr("src.store.repair.repair_from_upload",
+                        _counting(REPAIR, fired, (True, "ok")))
+
+    # Marts are gitignored and absent on CI, so the explore/recommend surfaces
+    # get SHAPED stubs — an empty frame would fail on a missing column and hide
+    # the gate behind a 500. Two features is enough for every x/y picker.
+    monkeypatch.setattr("src.webapp.app.load_catalog", lambda *a, **k: _CATALOG.copy())
+    # load_stats() returns the frame INDEXED BY COLUMN — mirror that exactly, or
+    # the stub diverges from production and the surface fails for the wrong reason.
+    monkeypatch.setattr("src.webapp.app.load_stats",
+                        lambda *a, **k: _STATS.copy().set_index("column"))
+    monkeypatch.setattr("src.webapp.app.load_demo_profile", lambda: _DEMO)
+    yield SimpleNamespace(cache=cache, fired=fired)
+
+
+def _seed(persona: str) -> str:
+    """Return the RAW sid for a persona (never a pre-signed cookie, so the echo
+    assertion can compare what the server resolved)."""
+    from .app import _store
+    sid = _store.new()
+    sess = _store.get(sid)
+    if persona is GUEST:
+        sess["is_guest"] = True
+        sess["taste"] = _TASTE
+    elif persona in (USER, OWNER):
+        sess["token"] = {"access_token": "x"}
+        sess["taste"] = _TASTE
+        sess["me_id"] = OWNER_ID if persona is OWNER else "someone_else"
+    return sid
+
+
+def client_as(app, persona: str) -> tuple[TestClient, Optional[str]]:
+    """A FRESH client per cell — no jar can be inherited by construction, which
+    is journal #51's root cause removed structurally rather than worked around.
+    follow_redirects=False so a 303 gate can never silently read as a 200."""
+    from .app import _signer
+    c = TestClient(app, follow_redirects=False)
+    if persona is ANON:
+        assert not list(c.cookies.jar)
+        return c, None
+    sid = _seed(persona)
+    c.cookies.set(config.SESSION_COOKIE, _signer.sign(sid))
+    jar = [k for k in c.cookies.jar if k.name == config.SESSION_COOKIE]
+    assert len(jar) == 1, f"duplicate session cookies: {[(k.domain, k.path) for k in jar]}"
+    return c, sid
+
+
+def _assert_identity_echo(resp, sid, *, rotates: bool):
+    """The version-INDEPENDENT proof that the request was served AS this persona:
+    the middleware re-sets the cookie with the sid it actually resolved. A
+    stale-jar bug shows up here as a different sid — the failure that hid on CI
+    for twelve commits while every behavioural assertion passed."""
+    from .app import _signer
+    raw = resp.cookies.get(config.SESSION_COOKIE)
+    if sid is None or raw is None:
+        return
+    served = _signer.unsign(raw)
+    if rotates:
+        assert served != sid, "expected a session rotation, got the same id"
+    else:
+        assert served == sid, f"served session {served!r}, seeded {sid!r}"
+
+
+@pytest.fixture(scope="module")
+def matrix_app():
+    return create_app()
+
+
+_CELLS = [(row, p) for row in MATRIX for p in PERSONAS]
+
+
+@pytest.mark.parametrize("row,persona", _CELLS,
+                         ids=[f"{r.method} {r.path}[{p}]" for r, p in _CELLS])
+def test_route_matrix(matrix_app, wiring, row: Row, persona: str):
+    exp = row.by[persona]
+    client, sid = client_as(matrix_app, persona)
+    kwargs: dict[str, Any] = {}
+    if row.data:
+        kwargs["data"] = row.data
+    if row.files:
+        kwargs["files"] = row.files
+    resp = client.request(row.method, row.url, **kwargs)
+
+    assert resp.status_code == exp.status, (
+        f"{row.method} {row.url} as {persona} ({row.decision}): "
+        f"expected {exp.status}, got {resp.status_code}")
+    if exp.location is not None:
+        assert resp.headers.get("location") == exp.location
+    for frag in exp.location_has:
+        assert frag in resp.headers.get("location", ""), frag
+    for frag in exp.forbid_text:
+        assert frag not in resp.headers.get("location", "").lower()
+        assert frag not in resp.text.lower()
+
+    body = resp.text
+    require = tuple(exp.require)
+    forbid = tuple(exp.forbid)
+    if row.html and exp.status == 200:
+        require += GLOBAL_REQUIRE_HTML
+        forbid += GLOBAL_FORBID_HTML
+    for m in require:
+        assert MARKERS[m] in body, f"{row.url} as {persona}: missing marker {m}"
+    for m in forbid:
+        assert MARKERS[m] not in body, f"{row.url} as {persona}: LEAKED marker {m}"
+    for key, val in exp.json_has:
+        assert resp.json()[key] == val
+
+    # THE security assertion: status and location cannot distinguish a blocked
+    # request from an executed one on the repair routes — this can.
+    leaked = set(wiring.fired) - set(exp.effects)
+    assert not leaked, (
+        f"{row.method} {row.url} as {persona}: side effect(s) {sorted(leaked)} "
+        f"fired despite the gate (status {resp.status_code} looked correct)")
+    _assert_identity_echo(resp, sid, rotates=row.rotates)
+
+
+# ── the controls ─────────────────────────────────────────────────────────────
+@pytest.mark.parametrize("persona,url,marker", [
+    (GUEST, "/analytics", "chat_form"),          # guests reach viewer surfaces
+    (USER, "/library", "logout_form"),           # authed chrome
+    (OWNER, "/library", "needs_source_tab"),     # the owner gate really opens
+])
+def test_persona_is_really_that_persona(matrix_app, wiring, persona, url, marker):
+    """If seeding drifts from the gate (someone re-keys `is_guest`), the guest
+    persona silently degrades to anon and every cell where guest == anon goes
+    VACUOUSLY green — 9 of the blind cells this file adds. This makes that
+    degradation a hard failure instead of a quiet one."""
+    client, _ = client_as(matrix_app, persona)
+    if marker == "chat_form":
+        assert client.get("/chat").status_code == 200
+    else:
+        assert MARKERS[marker] in client.get(url).text
+
+
+def test_guest_route_does_not_hijack_a_logged_in_session(matrix_app, wiring):
+    """QA-2 bug: /guest overwrote session["taste"] with the owner's published
+    snapshot and set is_guest — for ANYONE, including a logged-in pilot user. The
+    victim then saw the owner's taste rendered as their own on /analytics,
+    /explore and /artists until they next loaded /dashboard. Both personas still
+    land on /dashboard; only the authenticated one keeps its own session."""
+    from .app import _signer, _store
+    client, sid = client_as(matrix_app, USER)
+    before = dict(_store.get(sid)["taste"])
+    r = client.get("/guest")
+    assert r.status_code == 303 and r.headers["location"] == "/dashboard"
+    served = _signer.unsign(r.cookies.get(config.SESSION_COOKIE)) or sid
+    sess = _store.get(served)
+    assert sess["taste"] == before, "an authed session's taste was overwritten"
+    assert not sess.get("is_guest"), "a logged-in user was marked a guest"
+
+
+def test_owner_gate_fails_closed_without_env(matrix_app, wiring, monkeypatch):
+    """The control that FLIPS. If someone stubs the owner gate open to "simplify
+    the fixture", every OWNER cell still passes — but this one must fail. It
+    also re-proves D-56's fail-closed posture at the route layer."""
+    monkeypatch.delenv("WEBAPP_OWNER_SPOTIFY_ID", raising=False)
+    client, _ = client_as(matrix_app, OWNER)
+    assert MARKERS["repair_link_form"] not in client.get(f"/song/{TRACK}").text
+    assert MARKERS["needs_source_tab"] not in client.get("/library").text
+    assert client.get(f"/audio/{TRACK}").status_code == 303
+    client.post(f"/song/{TRACK}/repair-link", data={"url": "https://youtu.be/x"})
+    assert REPAIR not in wiring.fired, "the repair engine ran with the gate closed"
+
+
+_ORACLE = [r for r in MATRIX
+           if "{track_id}" in r.path and not r.skip_oracle]
+
+
+@pytest.mark.parametrize("persona", [ANON, GUEST, USER])
+@pytest.mark.parametrize("row", _ORACLE, ids=[f"{r.method} {r.path}" for r in _ORACLE])
+def test_gate_runs_before_existence_no_oracle(matrix_app, wiring, row, persona):
+    """The /spectrogram lesson generalised: a non-privileged caller must get the
+    SAME answer for a track that exists and one that does not, or the status code
+    is an existence oracle over the corpus."""
+    client, _ = client_as(matrix_app, persona)
+    kwargs: dict[str, Any] = {}
+    if row.data:
+        kwargs["data"] = row.data
+    if row.files:
+        kwargs["files"] = row.files
+    a = client.request(row.method, row.url, **kwargs)
+    b = client.request(row.method, row.url.replace(TRACK, "nope9"), **kwargs)
+    norm = lambda r, t: (r.status_code,  # noqa: E731
+                         r.headers.get("location", "").replace(t, "X"))
+    assert norm(a, TRACK) == norm(b, "nope9"), (
+        f"{row.method} {row.path} as {persona}: existing and missing tracks "
+        "answer differently — an enumeration oracle")
