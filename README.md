@@ -60,11 +60,15 @@ point-in-time star-schema snapshot (see "two data planes" below)
 **Two data planes, one bridge key.** The **live serving plane** (SQLite+WAL
 cache + Parquet feature marts) is what the app renders and what the corpus
 numbers above describe — continuously grown, provenance-tracked. The **batch
-star-schema warehouse** (Bronze→Silver→Gold) is a *reproducible* artifact —
-one command rebuilds it from a fresh pull — and the committed snapshot the MCP
-server and the taste map read is a point-in-time build (118 tracks). Same
-bridge key, same 77-dim contract; unifying the two behind one materialization
-path is a tracked next slice.
+star-schema warehouse** (Bronze→Silver→Gold) is a *reproducible* artifact. Its
+**catalog** (`dim_tracks` + a track-grain `fact_track_features`) is materialized
+straight from the serving cache by one exporter, so the MCP server reads the
+same canonical corpus the app serves, and a `GOLD_PLANE_STALE` audit check keeps
+them in agreement. Its **temporal-drift fact** (`fact_listening_features`, the
+per-listening-window grain behind the taste map) stays a point-in-time snapshot
+by design — that grain is per-user listening rank, which can't be honestly
+reproduced for the user-agnostic grown corpus without fabricating it. Same
+bridge key, same 77-dim contract throughout.
 
 ```bash
 uv sync                         # reproducible env from uv.lock

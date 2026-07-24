@@ -1293,6 +1293,19 @@ path). Resolved:
   D-60 (the real slice) → re-run both audits ALL-clear → Phase 4.5 EXITS →
   Phase 5 (MPD).
 
+🏁 **PHASE 4.5 HAS EXITED (2026-07-24).** All 7 D-55 criteria met. **D-59
+shipped** (B4 was one wrong acquisition — Taylor Swift "TTPD", a 2h source
+stored as a 4-min song that slipped the guard on a missing Spotify duration —
+NOT legit DJ mixes; quarantined + `implausible_duration` hardened for the
+unknown-length case, so the audit rule stayed strict and cleared honestly, not
+gate-masked). **D-60 shipped** (the cache→gold catalog exporter: `dim_tracks` +
+track-grain `fact_track_features` from the serving cache = 730 canonical,
+DUPLICATE_TRACKS cleared; `fact_listening_features` drift plane left as an
+honest snapshot per the REAL-data grain call; new `GOLD_PLANE_STALE` agreement
+check). **Both audits clear: warehouse ALL FLAGS FALSE, qa_audit 0-failed; 597
+tests, CI green.** Corpus: 730 canonical aggregate (TTPD out). Next: **Phase 5
+(MPD/Spark)** — launches from a defensibly-complete base, as D-55 intended.
+
 ## Phase 5 — MPD (Epic J, un-changed shape, now sequenced)
 
 The saved plan holds (metadata-only, D-26; Spark un-parks on the real 66M rows,

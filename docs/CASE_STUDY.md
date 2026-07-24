@@ -180,15 +180,17 @@ at the cost of one person's attention.
 
 **Shipped:** a grounded, injection-gated, logged **"talk to your data" chat**
 (evals designed before the thing they judge; a read-only SQL tool loop over the
-semantic marts behind a binary never-averaged injection gate) and the full
-**provenance & data-quality spine** of §3. Chat runs on a local model at $0.
+semantic marts behind a binary never-averaged injection gate); the full
+**provenance & data-quality spine** of §3; and the **catalog-plane
+unification** — one exporter materializes the batch star-schema's `dim_tracks` +
+track-grain fact straight from the serving cache, so the MCP layer reads the
+same canonical corpus the app serves, with a `GOLD_PLANE_STALE` audit check
+holding the two in agreement. The temporal-drift fact behind the taste map
+stays a point-in-time snapshot on purpose: its grain is per-user listening rank,
+which can't be honestly reproduced for the user-agnostic grown corpus. Chat runs
+on a local model at $0.
 
 **Next:**
-
-- **Unify the two data planes** — one materialization path from the live
-  serving corpus into the batch star-schema, so the MCP layer and the taste map
-  read the same 731 tracks the app does, and a plane-agreement check joins the
-  audit.
 - **The Million Playlist Dataset at Spark scale** — 66M real playlist-track
   rows for co-occurrence marts and track2vec embeddings, unlocked only when
   real data volume demands it (the honest at-scale benchmark, not a synthetic one).
