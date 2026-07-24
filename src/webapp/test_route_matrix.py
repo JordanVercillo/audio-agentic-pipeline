@@ -30,6 +30,7 @@ the existing CI job with no corpus, no Ollama and no network.
 from __future__ import annotations
 
 import collections
+import json
 from dataclasses import dataclass
 from types import SimpleNamespace
 from typing import Any, Optional
@@ -409,6 +410,26 @@ def wiring(monkeypatch, tmp_path):
     monkeypatch.setattr(cache, "enqueue", counting_enqueue)
     monkeypatch.setattr("src.webapp.app._feature_cache", lambda: cache)
 
+    # The D-56 repair queue is read from the re-extract LEDGER ON DISK, and the
+    # owner's "Needs source" tab renders only when that queue is non-empty. On
+    # this machine the real ledger has entries; on CI the file does not exist,
+    # so the owner cell passed locally and failed on CI — the precise
+    # works-on-my-box class this matrix exists to eliminate. Supply a ledger
+    # with one entry (a track with metadata and deliberately NO provenance, so
+    # it is genuinely unresolved) and the cell becomes machine-independent.
+    cache.remember_meta([{"spotify_track_id": "needsrc1", "track_name": "No Source",
+                          "artist_names": "Band"}])
+    ledger = tmp_path / "ledger.json"
+    ledger.write_text(json.dumps(
+        {"failed": {"needsrc1": {"error": "no usable source — title mismatch"}}}),
+        encoding="utf-8")
+    monkeypatch.setattr("src.webapp.app._LEDGER_PATH", ledger)
+    # Same discipline for every other path the routes stat: retained owner audio
+    # (/audio) and spectrograms (/song). Pointing them at tmp means no cell can
+    # read this box's data/ directory and quietly answer differently than CI.
+    monkeypatch.setattr("src.webapp.app._OWNER_AUDIO_DIR", tmp_path / "owner_audio")
+    monkeypatch.setattr("src.webapp.app._SPECTROGRAM_DIR", tmp_path / "spectrograms")
+
     for fn, result in (("fetch_top_tracks", lambda: pd.DataFrame()),
                        ("fetch_top_artists", lambda: pd.DataFrame()),
                        ("fetch_artist_top_tracks", lambda: pd.DataFrame()),
@@ -561,6 +582,18 @@ def test_persona_is_really_that_persona(matrix_app, wiring, persona, url, marker
         assert client.get("/chat").status_code == 200
     else:
         assert MARKERS[marker] in client.get(url).text
+
+
+def test_owner_repair_queue_comes_from_the_FIXTURE_not_this_machine(matrix_app, wiring):
+    """The owner cell first failed on CI while passing locally, because the
+    "Needs source" tab reads a ledger file that exists in this repo's data/ and
+    not on a fresh checkout. Asserting the COUNT is exactly the fixture's one
+    entry proves the patch took: if the real ledger ever leaks back in, this
+    reads ~65 and fails here rather than diverging silently between machines."""
+    client, _ = client_as(matrix_app, OWNER)
+    body = client.get("/library").text
+    assert 'href="/library?filter=needs-source"' in body
+    assert "Needs source <b>1</b>" in body, "the repair queue is not the fixture's"
 
 
 def test_guest_route_does_not_hijack_a_logged_in_session(matrix_app, wiring):
