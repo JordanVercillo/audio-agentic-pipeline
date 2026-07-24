@@ -65,6 +65,45 @@ def test_annotate_dupes_resolves_canonical_name():
     assert same["c"] == "Anthem" and same["a"] is None and same["b"] is None
 
 
+def test_queue_state_tells_coming_apart_from_stopped():
+    # The catalog used to render "analyzing…" for ANY unanalyzed track, so 40+
+    # permanently-failed tracks advertised work that had already stopped.
+    rows = [{"id": "live", "analyzed": False}, {"id": "dead", "analyzed": False},
+            {"id": "retry", "analyzed": False}, {"id": "never", "analyzed": False},
+            {"id": "done", "analyzed": True}]
+    states = {"live": ("queued", 1), "dead": ("failed", 3), "retry": ("failed", 1)}
+    got = {r["id"]: r["queue_state"]
+           for r in library.annotate_queue_state(rows, states, max_attempts=3)}
+    assert got["live"] == "analyzing"        # genuinely in flight
+    assert got["dead"] == "no_source"        # dead-lettered: enqueue never retries
+    assert got["retry"] == "analyzing"       # under the cap → re-queued later
+    assert got["never"] is None              # no job row → make no claim
+    assert got["done"] is None               # analyzed rows are untouched
+
+
+def test_running_job_also_reads_as_analyzing():
+    rows = library.annotate_queue_state(
+        [{"id": "r", "analyzed": False}], {"r": ("running", 1)})
+    assert rows[0]["queue_state"] == "analyzing"
+
+
+def test_job_states_reports_status_and_attempts(cache):
+    cache.remember_meta([{"spotify_track_id": "j1", "track_name": "J", "artist_names": "A"}])
+    cache.enqueue(["j1"])
+    assert cache.job_states()["j1"][0] == "queued"
+    # the real lifecycle: a dashboard visit re-queues a failure under the cap,
+    # so it takes MAX_ATTEMPTS rounds to actually dead-letter
+    for _ in range(3):
+        cache.enqueue(["j1"])
+        cache.claim_next()
+        cache.fail("j1", "no usable source — title mismatch")
+    status, attempts = cache.job_states()["j1"]
+    assert status == "failed" and attempts >= 3          # dead-lettered
+    rows = library.annotate_queue_state([{"id": "j1", "analyzed": False}],
+                                        cache.job_states())
+    assert rows[0]["queue_state"] == "no_source"
+
+
 def test_why_n_derives_from_top_limit():
     txt = library.why_n_analyzed(39, top_limit=50)
     assert "39" in txt and "50" in txt and "150" in txt  # 50 × 3 ceiling

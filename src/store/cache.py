@@ -1016,6 +1016,20 @@ class FeatureCache:
         dists.sort(key=lambda x: x[1])
         return dists[:k]
 
+    def job_states(self) -> dict[str, tuple[str, int]]:
+        """{track_id: (status, attempts)} for every track that has a job row.
+
+        The /library catalog needs to tell "work is coming" apart from "work
+        stopped": a dead-lettered track (failed at MAX_ATTEMPTS) is never
+        retried, so rendering it as "analyzing…" promises a result that will
+        never arrive. Whole-table read by design — the catalog already loads
+        every row."""
+        with self._Session() as s:
+            rows = s.execute(select(ExtractionJob.spotify_track_id,
+                                    ExtractionJob.status,
+                                    ExtractionJob.attempts)).all()
+        return {tid: (status, int(attempts or 0)) for tid, status, attempts in rows}
+
     def job_status(self, track_ids: list[str]) -> dict[str, int]:
         """Progress for a visitor's set: total / cached / queued / running / failed."""
         ids = list(dict.fromkeys(track_ids))

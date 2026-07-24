@@ -32,6 +32,37 @@ def annotate_dupes(rows: list[dict]) -> list[dict]:
     return rows
 
 
+def annotate_queue_state(rows: list[dict], job_states: dict,
+                         max_attempts: int = 3) -> list[dict]:
+    """Attach `queue_state` to every unanalyzed row: "analyzing" | "no_source" | None.
+
+    The catalog used to render "analyzing…" for ANY unanalyzed track, so the
+    tracks whose acquisition permanently failed advertised work that had
+    already stopped — 40+ of them, indefinitely. That is the same lie
+    "download failed" told when conversion failed (QA_PLAN B6): the UI naming
+    the nearest generic state instead of what actually happened.
+
+    A job dead-letters at `max_attempts` and `enqueue` never retries it, so it
+    is honestly finished; a failure UNDER the cap is re-queued on the next
+    dashboard visit that includes the track, so it is honestly still coming.
+    No job row at all → no claim (blank): metadata-only rows were never
+    requested. Analyzed rows are left untouched."""
+    for r in rows:
+        if r.get("analyzed"):
+            r["queue_state"] = None
+            continue
+        status, attempts = job_states.get(r["id"], (None, 0))
+        if status in ("queued", "running"):
+            r["queue_state"] = "analyzing"
+        elif status == "failed" and attempts >= max_attempts:
+            r["queue_state"] = "no_source"
+        elif status == "failed":
+            r["queue_state"] = "analyzing"      # under the cap → re-queued later
+        else:
+            r["queue_state"] = None
+    return rows
+
+
 def consolidate_rows(rows: list[dict], *, expand: bool = False) -> list[dict]:
     """Collapse twin rows under their canonical (O3c — DISPLAY only, red-team
     #5: the group is counted and named BEFORE any row is dropped, and the twin

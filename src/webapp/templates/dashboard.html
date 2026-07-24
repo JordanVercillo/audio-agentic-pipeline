@@ -94,7 +94,8 @@
       {% if a.image %}<img class="avatar" src="{{ a.image }}" alt="" loading="lazy">
       {% else %}<span class="avatar avatar-ph">{{ a.name[:1]|upper }}</span>{% endif %}
       <div class="ameta">
-        <span class="aname">{{ a.name }}</span>
+        {% if a.artist_id %}<a class="aname" href="/artist/{{ a.artist_id }}">{{ a.name }}</a>
+        {% else %}<span class="aname">{{ a.name }}</span>{% endif %}
         {% if a.genres %}<span class="genres">{{ a.genres }}</span>{% endif %}
       </div>
     </div>

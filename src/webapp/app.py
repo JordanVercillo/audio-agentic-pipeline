@@ -314,7 +314,10 @@ def guest_dashboard_context(prof: dict[str, Any], cache: FeatureCache) -> dict[s
         stored = by_name.get((a.get("name") or "").lower(), {})
         artists.append({"name": a.get("name", ""),
                         "genres": stored.get("genres") or a.get("genres", ""),
-                        "image": stored.get("image_url")})
+                        "image": stored.get("image_url"),
+                        # D-54: guests get the same profile links (the snapshot
+                        # carries names; the id comes from stored artist_meta)
+                        "artist_id": stored.get("artist_id")})
     per_range_rows = {k: [cached[i] for i in ids if i in cached]
                       for k, ids in range_ids.items()}
     return {
@@ -352,6 +355,10 @@ def _top_artists(client: Any, cache: Optional[FeatureCache] = None,
             "name": r.get("artist_name", ""),
             "genres": r.get("genres", ""),
             "image": r.get("image_url"),
+            # D-54: the dashboard cards link to /artist/{id}. The id was always
+            # in this frame (it is what remember_artists keys on) and was simply
+            # dropped on the way to the template — so the link costs no API call.
+            "artist_id": r.get("artist_id"),
         }
         for _, r in df.head(limit).iterrows()
     ]
@@ -1196,7 +1203,9 @@ def create_app() -> FastAPI:
         # O3c: one row per RECORDING by default; ?dupes=all expands the twins
         expand_dupes = params.get("dupes") == "all"
         rows = library_view_mod.consolidate_rows(
-            library_view_mod.annotate_dupes(cache.library_rows()),
+            library_view_mod.annotate_queue_state(
+                library_view_mod.annotate_dupes(cache.library_rows()),
+                cache.job_states()),
             expand=expand_dupes)
         # D-56: the owner's repair queue — acquisition failures awaiting a
         # pasted link / uploaded file. Owner-only (ops data, fail-closed).

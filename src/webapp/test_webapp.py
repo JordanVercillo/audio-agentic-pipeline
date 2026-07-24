@@ -1827,6 +1827,36 @@ def test_dashboard_progress_region_toggles_on_analyzing():
     assert "va-prog-fill" not in done and "/status" not in done    # no poller when complete
 
 
+def test_dashboard_top_artists_link_to_their_profile():
+    # D-54: the cards were inert divs while /artist/{id} existed and the id was
+    # already in the fetched frame — the link costs no extra API call.
+    from .app import templates
+    html = templates.env.get_template("dashboard.html").render(
+        authed=True, coverage={"analyzed": 1, "total": 1, "analyzing": 0}, ranges=[],
+        artists=[{"name": "Muse", "genres": "rock", "artist_id": "ar1"},
+                 {"name": "Unknown", "genres": "", "artist_id": None}])
+    assert '<a class="aname" href="/artist/ar1">Muse</a>' in html
+    # an artist we have no id for stays plain text rather than a broken link
+    assert '<span class="aname">Unknown</span>' in html
+
+
+def test_library_says_no_source_not_analyzing_for_dead_letters():
+    # The honesty fix: a permanently-failed track must not advertise pending work.
+    from .app import templates
+    html = templates.env.get_template("library.html").render(
+        rows=[{"id": "a", "name": "Live", "artist": "A", "analyzed": False,
+               "queue_state": "analyzing"},
+              {"id": "b", "name": "Dead", "artist": "A", "analyzed": False,
+               "queue_state": "no_source"},
+              {"id": "c", "name": "Quiet", "artist": "A", "analyzed": False,
+               "queue_state": None}],
+        tab="all", q="", sort="name", order="asc", sort_options=["name"],
+        shown=3, total=3, analyzed=0, my_count=0, viewer=False, authed=False)
+    assert html.count("analyzing…") == 1            # only the live one
+    assert "no source" in html and "Analysis stopped" in html
+    assert html.count('href="/queue"') == 1         # no queue link on a stopped row
+
+
 def test_ask_without_dashboard_redirects_to_dashboard(client):
     client.cookies.set(config.SESSION_COOKIE, _seed_session(taste=None))
     r = client.post("/ask", data={"q": "hi"}, follow_redirects=False)
