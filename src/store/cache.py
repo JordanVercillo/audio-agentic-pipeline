@@ -1212,31 +1212,42 @@ class FeatureCache:
                                  .where(ExtractionJob.status.in_(
                                      (JOB_QUEUED, JOB_RUNNING)))).scalar() or 0)
 
-    def remember_playlist_tracks(self, playlist_id: str, track_ids: list[str]) -> int:
+    def remember_playlist_tracks(self, playlist_id: str, track_ids: list[str],
+                                 *, replace: bool = False) -> int:
         """Record which tracks a playlist contained, at import time.
 
-        Membership is what lets /playlists say "X of Y analyzed" per card. It is
-        only knowable for a playlist we have actually fetched, so it is written
-        HERE and never inferred: a card for a playlist you've not imported stays
-        honestly blank rather than guessing.
+        Membership is what lets /playlists say "N of M analyzed" per card, and
+        what tells the next import where to resume. It is only knowable for a
+        playlist we have actually fetched, so it is written HERE and never
+        inferred: a card for a playlist you've not imported stays honestly blank.
 
-        Replaces the playlist's rows wholesale — a playlist is mutable upstream,
-        so the latest import is the truth. Soft refs both ways: no foreign key,
-        no bridge-key minting, nothing joins on playlist_id."""
+        MERGE by default, because a capped import reads only a PREFIX of a large
+        playlist — replacing would make each click forget what the last one
+        learned, and the resume offset would never advance. `replace=True` is
+        for a walk that reached the END and therefore knows the full membership,
+        so a track removed upstream can actually leave.
+
+        Soft refs both ways: no foreign key, no bridge-key minting, nothing
+        joins on playlist_id."""
         if not playlist_id or not track_ids:
             return 0
         with self._Session() as s:
-            for r in s.execute(select(PlaylistTrack).where(
-                    PlaylistTrack.playlist_id == playlist_id)).scalars().all():
-                s.delete(r)
-            s.flush()
-            seen: set[str] = set()
-            for tid in track_ids:
-                if isinstance(tid, str) and tid and tid not in seen:
-                    seen.add(tid)
-                    s.add(PlaylistTrack(playlist_id=playlist_id, spotify_track_id=tid))
+            existing = {r.spotify_track_id for r in s.execute(
+                select(PlaylistTrack).where(
+                    PlaylistTrack.playlist_id == playlist_id)).scalars().all()}
+            incoming = {t for t in track_ids if isinstance(t, str) and t}
+            if replace:
+                for r in s.execute(select(PlaylistTrack).where(
+                        PlaylistTrack.playlist_id == playlist_id,
+                        PlaylistTrack.spotify_track_id.notin_(incoming)
+                        if incoming else True)).scalars().all():
+                    s.delete(r)
+                s.flush()
+                existing &= incoming
+            for tid in incoming - existing:
+                s.add(PlaylistTrack(playlist_id=playlist_id, spotify_track_id=tid))
             s.commit()
-            return len(seen)
+            return len(incoming | existing) if not replace else len(incoming)
 
     def playlist_track_ids(self) -> dict[str, list[str]]:
         """{playlist_id: [track_id, …]} for every playlist we've imported."""

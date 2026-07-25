@@ -52,6 +52,7 @@ from .fetchers import (
     fetch_track_metadata,
     fetch_user_playlists,
     fetch_user_profile,
+    iter_playlist_track_pages,
     search_tracks,
 )
 
@@ -80,7 +81,7 @@ __all__ = [
     "fetch_top_tracks", "fetch_top_artists", "fetch_all_top_items",
     "fetch_artists_by_ids",
     "fetch_track_metadata", "fetch_batch_metadata",
-    "fetch_user_playlists", "fetch_playlist_tracks",
+    "fetch_user_playlists", "fetch_playlist_tracks", "iter_playlist_track_pages",
     "search_tracks", "fetch_user_profile",
     # Audio Download (Phase 1)
     "DownloadConfig",

@@ -433,9 +433,11 @@ def wiring(monkeypatch, tmp_path):
     for fn, result in (("fetch_top_tracks", lambda: pd.DataFrame()),
                        ("fetch_top_artists", lambda: pd.DataFrame()),
                        ("fetch_artist_top_tracks", lambda: pd.DataFrame()),
-                       ("fetch_user_playlists", lambda: []),
-                       ("fetch_playlist_tracks", lambda: [])):
+                       ("fetch_user_playlists", lambda: pd.DataFrame())):
         monkeypatch.setattr(f"src.webapp.app.{fn}", _counting(SPOTIFY, fired, result))
+    # the import walks pages now (it never drains a playlist) — one empty page
+    monkeypatch.setattr("src.webapp.app.iter_playlist_track_pages",
+                        _counting(SPOTIFY, fired, lambda: iter([([], True)])))
     monkeypatch.setattr("src.webapp.app.auth_web.client_from_session",
                         lambda s, **k: SimpleNamespace(
                             me=lambda: {"id": s.get("me_id") or "someone"}))

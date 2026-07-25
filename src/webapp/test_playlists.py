@@ -120,9 +120,12 @@ class _FakeCache:
         self.remembered: list = []
         self.playlist_members: dict = {}
 
-    def remember_playlist_tracks(self, playlist_id, track_ids):
-        self.playlist_members[playlist_id] = list(track_ids)
-        return len(track_ids)
+    def remember_playlist_tracks(self, playlist_id, track_ids, *, replace=False):
+        # mirrors the real merge-unless-complete semantics
+        prev = [] if replace else self.playlist_members.get(playlist_id, [])
+        merged = list(dict.fromkeys([*prev, *track_ids]))
+        self.playlist_members[playlist_id] = merged
+        return len(merged)
 
     def playlist_track_ids(self):
         return dict(self.playlist_members)
@@ -150,46 +153,46 @@ def _mock_membership(monkeypatch):
 
 
 def _big_playlist(monkeypatch, n=2000):
-    big = pd.DataFrame([{"spotify_track_id": f"t{i}", "track_name": f"S{i}",
-                         "artist_names": "A"} for i in range(n)])
-    monkeypatch.setattr("src.webapp.app.fetch_playlist_tracks", lambda pid, c: big)
+    """A big playlist served page by page (the route pages now, it never drains)."""
+    def _iter(pid, sp=None, limit=50, start_offset=0):
+        off = start_offset
+        while off < n:
+            yield ([{"spotify_track_id": f"t{i}", "track_name": f"S{i}",
+                     "artist_names": "A"}
+                    for i in range(off, min(off + 50, n))], off + 50 >= n)
+            off += 50
+    monkeypatch.setattr("src.webapp.app.iter_playlist_track_pages", _iter)
     return _FakeCache(cached={f"t{i}" for i in range(30)},      # first 30 analyzed
                       active={f"t{i}" for i in range(30, 50)})  # next 20 already queued
 
 
-def test_analyze_imports_the_WHOLE_playlist_and_lands_on_the_queue(client, monkeypatch):
-    """Owner call 2026-07-25: "I want to be able to upload an entire playlist."
+def test_analyze_lands_on_the_queue_and_skips_before_it_caps(client, monkeypatch):
+    """Analyze lands on /queue, not /playlists: the visitor gets VISIBLE proof
+    the tracks were queued, and we skip re-fetching every playlist over the
+    network (most of what made Analyze feel frozen).
 
-    The 100-track cap silently truncated a 1000-track playlist and demanded ten
-    more clicks. Uncapped, one Analyze queues everything genuinely new — the
-    already-analyzed and already-queued are still skipped first, so the count is
-    honest rather than merely large.
-
-    It also lands on /queue, not /playlists: the visitor gets VISIBLE proof the
-    tracks were queued, and we skip re-fetching every playlist over the network
-    (most of what made Analyze feel frozen)."""
-    _mock_membership(monkeypatch)
-    fake = _big_playlist(monkeypatch)
-    monkeypatch.setattr("src.webapp.app._feature_cache", lambda: fake)
-    client.cookies.set(config.SESSION_COOKIE, _seed_session(scope=config.SCOPES))
-    r = client.post("/playlists/mine1/analyze", follow_redirects=False)
-    assert r.status_code == 303 and r.headers["location"] == "/queue"
-    assert fake.enqueued == [f"t{i}" for i in range(50, 2000)]   # all 1950 new ones
-    # membership recorded for the coverage line, over the FULL playlist
-    assert len(fake.playlist_members["mine1"]) == 2000
-
-
-def test_an_explicit_cap_still_truncates(client, monkeypatch):
-    """The cap didn't disappear, it defaults to off — WEBAPP_PLAYLIST_IMPORT_CAP
-    still bounds an import for anyone who wants that, and the skip-then-cap
-    ordering (session 36) is unchanged."""
+    Skip-then-cap (session 36) still holds — the 50 already analyzed/queued are
+    passed over before the cap is spent, so a repeat click walks deeper."""
     _mock_membership(monkeypatch)
     fake = _big_playlist(monkeypatch)
     monkeypatch.setattr("src.webapp.app._feature_cache", lambda: fake)
     monkeypatch.setattr(config, "PLAYLIST_IMPORT_CAP", 100)
     client.cookies.set(config.SESSION_COOKIE, _seed_session(scope=config.SCOPES))
-    client.post("/playlists/mine1/analyze", follow_redirects=False)
+    r = client.post("/playlists/mine1/analyze", follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "/queue"
     assert fake.enqueued == [f"t{i}" for i in range(50, 150)]     # skip → then cap
+
+
+def test_cap_zero_still_takes_everything_it_reads(client, monkeypatch):
+    """The cap is configurable, not mandatory: 0 means "don't stop for a cap".
+    The page ceiling still bounds the API cost, which is the reliability floor."""
+    _mock_membership(monkeypatch)
+    fake = _big_playlist(monkeypatch, n=120)
+    monkeypatch.setattr("src.webapp.app._feature_cache", lambda: fake)
+    monkeypatch.setattr(config, "PLAYLIST_IMPORT_CAP", 0)
+    client.cookies.set(config.SESSION_COOKIE, _seed_session(scope=config.SCOPES))
+    client.post("/playlists/mine1/analyze", follow_redirects=False)
+    assert fake.enqueued == [f"t{i}" for i in range(50, 120)]
 
 
 def test_analyze_excludes_local_and_none_ids(client, monkeypatch):
@@ -199,7 +202,9 @@ def test_analyze_excludes_local_and_none_ids(client, monkeypatch):
         {"spotify_track_id": None, "track_name": "local", "artist_names": "X"},
         {"spotify_track_id": "good2", "track_name": "B", "artist_names": "X"},
     ])
-    monkeypatch.setattr("src.webapp.app.fetch_playlist_tracks", lambda pid, c: mixed)
+    monkeypatch.setattr("src.webapp.app.iter_playlist_track_pages",
+                        lambda pid, sp=None, limit=50, start_offset=0:
+                        iter([(mixed.to_dict("records"), True)]))
     fake = _FakeCache()
     monkeypatch.setattr("src.webapp.app._feature_cache", lambda: fake)
     client.cookies.set(config.SESSION_COOKIE, _seed_session(scope=config.SCOPES))
@@ -211,8 +216,9 @@ def test_analyze_rejects_non_member_playlist(client, monkeypatch):
     _mock_membership(monkeypatch)
     fake = _FakeCache()
     monkeypatch.setattr("src.webapp.app._feature_cache", lambda: fake)
-    monkeypatch.setattr("src.webapp.app.fetch_playlist_tracks",
-                        lambda pid, c: (_ for _ in ()).throw(AssertionError("no fetch")))
+    monkeypatch.setattr("src.webapp.app.iter_playlist_track_pages",
+                        lambda *a, **k: (_ for _ in ()).throw(
+                            AssertionError("must not fetch a stranger's playlist")))
     client.cookies.set(config.SESSION_COOKIE, _seed_session(scope=config.SCOPES))
     r = client.post("/playlists/theirs1/analyze", follow_redirects=False)  # stranger's
     assert r.status_code == 303 and r.headers["location"] == "/playlists"
@@ -315,7 +321,7 @@ def test_a_failed_TRACK_fetch_says_so_instead_of_queued_zero(client, monkeypatch
     """`tdf = None` used to fall through to "Queued 0 new tracks", which reads as
     "there was nothing new" rather than "we never got the list"."""
     _mock_membership(monkeypatch)
-    monkeypatch.setattr("src.webapp.app.fetch_playlist_tracks", _rate_limited)
+    monkeypatch.setattr("src.webapp.app.iter_playlist_track_pages", _rate_limited)
     fake = _FakeCache()
     monkeypatch.setattr("src.webapp.app._feature_cache", lambda: fake)
     client.cookies.set(config.SESSION_COOKIE, _seed_session(scope=config.SCOPES))
@@ -324,3 +330,122 @@ def test_a_failed_TRACK_fetch_says_so_instead_of_queued_zero(client, monkeypatch
     assert "Couldn't read that playlist's tracks" in body
     assert "Queued <b>0</b>" not in body
     assert fake.enqueued == []
+
+
+# ── capped, resumable import (owner, 2026-07-25: reliability over speed) ─────
+def _paged(monkeypatch, n=1004, page_size=50):
+    """A big playlist served page by page, recording the offsets requested — the
+    API cost is the thing under test, so we count the calls.
+
+    Also re-points the /me/playlists frame so `track_count` MATCHES the pages
+    served: the route compares the two to detect a playlist that shrank, and a
+    fixture where they disagree is testing the wrong thing."""
+    calls: list[int] = []
+
+    def _iter(pid, sp=None, limit=50, start_offset=0):
+        calls.append(start_offset)
+        off = start_offset
+        while off < n:
+            page = [{"spotify_track_id": f"t{i}", "track_name": f"S{i}",
+                     "artist_names": "A"} for i in range(off, min(off + page_size, n))]
+            off += page_size
+            yield page, off >= n
+    monkeypatch.setattr("src.webapp.app.iter_playlist_track_pages", _iter)
+    df = _PL_DF.copy()
+    df.loc[df["playlist_id"] == "mine1", "track_count"] = n
+    monkeypatch.setattr("src.webapp.app.fetch_user_playlists", lambda c: df)
+    return calls
+
+
+def test_a_1000_track_playlist_imports_a_capped_slice_without_draining_it(
+        client, monkeypatch):
+    """The owner's #Rock playlist (1004 tracks) could not be imported at all: the
+    route drained EVERY page (21 sequential API calls) just to decide which 100
+    to queue, and Spotify rate-limited it. One click now queues `cap` new tracks
+    and stops paging."""
+    _mock_membership(monkeypatch)
+    _paged(monkeypatch)
+    fake = _FakeCache()
+    monkeypatch.setattr("src.webapp.app._feature_cache", lambda: fake)
+    monkeypatch.setattr(config, "PLAYLIST_IMPORT_CAP", 50)
+    client.cookies.set(config.SESSION_COOKIE, _seed_session(scope=config.SCOPES))
+    r = client.post("/playlists/mine1/analyze", follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "/queue"
+    assert fake.enqueued == [f"t{i}" for i in range(50)]      # exactly the cap
+    # membership recorded is a PREFIX, not the whole playlist
+    assert 0 < len(fake.playlist_members["mine1"]) < 1004
+
+
+def test_the_next_click_resumes_instead_of_re_reading_the_prefix(client, monkeypatch):
+    """Without resume, click N re-pages everything already analyzed before it
+    finds anything new — which is the rate limit coming straight back on a big
+    playlist. The offset is derived from recorded membership, so no cursor can
+    go stale."""
+    _mock_membership(monkeypatch)
+    calls = _paged(monkeypatch)
+    fake = _FakeCache()
+    fake.playlist_members["mine1"] = [f"t{i}" for i in range(300)]   # 6 pages done
+    monkeypatch.setattr("src.webapp.app._feature_cache", lambda: fake)
+    monkeypatch.setattr(config, "PLAYLIST_IMPORT_CAP", 50)
+    client.cookies.set(config.SESSION_COOKIE, _seed_session(scope=config.SCOPES))
+    client.post("/playlists/mine1/analyze", follow_redirects=False)
+    assert calls == [300], f"expected a resume at 300, paged from {calls}"
+    assert fake.enqueued == [f"t{i}" for i in range(300, 350)]
+
+
+def test_a_shrunken_playlist_rescans_from_the_start(client, monkeypatch):
+    """If tracks were REMOVED upstream every later offset shifted, so a resume
+    would skip songs. Cheaper to re-read pages than to lose a track."""
+    _mock_membership(monkeypatch)
+    calls = _paged(monkeypatch, n=20)      # playlist now holds 20…
+    fake = _FakeCache()
+    fake.playlist_members["mine1"] = [f"t{i}" for i in range(40)]    # …we recorded 40
+    monkeypatch.setattr("src.webapp.app._feature_cache", lambda: fake)
+    client.cookies.set(config.SESSION_COOKIE, _seed_session(scope=config.SCOPES))
+    client.post("/playlists/mine1/analyze", follow_redirects=False)
+    assert calls == [0], "a shrunken playlist must rescan from 0"
+
+
+def test_the_page_ceiling_bounds_api_calls_even_when_nothing_is_new(
+        client, monkeypatch):
+    """A click that finds only already-known tracks must still STOP. Without the
+    ceiling it would page to the end of a 1000-track playlist hunting for
+    something new — the exact cost we removed."""
+    _mock_membership(monkeypatch)
+    pages_yielded = {"n": 0}
+
+    def _iter(pid, sp=None, limit=50, start_offset=0):
+        off = start_offset
+        while off < 5000:
+            pages_yielded["n"] += 1
+            yield ([{"spotify_track_id": f"t{i}", "track_name": "S",
+                     "artist_names": "A"} for i in range(off, off + 50)], False)
+            off += 50
+    monkeypatch.setattr("src.webapp.app.iter_playlist_track_pages", _iter)
+    fake = _FakeCache(cached={f"t{i}" for i in range(5000)})   # everything analyzed
+    monkeypatch.setattr("src.webapp.app._feature_cache", lambda: fake)
+    client.cookies.set(config.SESSION_COOKIE, _seed_session(scope=config.SCOPES))
+    client.post("/playlists/mine1/analyze", follow_redirects=False)
+    assert pages_yielded["n"] <= config.PLAYLIST_IMPORT_MAX_PAGES
+    assert fake.enqueued == []
+
+
+def test_a_partial_walk_never_claims_the_playlist_is_finished():
+    """"0 remaining" on a partial walk would tell the visitor a 1004-track
+    playlist was done after 50. Unknown is its own state."""
+    partial = playlists.coverage_line(queued=50, skipped=0, remaining=None, cap=50)
+    assert "may be more" in partial and "picks up where it left off" in partial
+    complete = playlists.coverage_line(queued=7, skipped=3, remaining=0, cap=50)
+    assert "may be more" not in complete
+
+
+def test_card_denominator_is_spotifys_count_not_what_we_have_read():
+    """A capped import knows only a prefix; counting members as the denominator
+    would shrink a 1004-track playlist to however much we'd read."""
+    cards = playlists.playlist_cards(
+        _PL_DF, me_id="me",
+        members={"mine1": ["a", "b", "c"]}, analyzed_ids={"a", "b"})
+    card = next(c for c in cards if c["id"] == "mine1")
+    assert card["n_known"] == 40 and card["n_analyzed"] == 2   # 40 = Spotify's count
+    other = next(c for c in cards if c["id"] == "collab1")
+    assert other["n_known"] is None                            # never imported

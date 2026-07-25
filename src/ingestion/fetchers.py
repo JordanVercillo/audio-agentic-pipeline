@@ -497,28 +497,35 @@ def fetch_user_playlists(
     return df
 
 
-def fetch_playlist_tracks(
+def iter_playlist_track_pages(
     playlist_id: str,
     sp: Optional[spotipy.Spotify] = None,
     limit: int = 50,
-) -> pd.DataFrame:
-    """
-    Fetch all tracks from a playlist, handling pagination.
+    start_offset: int = 0,
+):
+    """Yield a playlist's tracks ONE PAGE AT A TIME, as lists of records.
+
+    THE paging implementation for playlists — `fetch_playlist_tracks` is a thin
+    "drain it all" wrapper, so there is only one place that knows how to walk
+    the API and the two cannot drift.
+
+    A generator because the caller may want to STOP EARLY. Draining a
+    1004-track playlist is 21 sequential API calls in one request, which is
+    what rate-limited the owner (2026-07-25) and made his largest playlist
+    impossible to import at all: the whole thing had to be fetched merely to
+    decide which 100 tracks to queue. A consumer that knows what it already has
+    can now stop as soon as it has enough.
 
     P3.0 (SPOTIFY_API_RESEARCH §2): the successor GET /playlists/{id}/items
     pages at MAX 50 (the old /tracks 100/page is gone) — over-asking may error
     or silently clamp. The track entity is read from `item` with the deprecated
     `track` alias as fallback.
-
-    Returns a DataFrame with spotify_track_id as the bridge key,
-    plus playlist-specific metadata (added_at, added_by, position).
     """
     if sp is None:
         sp = get_user_spotify()
 
-    records = []
-    offset = 0
-    position = 0
+    offset = max(int(start_offset or 0), 0)   # resume point, for repeat imports
+    position = offset
 
     while True:
         results, err = safe_api_call(
@@ -536,6 +543,7 @@ def fetch_playlist_tracks(
         if not items:
             break
 
+        page = []
         for item in items:
             track = _playlist_item_entity(item)
             if track is None or track.get("id") is None:
@@ -547,14 +555,38 @@ def fetch_playlist_tracks(
             rec["added_at"] = item.get("added_at")
             rec["added_by"] = item.get("added_by", {}).get("id")
             rec["playlist_position"] = position
-            records.append(rec)
+            page.append(rec)
             position += 1
 
-        # Pagination
-        if results.get("next") is None:
+        # `exhausted` tells the consumer whether an early stop is even possible:
+        # a caller that walks to the end KNOWS the full membership, one that
+        # breaks out does not, and those are different facts to record.
+        exhausted = results.get("next") is None
+        yield page, exhausted
+        if exhausted:
             break
         offset += len(items)
         throttle(0.1)
+
+
+def fetch_playlist_tracks(
+    playlist_id: str,
+    sp: Optional[spotipy.Spotify] = None,
+    limit: int = 50,
+) -> pd.DataFrame:
+    """
+    Fetch ALL tracks from a playlist, handling pagination.
+
+    Returns a DataFrame with spotify_track_id as the bridge key,
+    plus playlist-specific metadata (added_at, added_by, position).
+
+    Drains `iter_playlist_track_pages`. Prefer that generator on a request path
+    where the caller can stop early — this walks the whole playlist, which is
+    21 API calls for a 1000-track one.
+    """
+    records = []
+    for page, _exhausted in iter_playlist_track_pages(playlist_id, sp, limit):
+        records.extend(page)
 
     df = pd.DataFrame(records)
     print(f"   ✅ Fetched {len(df)} tracks from playlist {playlist_id}")

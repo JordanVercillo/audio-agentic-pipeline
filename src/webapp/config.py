@@ -51,13 +51,21 @@ SCOPES = " ".join(BASE_SCOPES + PLAYLIST_SCOPES)
 # serial on one worker, so a playlist import is capped to this many tracks —
 # a TOTAL, enforced by slicing before enqueue (the fetcher's `limit` is only a
 # page size). 100 ≈ 83 min worst-case worker time. Config-tunable.
-# 0 = NO CAP: import the whole playlist (owner call 2026-07-25 — "I want to be
-# able to upload an entire playlist"). The cap existed so one playlist couldn't
-# monopolise the worker, but the queue is a DB-backed FIFO the worker drains at
-# its own pace: a big import makes the queue LONGER, never heavier. What the cap
-# actually did was silently truncate a 1004-track playlist to its first 100 and
-# require eleven more clicks to walk the rest.
-PLAYLIST_IMPORT_CAP = int(os.environ.get("WEBAPP_PLAYLIST_IMPORT_CAP", "0"))
+# How many NEW tracks one Analyze click queues. 0 = no cap.
+#
+# Restored to 100 (owner, 2026-07-25) after uncapping caused Spotify throttling —
+# but the cap is no longer the whole story. The real cost was the FETCH: the
+# import drained every page of a playlist (21 API calls for 1004 tracks) merely
+# to decide which 100 to queue, so uncapping and capping were equally expensive
+# upstream. The import now stops paging once it has this many new tracks, which
+# is what makes a 1000-track playlist importable at all.
+PLAYLIST_IMPORT_CAP = int(os.environ.get("WEBAPP_PLAYLIST_IMPORT_CAP", "50"))
+# Hard ceiling on API calls per Analyze click, whatever the cap. 50 items/page,
+# so this is at most ~6 calls — reliability over speed (owner, 2026-07-25:
+# "I want to ensure reliability over speed, I can keep importing as we go").
+# Without it, a click that finds only already-known tracks would page to the end
+# of a 1000-track playlist looking for something new.
+PLAYLIST_IMPORT_MAX_PAGES = int(os.environ.get("WEBAPP_PLAYLIST_MAX_PAGES", "6"))
 
 # ── Sessions ──
 SESSION_COOKIE = "va_sid"

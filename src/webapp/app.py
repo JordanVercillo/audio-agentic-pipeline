@@ -32,11 +32,11 @@ from fastapi.templating import Jinja2Templates
 
 from ..ingestion.fetchers import (
     fetch_artist_top_tracks,
-    fetch_playlist_tracks,
     fetch_top_artists,
     fetch_top_tracks,
     fetch_user_playlists,
     fetch_user_profile,
+    iter_playlist_track_pages,
 )
 from ..store import clusters as cl
 from ..store.cache import FeatureCache
@@ -1212,8 +1212,60 @@ def create_app() -> FastAPI:
             session["pl_msg"] = "That playlist isn't one you own or collaborate on."
             return RedirectResponse("/playlists", status_code=303)
         cap = config.PLAYLIST_IMPORT_CAP
+        cache = _feature_cache()
+        # SKIP-then-CAP (owner report, session 36) walking the playlist PAGE BY
+        # PAGE and stopping as soon as `cap` genuinely-new tracks are in hand.
+        #
+        # Draining the whole playlist first was the actual rate-limit cost: 21
+        # sequential API calls for a 1004-track playlist, every click, just to
+        # decide which 100 to queue — so the owner's biggest playlist could not
+        # be imported at all. Stopping early usually costs 2-3 calls, and the
+        # skip-first ordering still walks deeper on every repeat click.
+        # RESUME where the last click stopped. We always page from the front, so
+        # the ids we've recorded for this playlist are a PREFIX of it — their
+        # count is the offset to restart at. Derived from data we already have,
+        # so there is no cursor to persist and go stale.
+        #
+        # Self-correcting: if the playlist SHRANK below what we've seen, tracks
+        # were removed and every later offset shifted, so rescan from 0. The
+        # cost of being wrong is re-reading pages, never skipping a track.
+        known = set(cache.playlist_track_ids().get(playlist_id) or [])
+        track_total = playlists_mod.track_count_for(df, playlist_id)
+        start_offset = len(known) if (track_total is None
+                                      or track_total >= len(known)) else 0
+        seen: set[str] = set()
+        ids: list[str] = list(known)  # every id known for this playlist
+        selected: list[dict] = []     # the new ones we'll queue
+        n_skipped = 0
+        exhausted = False
+        pages_read = 0
         try:
-            tdf = fetch_playlist_tracks(playlist_id, client)
+            for page, is_last in iter_playlist_track_pages(
+                    playlist_id, client, start_offset=start_offset):
+                pages_read += 1
+                # bridge key MUST be a non-empty string (ground rule #1). Drop
+                # local/None tracks — pandas turns None into a TRUTHY
+                # float('nan'), so the isinstance check is load-bearing.
+                uniq = [r for r in page
+                        if isinstance(r.get("spotify_track_id"), str)
+                        and r["spotify_track_id"]
+                        and not (r["spotify_track_id"] in seen
+                                 or seen.add(r["spotify_track_id"]))]
+                page_ids = [r["spotify_track_id"] for r in uniq]
+                ids.extend(page_ids)
+                skip = cache.cached_ids(page_ids) | cache.active_ids(page_ids)
+                n_skipped += len(skip)
+                for r in uniq:
+                    if r["spotify_track_id"] in skip:
+                        continue
+                    selected.append(r)
+                    if 0 < cap <= len(selected):
+                        break
+                exhausted = is_last
+                if 0 < cap <= len(selected):
+                    break
+                if pages_read >= config.PLAYLIST_IMPORT_MAX_PAGES:
+                    break          # hard API-call ceiling, reliability first
         except Exception:  # noqa: BLE001
             # An empty fetch and a FAILED fetch both used to end as "Queued 0
             # new tracks", which reads as "there was nothing new" rather than
@@ -1222,33 +1274,17 @@ def create_app() -> FastAPI:
                                  "didn't answer (usually a rate limit). Nothing "
                                  "was queued; try again in a minute.")
             return RedirectResponse("/playlists", status_code=303)
-        # bridge key MUST be a non-empty string (ground rule #1). Drop local/None
-        # tracks — and note pandas turns None into a TRUTHY float('nan'), so an
-        # isinstance-str check is load-bearing, not just `if id`.
-        recs = [] if tdf is None or tdf.empty else [  # empty is now genuinely empty
-            r for r in tdf.to_dict("records")
-            if isinstance(r.get("spotify_track_id"), str) and r["spotify_track_id"]]
-        # SKIP-then-CAP (owner report, session 36): cap slots are spent ONLY on
-        # genuinely-new tracks — never on already-analyzed or already-queued ones —
-        # so re-running Analyze walks deeper into the playlist each time.
-        cache = _feature_cache()
-        seen: set[str] = set()
-        uniq = [r for r in recs
-                if not (r["spotify_track_id"] in seen or seen.add(r["spotify_track_id"]))]
-        ids = [r["spotify_track_id"] for r in uniq]
-        skip = cache.cached_ids(ids) | cache.active_ids(ids)
-        fresh = [r for r in uniq if r["spotify_track_id"] not in skip]
-        selected = fresh if cap <= 0 else fresh[:cap]   # cap 0 = the whole playlist
         if selected:
             cache.remember_meta(selected)
         queued = cache.enqueue([r["spotify_track_id"] for r in selected])  # O1 guard applies
         # Remember WHICH playlist these came from, so /playlists can report
-        # "X of Y analyzed" per card. Membership is only knowable for a playlist
-        # we've actually fetched — hence recorded here, at import, and never
-        # guessed for one we haven't seen.
-        cache.remember_playlist_tracks(playlist_id, ids)
+        # "N of M analyzed". We stopped early, so `ids` is a PREFIX of the
+        # playlist — merge rather than replace, or each capped click would
+        # forget what the previous one learned. Only a walk that reached the end
+        # knows the full membership and may replace it.
+        cache.remember_playlist_tracks(playlist_id, ids, replace=exhausted)
         session["pl_msg"] = playlists_mod.coverage_line(
-            len(queued), len(uniq) - len(fresh), len(fresh) - len(selected), cap)
+            len(queued), n_skipped, 0 if exhausted else None, cap)
         # Land on the QUEUE, not back on /playlists. Two reasons, both reported:
         # the visitor gets VISIBLE proof the tracks were queued instead of a
         # silent bounce, and /playlists would re-fetch /me + every playlist over

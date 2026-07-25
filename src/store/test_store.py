@@ -628,16 +628,26 @@ def test_queue_count_is_the_queue_not_the_page(cache):
     assert cache.queue_count() == 250
 
 
-def test_playlist_membership_is_recorded_and_replaced(cache):
-    """Membership is what lets /playlists say "N of M analyzed". A playlist is
-    mutable upstream, so a re-import REPLACES its rows rather than accumulating
-    a union of everything it ever contained."""
+def test_playlist_membership_merges_by_default(cache):
+    """Membership is what lets /playlists say "N of M analyzed" AND what tells
+    the next import where to resume. A capped import reads only a PREFIX of a
+    large playlist, so merging is the default — replacing would make each click
+    forget what the last one learned and the resume offset would never advance."""
     cache.remember_playlist_tracks("pl1", ["a", "b", "c", "b"])   # dupes collapse
     assert sorted(cache.playlist_track_ids()["pl1"]) == ["a", "b", "c"]
-    cache.remember_playlist_tracks("pl1", ["a", "d"])             # track removed upstream
-    assert sorted(cache.playlist_track_ids()["pl1"]) == ["a", "d"]
+    cache.remember_playlist_tracks("pl1", ["d", "e"])             # the next page
+    assert sorted(cache.playlist_track_ids()["pl1"]) == ["a", "b", "c", "d", "e"]
     assert cache.remember_playlist_tracks("pl2", []) == 0         # nothing to record
     assert "pl2" not in cache.playlist_track_ids()
+
+
+def test_a_complete_walk_replaces_so_removals_take_effect(cache):
+    """Only a walk that reached the END knows the full membership, and only then
+    may a track removed upstream actually leave. Merging forever would let a
+    deleted track haunt the coverage count."""
+    cache.remember_playlist_tracks("pl1", ["a", "b", "c"])
+    cache.remember_playlist_tracks("pl1", ["a", "d"], replace=True)
+    assert sorted(cache.playlist_track_ids()["pl1"]) == ["a", "d"]
 
 
 def test_analyzed_ids_matches_the_full_feature_read(cache):

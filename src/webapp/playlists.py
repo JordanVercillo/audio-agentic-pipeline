@@ -54,10 +54,32 @@ def playlist_cards(df: Optional[pd.DataFrame], me_id: Optional[str],
             "collaborative": bool(r.get("collaborative")),
             "track_count": int(r.get("track_count") or 0),
             "image": img if isinstance(img, str) and img else None,
-            "n_known": len(ids) if ids is not None else None,
+            # DENOMINATOR is Spotify's own count, not len(members): a capped
+            # import knows only a prefix, so counting members would shrink the
+            # playlist to whatever we happen to have read so far.
+            "n_known": int(r.get("track_count") or 0) if ids is not None else None,
             "n_analyzed": sum(1 for t in ids if t in analyzed_ids) if ids else 0,
+            "n_seen": len(ids) if ids is not None else 0,
         })
     return cards
+
+
+def track_count_for(df: Optional[pd.DataFrame], playlist_id: str) -> Optional[int]:
+    """Spotify's own track count for one playlist, or None if we don't have it.
+
+    Free — it rides on the /me/playlists frame we already fetched, so it needs
+    no extra call. Used as the DENOMINATOR of "N of M analyzed" (a capped import
+    only knows a prefix of the membership) and to detect a playlist that SHRANK,
+    which invalidates the resume offset."""
+    if df is None or getattr(df, "empty", True):
+        return None
+    rows = df[df["playlist_id"] == playlist_id]
+    if rows.empty:
+        return None
+    try:
+        return int(rows.iloc[0].get("track_count") or 0)
+    except (TypeError, ValueError):
+        return None
 
 
 def importable_ids(df: Optional[pd.DataFrame], me_id: Optional[str]) -> set[str]:
@@ -66,15 +88,23 @@ def importable_ids(df: Optional[pd.DataFrame], me_id: Optional[str]) -> set[str]
     return {c["id"] for c in playlist_cards(df, me_id)}
 
 
-def coverage_line(queued: int, skipped: int, remaining: int, cap: int) -> str:
+def coverage_line(queued: int, skipped: int, remaining: Optional[int],
+                  cap: int) -> str:
     """Honest post-Analyze summary. `queued` = newly queued, `skipped` = already
-    analyzed or already in the queue (cap slots are NEVER spent on these),
-    `remaining` = new tracks beyond the cap — which is 0 when uncapped (cap 0),
-    so the "run Analyze again" nudge disappears with the cap that caused it."""
+    analyzed or already in the queue (cap slots are NEVER spent on these).
+
+    `remaining` is None when the import stopped EARLY — we capped out or hit the
+    page ceiling and never reached the end, so we genuinely don't know how many
+    are left. That is different from 0 ("we walked the whole playlist and there
+    is nothing more"), and saying "0 remaining" on a partial walk would tell the
+    visitor a 1004-track playlist was finished after 50."""
     msg = f"Queued <b>{queued}</b> new track{'s' if queued != 1 else ''} for analysis"
     if skipped > 0:
         msg += f" · skipped <b>{skipped}</b> already analyzed or queued"
-    if remaining > 0 and cap > 0:
+    if remaining is None:
+        msg += (" · there may be more in this playlist — click Analyze again "
+                "once these finish and it picks up where it left off")
+    elif remaining > 0 and cap > 0:
         msg += (f" · <b>{remaining}</b> more held by the {cap}-track cap — "
                 f"run Analyze again once these finish")
     if queued == 0 and skipped > 0:

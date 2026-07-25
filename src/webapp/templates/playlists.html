@@ -15,11 +15,11 @@
 
   <p class="lede">Import tracks from your own or collaborative playlists into the
     library — we download each and extract its acoustic features locally
-    (~50 s/track).{% if cap > 0 %} Each import is capped at <b>{{ cap }}</b>
-    tracks so one playlist never monopolises the worker.{% else %} A whole
-    playlist imports at once; the worker drains the queue steadily in the
-    background, so a big import makes the queue <em>longer</em>, never
-    heavier.{% endif %}</p>
+    (~50 s/track).{% if cap > 0 %} Each click queues up to <b>{{ cap }}</b> new
+    tracks and picks up where the last one stopped, so a large playlist comes in
+    over several clicks — deliberately gentle on Spotify's rate limit.{% else %}
+    A whole playlist imports at once; the worker drains the queue steadily in
+    the background.{% endif %}</p>
 
   {% if msg %}<p class="cap ok">{{ msg|safe }} <a href="/queue">Watch the queue →</a></p>{% endif %}
 
@@ -36,13 +36,13 @@
            don't know its track ids without fetching it, and "0 analyzed" would
            read as a claim rather than an absence. #}
         {% if c.n_known %}
-        <span class="pl-cov{{ ' is-done' if c.n_analyzed == c.n_known else '' }}">
+        <span class="pl-cov{{ ' is-done' if c.n_analyzed >= c.n_known else '' }}">
           {{ c.n_analyzed }} of {{ c.n_known }} analyzed</span>
         {% else %}
         <span class="pl-cov pl-cov-none">not imported yet</span>
         {% endif %}
         <form method="post" action="/playlists/{{ c.id }}/analyze" class="pl-analyze">
-          <button type="submit" class="btn">{% if c.n_known and c.n_analyzed < c.n_known %}Analyze the rest{% elif c.n_known %}Re-check{% else %}Analyze{% endif %}</button>
+          <button type="submit" class="btn">{% if c.n_known and c.n_analyzed >= c.n_known %}Re-check{% elif c.n_known %}Analyze next {{ cap }}{% else %}Analyze{% endif %}</button>
         </form>
       </span>
     </div>
