@@ -1290,17 +1290,34 @@ def create_app() -> FastAPI:
             tab = "mine"
         mine = my_ids if tab == "mine" else None
         v = library_view_mod.library_view(rows, q=q, sort=sort, order=order, mine_ids=mine)
+        # Filter and sort ran over the WHOLE corpus above; this only slices the
+        # result. `shown`, `total` and `analyzed` keep their meanings — the page
+        # never shrinks the coverage claim, it only says which slice is visible.
+        v = library_view_mod.page_slice(v, page=params.get("page"),
+                                        per=params.get("per"))
         ctx: dict[str, Any] = {
             **flags, "tab": tab, "q": q, "sort": v["sort"], "order": v["order"],
             "sort_options": library_view_mod.sort_options(),
-            "rows": v["rows"], "shown": v["shown"], "total": v["total"],
+            "rows": v["page_rows"], "shown": v["shown"], "total": v["total"],
             "analyzed": v["analyzed"], "my_count": my_count,
+            "page": v["page"], "pages": v["pages"], "per": v["per"],
+            "is_all": v["is_all"], "from_index": v["from_index"],
+            "to_index": v["to_index"], "page_sizes": v["page_sizes"],
+            "pager": library_view_mod.page_links(params, v),
+            "all_url": "/library?" + library_view_mod.pager_query(params, per="all",
+                                                                  page=None),
+            "carry": {k: params.get(k) for k in ("filter", "dupes")
+                      if params.get(k)},
             # D-56: owner-only repair-queue affordances
             "is_owner": owner, "ns_reasons": ns_reasons,
             "ns_filtered": bool(ns_reasons),
             "ns_count": len(_needs_source(cache)) if owner else 0,
         }
         if tab == "mine":
+            # v["rows"] is the FULL matching set — page_slice preserves it and
+            # puts the visible slice in page_rows. Counting page_rows here would
+            # make the "why only N analyzed" explainer describe one page and
+            # under-report the visitor's own library.
             mine_analyzed = sum(1 for r in v["rows"] if r["analyzed"])
             ctx["why_n"] = library_view_mod.why_n_analyzed(mine_analyzed, _TOP_LIMIT)
         return templates.TemplateResponse(request, "library.html", ctx)

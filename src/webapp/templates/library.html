@@ -28,6 +28,10 @@
 
   <form method="get" action="/library" class="lib-form">
     {% if tab != 'all' %}<input type="hidden" name="tab" value="{{ tab }}">{% endif %}
+    {# carry the active view filters through a search — without these, searching
+       while on ?filter=needs-source or ?dupes=all silently dropped them. `page`
+       is deliberately NOT a field: a new search starts at page 1. #}
+    {% for k, val in (carry or {}).items() %}<input type="hidden" name="{{ k }}" value="{{ val }}">{% endfor %}
     <input type="search" name="q" value="{{ q }}" placeholder="search song or artist" aria-label="search">
     <select name="sort" onchange="this.form.submit()" aria-label="sort by">
       {% for s in sort_options %}
@@ -38,13 +42,29 @@
       <option value="asc" {{ 'selected' if order == 'asc' else '' }}>asc</option>
       <option value="desc" {{ 'selected' if order == 'desc' else '' }}>desc</option>
     </select>
+    {% if page_sizes %}<select name="per" onchange="this.form.submit()" aria-label="rows per page">
+      {% for s in page_sizes %}<option value="{{ s }}" {{ 'selected' if per == s else '' }}>{{ s }} per page</option>{% endfor %}
+      <option value="all" {{ 'selected' if is_all else '' }}>all {{ shown }}</option>
+    </select>{% endif %}
     <button type="submit" class="btn">Search</button>
     {% if q %}<a class="chip chip-clear" href="/library{{ '?tab=' + tab if tab != 'all' else '' }}">× clear</a>{% endif %}
   </form>
 
-  <p class="cap">Showing <b>{{ shown }}</b>{% if tab == 'mine' %} of your songs{% else %} of {{ total }}{% endif %}{% if q %} matching “{{ q }}”{% endif %}.</p>
+  {# The lede stays WHOLE-CORPUS — never page numbers. from_index/to_index are
+     real positions computed from the slice, not page*per recomputed here. #}
+  {# Reads naturally in all four combinations of paged/unpaged x filtered/unfiltered.
+     The whole-corpus total is stated once, and only when `shown` isn't already it —
+     otherwise the line said "of 1258 of 1258 known". #}
+  <p class="cap">Showing {% if pages and pages > 1 %}<b>{{ from_index }}–{{ to_index }}</b> of {% endif %}<b>{{ shown }}</b>{%
+    if tab == 'mine' %} of your songs{%
+    elif q %} matching “{{ q }}” · of {{ total }} known{%
+    elif shown != total %} of {{ total }} known{%
+    else %} known{% endif %}.</p>
 
   {% if rows %}
+  {# wide content scrolls in its OWN box — the page body must never scroll
+     horizontally (measured 572px wide at a 375px viewport before this) #}
+  <div class="lib-wrap">
   <table class="lib-table">
     <thead><tr><th></th><th>Song</th><th>Artist</th><th class="num">Pop.</th><th class="num">BPM</th><th class="num" title="Audio source recorded (Q1/D-51)">Src</th><th></th></tr></thead>
     <tbody>
@@ -72,6 +92,7 @@
     {% endfor %}
     </tbody>
   </table>
+  </div>
   <p class="cap"><b>Src</b> = audio-source provenance — <b>click a ✓ or ~ to open the
     exact YouTube recording the features were measured from</b> and judge it yourself:
     <span class="prov-glyph ok">✓</span> recorded ·
@@ -80,6 +101,16 @@
     <span class="prov-glyph none">∅</span> no source on record — either analyzed
     before provenance capture (features withheld until it is verified) or no
     usable source was found, shown as “no source”.</p>
+
+  {% if pages and pages > 1 %}
+  <nav class="pager" aria-label="Library pages">
+    {% for l in pager %}{% if l.url %}<a class="page{{ ' is-current' if l.current else '' }}" href="{{ l.url }}"{% if l.current %} aria-current="page"{% endif %}>{{ l.label }}</a>{% else %}<span class="page gap">…</span>{% endif %}{% endfor %}
+  </nav>
+  <p class="cap">Page {{ page }} of {{ pages }} — every song is on a page, and
+    search and sort cover all {{ shown }}, not just this one.
+    <a href="{{ all_url }}">Show all {{ shown }} on one page →</a></p>
+  {% endif %}
+
   {% else %}
   <p class="cap">{% if tab == 'mine' %}No analyzed songs yet — they appear here as extraction finishes.{% else %}No songs match.{% endif %}</p>
   {% endif %}

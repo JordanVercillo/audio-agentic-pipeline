@@ -265,3 +265,102 @@ def test_song_public_and_bad_id_redirects(rclient, monkeypatch, tmp_path):
     assert ok.status_code == 200 and "Zephyr" in ok.text
     bad = rclient.get("/song/../etc", follow_redirects=False)
     assert bad.status_code in (303, 307, 404)  # junk id never 200s the deep-dive
+
+
+# ── pagination (P3): the growth gate, and the ways it could lie ──────────────
+def _many(n: int) -> list[dict]:
+    """A corpus big enough to page, with a sortable tempo that is NOT in id
+    order — so a page-local sort would produce a different answer than a
+    corpus-wide one."""
+    return [{"id": f"t{i:04d}", "name": f"Song {i:04d}", "artist": "A",
+             "popularity": i % 100, "duplicate_of": None, "analyzed": i % 3 != 0,
+             "tempo": float((i * 37) % 200), "energy": 0.2, "brightness": 1000.0,
+             "art": None} for i in range(n)]
+
+
+def test_pages_concatenate_to_the_global_order():
+    """THE sort-that-lies guard. Walking every page in sequence must reproduce
+    the whole sorted set exactly — same rows, same order, none dropped, none
+    repeated. A sort applied to the page instead of the corpus fails here."""
+    full = library.library_view(_many(237), sort="tempo", order="desc")
+    walked: list[str] = []
+    pages = library.page_slice(full, per=50)["pages"]
+    for p in range(1, pages + 1):
+        walked += [r["id"] for r in library.page_slice(full, page=p, per=50)["page_rows"]]
+    assert walked == [r["id"] for r in full["rows"]]
+    assert len(walked) == 237
+
+
+def test_search_reaches_a_row_that_would_live_on_the_last_page():
+    """A lazy loader hides tracks from search. Pagination must not: the filter
+    runs over the whole corpus, so a match on the far end comes back on page 1."""
+    v = library.page_slice(library.library_view(_many(500), q="Song 0499"), per=50)
+    assert [r["id"] for r in v["page_rows"]] == ["t0499"]
+    assert v["pages"] == 1 and v["shown"] == 1
+
+
+def test_caption_indices_describe_the_actual_slice():
+    """from_index/to_index must be derived from the slice, never recomputed as
+    page*per — that is how a last page claims rows it doesn't have."""
+    full = library.library_view(_many(237))
+    for per in library.PAGE_SIZES:
+        nav = library.page_slice(full, per=per)
+        for p in range(1, nav["pages"] + 1):
+            page = library.page_slice(full, page=p, per=per)
+            assert page["to_index"] - page["from_index"] + 1 == len(page["page_rows"])
+        last = library.page_slice(full, page=nav["pages"], per=per)
+        assert last["to_index"] == 237
+
+
+def test_the_full_matching_set_survives_the_slice():
+    """`rows` is what the my-songs count and the why-N explainer read. If a slice
+    ever replaced it, those would describe one page and under-report the
+    visitor's own library."""
+    full = library.library_view(_many(237))
+    page = library.page_slice(full, page=2, per=50)
+    assert len(page["rows"]) == 237 and len(page["page_rows"]) == 50
+
+
+def test_bad_page_and_per_params_never_break_the_page():
+    full = library.library_view(_many(237))
+    for bad in ("0", "-3", "abc", "", "99999", None):
+        nav = library.page_slice(full, page=bad, per=100)
+        assert 1 <= nav["page"] <= nav["pages"] and nav["page_rows"]
+    for bad_per in ("100000", "abc", "", None, "7"):
+        nav = library.page_slice(full, page=1, per=bad_per)
+        assert len(nav["page_rows"]) == library.PAGE_SIZE   # allowlist, not int()
+
+
+def test_show_all_is_one_page_of_everything():
+    full = library.library_view(_many(237))
+    nav = library.page_slice(full, per="all")
+    assert nav["is_all"] and nav["pages"] == 1
+    assert len(nav["page_rows"]) == 237 and nav["to_index"] == 237
+
+
+def test_pager_always_reaches_the_first_and_last_page():
+    """A pager that cannot reach the tail hides tracks as effectively as an
+    infinite scroll does."""
+    full = library.library_view(_many(2000))
+    nav = library.page_slice(full, page=10, per=50)
+    links = library.page_links({}, nav)
+    labels = [x["label"] for x in links]
+    assert labels[0] == "1" and labels[-1] == str(nav["pages"])
+    assert "…" in labels                                   # gaps collapse
+    assert sum(1 for x in links if x["current"]) == 1
+
+
+def test_pager_urls_carry_the_view_but_never_junk():
+    """URLs are rebuilt from an allowlist, so a crafted query can't plant junk
+    in our own links — and the active filters DO survive paging."""
+    full = library.library_view(_many(300))
+    nav = library.page_slice(full, per=50)
+    url = library.page_links({"q": "abc", "sort": "tempo", "filter": "needs-source",
+                              "evil": "<script>"}, nav)[1]["url"]
+    assert "q=abc" in url and "sort=tempo" in url and "filter=needs-source" in url
+    assert "evil" not in url and "script" not in url
+
+
+def test_empty_result_reports_zero_not_a_phantom_row():
+    v = library.page_slice(library.library_view(_many(50), q="nothing matches"), per=50)
+    assert v["page_rows"] == [] and v["from_index"] == 0 and v["to_index"] == 0

@@ -675,6 +675,50 @@ def test_logging_in_clears_a_previous_demo_persona(matrix_app, wiring, monkeypat
     assert "taste" not in after, "the demo snapshot survived into a real session"
 
 
+def test_library_payload_is_bounded_by_the_page_not_the_corpus(matrix_app, wiring):
+    """P3, the growth gate. /library shipped every known track in one document —
+    757 KB for 1,259 rows on the live corpus, projecting to ~3 MB at 5,000. This
+    is the test that fails the day someone removes the slice."""
+    from . import library as lib
+
+    cache = wiring.cache
+    n = lib.PAGE_SIZE * 3
+    cache.remember_meta([{"spotify_track_id": f"pg{i:04d}", "track_name": f"Paged {i}",
+                          "artist_names": "Band"} for i in range(n)])
+    client, _ = client_as(matrix_app, ANON)
+    body = client.get("/library").text
+    # one <tr> per row plus the header row
+    assert body.count("<tr") <= lib.PAGE_SIZE + 1, "the page is not bounded"
+    # ...and the coverage claim still describes the WHOLE corpus, not the page.
+    # Assert the invariant, not an exact total: the fixture seeds other tracks
+    # too, and hard-coding a count would break on any future fixture change
+    # while saying nothing about the honesty property being guarded.
+    import re as _re
+    text = _re.sub(r"<[^>]+>", "", body)          # the number is wrapped in <b>
+    known = int(_re.search(r"of\s+([\d]+)\s+known", text).group(1))
+    assert known >= n, f"the honesty line shrank to the page: {known}"
+    assert 'class="pager"' in body
+
+
+def test_paging_never_hides_a_track_from_the_last_page(matrix_app, wiring):
+    """The pager must reach the tail, and a deep page must render real rows —
+    the two ways a bounded page silently becomes a truncated corpus."""
+    from . import library as lib
+
+    cache = wiring.cache
+    n = lib.PAGE_SIZE * 3
+    cache.remember_meta([{"spotify_track_id": f"zz{i:04d}", "track_name": f"Zed {i:04d}",
+                          "artist_names": "Band"} for i in range(n)])
+    client, _ = client_as(matrix_app, ANON)
+    first = client.get("/library").text
+    assert "page=3" in first or "page=4" in first, "the last page is unreachable"
+    deep = client.get("/library?page=3")
+    assert deep.status_code == 200 and deep.text.count("<tr") > 1
+    # a search still spans everything, from page 1
+    hit = client.get("/library?q=Zed+0299").text
+    assert "Zed 0299" in hit
+
+
 def test_owner_gate_fails_closed_without_env(matrix_app, wiring, monkeypatch):
     """The control that FLIPS. If someone stubs the owner gate open to "simplify
     the fixture", every OWNER cell still passes — but this one must fail. It

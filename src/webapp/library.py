@@ -9,6 +9,7 @@ own analyzed set. Search/sort/filter are form-GET (no-JS house style).
 from __future__ import annotations
 
 from typing import Any, Optional
+from urllib.parse import urlencode
 
 # sort key → (row field, is-numeric). Numeric Nones (unanalyzed tracks) sort last.
 _SORTS: dict[str, tuple[str, bool]] = {
@@ -125,6 +126,104 @@ def library_view(rows: list[dict], *, q: str = "", sort: str = "name",
 
 def sort_options() -> list[str]:
     return list(_SORTS)
+
+
+# ── pagination (the growth gate) ─────────────────────────────────────────────
+# THE source of truth for every page-size claim on this surface: the caption,
+# the pager links and the per-page selector all derive from these. Nothing in a
+# template may restate them — a second encoding is how the UI and the behaviour
+# drift apart.
+PAGE_SIZE = 100
+PAGE_SIZES: tuple[int, ...] = (50, 100, 250)
+ALL = "all"
+# The query keys this surface owns. Pager URLs are rebuilt from an ALLOWLIST,
+# never echoed from whatever arrived, so a crafted /library?<junk> can't plant
+# junk in our own links.
+_PAGER_KEYS = ("q", "sort", "order", "tab", "filter", "dupes", "per")
+
+
+def _coerce_per(per: Any) -> int:
+    """Allowlist, not int(): `?per=100000` is a self-inflicted 12 MB page."""
+    try:
+        v = int(per)
+    except (TypeError, ValueError):
+        return PAGE_SIZE
+    return v if v in PAGE_SIZES else PAGE_SIZE
+
+
+def _coerce_page(page: Any, pages: int) -> int:
+    """Clamp. `?page=0` / `-3` / `abc` / `99999` must render a real page — never
+    a 500, and never an empty one that reads as "the corpus ended here"."""
+    try:
+        p = int(page)
+    except (TypeError, ValueError):
+        p = 1
+    return min(max(p, 1), max(pages, 1))
+
+
+def page_slice(view: dict[str, Any], *, page: Any = 1,
+               per: Any = PAGE_SIZE) -> dict[str, Any]:
+    """Slice an ALREADY filtered-and-sorted `library_view()` result into one page.
+
+    Ordering and filtering happen over the WHOLE corpus in `library_view`; this
+    only ever slices that output. A sort that covers just the visible window is
+    therefore unrepresentable here, not merely untested — this function never
+    sees the unsorted rows.
+
+    `rows` (the full matching set) is preserved so callers that COUNT — the
+    my-songs total, the why-only-N explainer — keep counting the whole set; the
+    template renders `page_rows`. `from_index`/`to_index` are real 1-based
+    inclusive positions, so the caption states what is on screen instead of
+    recomputing page*per and hoping."""
+    rows = view["rows"]
+    n = len(rows)
+    is_all = str(per).strip().lower() == ALL
+    size = n if is_all else _coerce_per(per)
+    pages = 1 if is_all or size <= 0 else max(1, -(-n // size))   # ceil
+    p = 1 if is_all else _coerce_page(page, pages)
+    start = 0 if is_all else (p - 1) * size
+    page_rows = rows if is_all else rows[start:start + size]
+    return {**view,
+            "page_rows": page_rows, "page": p, "pages": pages,
+            "per": ALL if is_all else size, "is_all": is_all,
+            "from_index": start + 1 if page_rows else 0,
+            "to_index": start + len(page_rows),
+            "page_sizes": list(PAGE_SIZES)}
+
+
+def pager_query(params: dict, **overrides) -> str:
+    """A query string for this surface, built from the allowlist + overrides."""
+    keep = {k: str(v) for k, v in (params or {}).items()
+            if k in _PAGER_KEYS and v not in (None, "")}
+    for k, v in overrides.items():
+        if v in (None, ""):
+            keep.pop(k, None)
+        else:
+            keep[k] = str(v)
+    return urlencode(keep)
+
+
+def page_links(params: dict, nav: dict[str, Any],
+               window: int = 2) -> list[dict[str, Any]]:
+    """Pager entries: first, last, ±`window` around current, '…' for the gaps.
+
+    The LAST page is always present. A pager that cannot reach the tail hides
+    tracks as effectively as an infinite scroll does."""
+    pages, cur = nav["pages"], nav["page"]
+    if pages <= 1:
+        return []
+    wanted = sorted({1, pages, *range(max(1, cur - window),
+                                      min(pages, cur + window) + 1)})
+    out: list[dict[str, Any]] = []
+    prev = 0
+    for p in wanted:
+        if prev and p != prev + 1:
+            out.append({"label": "…", "url": None, "current": False})
+        out.append({"label": str(p),
+                    "url": f"/library?{pager_query(params, page=p)}",
+                    "current": p == cur})
+        prev = p
+    return out
 
 
 def why_n_analyzed(n_mine: int, top_limit: int, n_ranges: int = 3) -> str:

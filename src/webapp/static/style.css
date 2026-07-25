@@ -428,6 +428,18 @@ a.prov-glyph:hover { text-decoration: underline; }
 /* per-playlist coverage: "N of M analyzed". `is-done` is the fully-imported
    state; `pl-cov-none` is the honest absence — a playlist we've never fetched,
    whose track ids we genuinely do not know. */
+/* the catalog scrolls in its OWN box; the page body never scrolls sideways */
+.lib-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+/* library pager — tap targets sized for a phone (44px is the usual floor) */
+.pager { display: flex; flex-wrap: wrap; gap: .35rem; margin: 1rem 0 .4rem; }
+.pager .page { min-width: 2.75rem; min-height: 2.75rem; padding: .6rem; text-align: center;
+  border: 1px solid var(--line); border-radius: 6px; font-size: .9rem;
+  text-decoration: none; color: var(--fg); }
+.pager .page:hover { border-color: var(--spotify); }
+.pager .page.is-current { background: var(--spotify); border-color: var(--spotify);
+  color: #08120c; font-weight: 600; }
+.pager .page.gap { border: 0; color: var(--muted); min-width: 1rem; min-height: 0;
+  padding: .6rem .2rem; }
 .pl-cov { display: block; font-size: .8rem; color: var(--muted); margin-top: .15rem; }
 .pl-cov.is-done { color: var(--spotify); }
 .pl-cov-none { font-style: italic; opacity: .7; }
