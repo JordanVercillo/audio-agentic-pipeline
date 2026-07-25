@@ -613,6 +613,31 @@ def test_guest_route_does_not_hijack_a_logged_in_session(matrix_app, wiring):
     assert not sess.get("is_guest"), "a logged-in user was marked a guest"
 
 
+def test_dead_lettered_tracks_reach_the_repair_queue(matrix_app, wiring):
+    """A track the ORDINARY worker gives up on (failed at MAX_ATTEMPTS) never
+    gets a re-extraction ledger entry, so before this it was blank, never
+    retried, and INVISIBLE to /library?filter=needs-source — the one place the
+    owner would look. Found live: "Fukk A Interview" was stuck exactly this way.
+    The queue must be both populations, not just the ledger's."""
+    from ..store.cache import JOB_FAILED, MAX_ATTEMPTS
+    from ..store.models import ExtractionJob
+
+    cache = wiring.cache
+    cache.remember_meta([{"spotify_track_id": "deadltr1", "track_name": "Gave Up",
+                          "artist_names": "Band"}])
+    with cache._Session() as s:
+        s.add(ExtractionJob(spotify_track_id="deadltr1", status=JOB_FAILED,
+                            attempts=MAX_ATTEMPTS, last_error="no usable source"))
+        s.commit()
+    assert "deadltr1" in cache.dead_lettered_ids()
+
+    client, _ = client_as(matrix_app, OWNER)
+    body = client.get("/library?filter=needs-source").text
+    assert "Gave Up" in body, "a dead-lettered track is missing from the repair queue"
+    # ...and it is not confused with a track that still has work coming
+    assert "deadltr2" not in cache.dead_lettered_ids()
+
+
 def test_owner_gate_fails_closed_without_env(matrix_app, wiring, monkeypatch):
     """The control that FLIPS. If someone stubs the owner gate open to "simplify
     the fixture", every OWNER cell still passes — but this one must fail. It

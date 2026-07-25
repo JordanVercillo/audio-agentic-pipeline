@@ -466,22 +466,36 @@ def create_app() -> FastAPI:
         return _same_user(mid, owner)
 
     def _needs_source(cache: FeatureCache, track_id: Optional[str] = None):
-        """The repair queue (D-56): ledgered acquisition failures that no
-        provenance row has since resolved. With `track_id` → that track's
-        reason or None (cheap single-row check); without → {id: reason}."""
+        """The repair queue (D-56): every track that is blank and will STAY blank
+        without a manual source, and that no provenance row has since resolved.
+        With `track_id` → that track's reason or None (cheap single-row check);
+        without → {id: reason}.
+
+        TWO populations, because the ledger alone was not the whole truth: the
+        re-extraction runner and the quarantine scripts write ledger entries, but
+        a track the ORDINARY worker dead-letters (failed at MAX_ATTEMPTS) never
+        got one — so it sat blank, unretried and invisible to this very filter,
+        which is the one place the owner would look for it."""
         try:
             failed = (json.loads(_LEDGER_PATH.read_text(encoding="utf-8"))
                       .get("failed") or {})
         except (OSError, ValueError):
-            return None if track_id else {}
+            failed = {}
         if track_id is not None:
+            if cache.provenance_for(track_id) is not None:
+                return None
             reason = (failed.get(track_id) or {}).get("error")
-            if reason and cache.provenance_for(track_id) is None:
+            if reason:
                 return reason
-            return None
+            return ("acquisition gave up after repeated attempts — needs a source"
+                    if track_id in cache.dead_lettered_ids() else None)
         done = {r["spotify_track_id"] for r in cache.all_provenance()}
-        return {t: (info or {}).get("error", "") for t, info in failed.items()
-                if t not in done}
+        out = {t: (info or {}).get("error", "") for t, info in failed.items()
+               if t not in done}
+        for t in cache.dead_lettered_ids():
+            if t not in done and t not in out:
+                out[t] = "acquisition gave up after repeated attempts — needs a source"
+        return out
 
     def _viewer_flags(session: dict[str, Any]) -> dict[str, Any]:
         """Template flags: `authed` = real login (Log out, personal actions),

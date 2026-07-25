@@ -1076,6 +1076,22 @@ class FeatureCache:
         dists.sort(key=lambda x: x[1])
         return dists[:k]
 
+    def dead_lettered_ids(self) -> set[str]:
+        """Tracks the extraction path has PERMANENTLY given up on (failed at
+        MAX_ATTEMPTS). `enqueue` never retries these, so without a manual source
+        they stay blank forever.
+
+        The repair queue was originally the re-extraction LEDGER alone, which
+        only knows about tracks the D-52 runner or a quarantine touched — a
+        track the ordinary worker dead-lettered got no ledger entry and was
+        therefore invisible to `/library?filter=needs-source`: stuck, blank, and
+        unfindable. This is the other half of that population."""
+        with self._Session() as s:
+            rows = s.execute(select(ExtractionJob.spotify_track_id).where(
+                ExtractionJob.status == JOB_FAILED,
+                ExtractionJob.attempts >= MAX_ATTEMPTS)).scalars().all()
+        return set(rows)
+
     def job_states(self) -> dict[str, tuple[str, int]]:
         """{track_id: (status, attempts)} for every track that has a job row.
 
