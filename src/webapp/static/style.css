@@ -48,6 +48,10 @@ main { max-width: 980px; margin: 0 auto; padding: 2rem 1.5rem 3rem; }
 .hero h1 em { color: var(--spotify); font-style: normal; }
 .lede { color: var(--muted); font-size: 1.08rem; max-width: 60ch; }
 .btn { display: inline-block; margin: 1.25rem 0; font-size: 1.02rem; }
+/* secondary action — offered beside a retry so a throttled visitor still has
+   somewhere useful to go (the whole public catalog needs no Spotify call) */
+.btn-quiet { background: transparent; border: 1px solid var(--line);
+  color: var(--fg); margin-left: .5rem; }
 .assurances { list-style: none; padding: 0; margin: 1.5rem 0 0; display: grid; gap: .5rem; }
 .assurances li { color: var(--muted); }
 .assurances strong { color: var(--ink); }

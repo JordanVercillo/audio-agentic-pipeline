@@ -721,6 +721,81 @@ def test_paging_never_hides_a_track_from_the_last_page(matrix_app, wiring):
     assert "Zed 0299" in hit
 
 
+# The Cloudflare H5 fallback Worker replaces ANY origin response with these
+# statuses by its "Demo offline — by design" card (infra/cloudflare/
+# origin-fallback-worker.js, ORIGIN_DOWN). An app that returns one is not
+# showing its own error page — it is telling every visitor the site is down.
+_ORIGIN_DOWN = {502, 504, 521, 522, 523, 530}
+
+
+def _throttled(*a, **k):
+    from spotipy.exceptions import SpotifyException
+    raise SpotifyException(429, -1, "rate/request limit")
+
+
+def test_a_spotify_rate_limit_does_not_masquerade_as_the_site_being_down(
+        matrix_app, wiring, monkeypatch):
+    """THE bug: logging in returned 502 when Spotify throttled the dashboard
+    fetch, so Cloudflare's fallback replaced it with "Demo offline — by design".
+    The app was healthy; the visitor was told the whole site was gone.
+
+    503 says "temporarily unavailable" and passes through as OUR page."""
+    monkeypatch.setattr("src.webapp.app.fetch_top_tracks", _throttled)
+    client, sid = client_as(matrix_app, USER)
+    r = client.get("/dashboard")
+    assert r.status_code not in _ORIGIN_DOWN, (
+        f"{r.status_code} is in the fallback Worker's origin-down set — "
+        "Cloudflare will replace this page with the offline card")
+    assert r.status_code == 503 and r.headers.get("Retry-After")
+    assert "rate-limiting" in r.text and "still logged in" in r.text
+
+
+def test_a_rate_limit_does_not_log_the_visitor_out(matrix_app, wiring, monkeypatch):
+    """Recovering from a transient upstream error meant logging in AGAIN — more
+    API calls, deeper into the same rate limit. The session must survive."""
+    from . import auth_web
+    from .app import _store
+
+    monkeypatch.setattr("src.webapp.app.fetch_top_tracks", _throttled)
+    client, sid = client_as(matrix_app, USER)
+    client.get("/dashboard")
+    assert _store.get(sid) is not None, "the session was destroyed"
+    assert auth_web.is_authenticated(_store.get(sid))
+
+
+def test_an_expired_token_still_drops_the_session(matrix_app, wiring, monkeypatch):
+    """The inverse: when the TOKEN is the problem the session genuinely cannot
+    be recovered, so it must still be dropped rather than looping forever."""
+    from . import auth_web as auth_web_mod
+    from .app import _store
+
+    def _bad_token(*a, **k):
+        raise auth_web_mod.AuthError("Not authenticated.")
+    monkeypatch.setattr("src.webapp.app.auth_web.client_from_session", _bad_token)
+    client, sid = client_as(matrix_app, USER)
+    r = client.get("/dashboard")
+    assert r.status_code == 401 and r.status_code not in _ORIGIN_DOWN
+    assert _store.get(sid) is None, "an unusable session was kept"
+
+
+def test_no_route_returns_a_status_the_fallback_treats_as_death(matrix_app, wiring):
+    """Standing tripwire across the whole matrix. Any 502/504/521-523/530 gets
+    swallowed by Cloudflare and rendered as "the site is offline", so it can
+    never be a legitimate answer from this app."""
+    for row in MATRIX:
+        for persona in PERSONAS:
+            client, _ = client_as(matrix_app, persona)
+            kwargs: dict[str, Any] = {}
+            if row.data:
+                kwargs["data"] = row.data
+            if row.files:
+                kwargs["files"] = row.files
+            resp = client.request(row.method, row.url, **kwargs)
+            assert resp.status_code not in _ORIGIN_DOWN, (
+                f"{row.method} {row.url} as {persona} returned "
+                f"{resp.status_code} — the fallback Worker would hide it")
+
+
 def test_owner_gate_fails_closed_without_env(matrix_app, wiring, monkeypatch):
     """The control that FLIPS. If someone stubs the owner gate open to "simplify
     the fixture", every OWNER cell still passes — but this one must fail. It

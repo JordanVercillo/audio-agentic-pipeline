@@ -186,6 +186,21 @@ def _feature_store() -> Optional[FeatureStore]:
 
 
 @lru_cache(maxsize=1)
+def _looks_rate_limited(exc: BaseException) -> bool:
+    """Is this Spotify throttling us, rather than something being broken?
+
+    Checked by shape, not by type: spotipy raises SpotifyException for a 429 but
+    a RetryError/MaxRetryError from urllib3 when the adapter gives up on repeated
+    503s — the live log showed BOTH for the same underlying cause. Getting this
+    wrong only softens the wording, never the status."""
+    status = getattr(exc, "http_status", None) or getattr(exc, "code", None)
+    if status in (429, 503):
+        return True
+    text = f"{type(exc).__name__} {exc}".lower()
+    return any(s in text for s in ("429", "rate/request limit", "too many",
+                                   "max retries", "503"))
+
+
 def _feature_cache() -> FeatureCache:
     """The shared, track-keyed feature cache (Epic A) — the dashboard's feature source."""
     return FeatureCache()
@@ -624,14 +639,40 @@ def create_app() -> FastAPI:
         try:
             client = auth_web.client_from_session(session)
             ctx = build_dashboard_context(client, _feature_cache())
-        except Exception as exc:  # noqa: BLE001 — show a clean error, drop the session
-            logger.exception("dashboard build failed")
+        except auth_web.AuthError as exc:
+            # The TOKEN is the problem — this session cannot be recovered, so
+            # dropping it and asking for a fresh login is the honest move.
+            logger.warning("dashboard auth failed: %s", exc)
             _store.delete(request.state.sid)
             request.state.sid = _store.new()
             return templates.TemplateResponse(
                 request, "error.html",
-                {"detail": f"Could not load your data: {exc}", "authed": False},
-                status_code=502)
+                {"detail": "Your Spotify session expired — please log in again.",
+                 "authed": False}, status_code=401)
+        except Exception as exc:  # noqa: BLE001 — upstream hiccup, not our death
+            # NEVER 502 here. 502 is in the H5 fallback Worker's ORIGIN_DOWN set
+            # (502/504/521-523/530), so a Spotify rate limit — which is what
+            # this almost always is — made Cloudflare replace the page with
+            # "Demo offline", telling the visitor the whole site was down when
+            # the app was healthy and simply couldn't reach Spotify. 503 says
+            # "temporarily unavailable, come back" and passes through as OUR
+            # page. (Owner report 2026-07-25: "it's when I try to log in".)
+            #
+            # And the session SURVIVES. Deleting it logged the visitor out over
+            # a transient upstream error, so recovering meant logging in again —
+            # more API calls, deeper into the same rate limit, a loop that got
+            # worse the harder you tried.
+            logger.exception("dashboard build failed")
+            throttled = _looks_rate_limited(exc)
+            detail = ("Spotify is rate-limiting us right now — that's a limit on "
+                      "how fast we may read your library, not a problem with your "
+                      "account or this app. You're still logged in; it clears on "
+                      "its own in a minute."
+                      if throttled else f"Could not load your data: {exc}")
+            return templates.TemplateResponse(
+                request, "error.html",
+                {"detail": detail, "authed": True, "retry": "/dashboard"},
+                status_code=503, headers={"Retry-After": "60"})
         session["taste"] = _slim_taste(ctx)  # compact grounding for /ask
         return templates.TemplateResponse(request, "dashboard.html", {**ctx, "authed": True})
 

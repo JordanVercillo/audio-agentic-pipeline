@@ -1,12 +1,18 @@
 {% extends "base.html" %}
 {% block content %}
 <section class="hero">
-  <h1>Something went sideways</h1>
+  <h1>{% if retry %}Just a moment{% else %}Something went sideways{% endif %}</h1>
   <p class="lede">{{ detail }}</p>
+  {# The invite copy answers "why can't I log in" — irrelevant, and actively
+     misleading, to someone who IS logged in and merely hit a rate limit. #}
+  {% if not authed %}
   <p class="muted invite">Trying to log in but not on the invite list yet? The demo
     is capped at 5 Spotify test accounts — email
     <a href="mailto:jordan@vercilloanalytics.com?subject=Vercillo%20Analytics%20demo%20invite">jordan@vercilloanalytics.com</a>
     for a seat.</p>
-  <a class="btn" href="/">Back to start</a>
+  {% endif %}
+  {% if retry %}<a class="btn" href="{{ retry }}">Try again →</a>
+  <a class="btn btn-quiet" href="/library">Browse the library meanwhile</a>
+  {% else %}<a class="btn" href="/">Back to start</a>{% endif %}
 </section>
 {% endblock %}
