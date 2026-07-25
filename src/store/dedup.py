@@ -66,6 +66,13 @@ _RELEASE_RE = re.compile(
     r"\b(?:remaster\w*|deluxe|anniversary|expanded|bonus(?:\s*track)?|"
     r"single\s*version|album\s*version|original\s*version|explicit|clean|"
     r"mono|stereo|re-?issue|special\s*edition|standard)\b", re.I)
+# Phrases that must beat _VERSION_RE despite containing a version word. In
+# electronic releases "Original Mix" is the label for THE original recording,
+# not a remix of it — reading it as a version would split a track from itself
+# and flag its own correct source as the wrong take.
+_RELEASE_OVERRIDE_RE = re.compile(
+    r"^\s*(?:the\s+)?original\s*(?:mix|edit)\s*$|^\s*main\s*(?:mix|version)?\s*$",
+    re.I)
 # "- From \"Shrek 2\" Soundtrack" / "(from the series Arcane)". Narrow on
 # purpose: a bare "- From The Ashes" is a SUBTITLE and must survive.
 _FROM_WORK_RE = re.compile(
@@ -114,6 +121,8 @@ def _classify(segment: str) -> str:
     unrecognised qualifier splits rather than merges."""
     if _CREDIT_RE.search(segment):
         return _CREDIT
+    if _RELEASE_OVERRIDE_RE.search(segment):
+        return _RELEASE          # "Original Mix" is the original, not a remix
     if _VERSION_RE.search(segment):
         return _VERSION
     if _RELEASE_RE.search(segment) or _FROM_WORK_RE.search(segment):

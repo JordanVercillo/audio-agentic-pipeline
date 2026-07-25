@@ -219,6 +219,55 @@ def title_recall(track_name: Optional[str],
     return present / len(toks)
 
 
+def version_mismatch(track_name: Optional[str],
+                     youtube_title: Optional[str]) -> Optional[str]:
+    """The TAKE, not the song: does the source's version qualifier match ours?
+
+    `title_recall` deliberately measures only the CORE title, so a remix sourced
+    from its original scores 1.0 — the song IS recognisable, it is simply the
+    wrong recording. `confident_match` misses the same class (these score
+    0.80–0.85 on the live corpus: right song, right artist, plausible length).
+    Nothing else in this module can see it, so this is the instrument for it,
+    built on O4's `parse_title` — the one definition of "what version is this".
+
+    Returns a human-readable reason when the takes disagree, else None:
+        "on & on - Sammy Virji Remix"      ← "piri & tommy - on & on"   (0.80)
+        "Low Again - Niall T Remix"        ← "Low Again"                (0.85)
+        "Phonky Tribu - DJ HEARTSTRING Remix" ← "Funk Tribu - Phonky Tribu"
+
+    A REVIEW/quarantine instrument, NOT an auto-accept gate (journal #52: a
+    write gate and a health verdict want different bars). `parse_title` was
+    tuned on Spotify titles; YouTube titles are noisier, so an untagged upload
+    of a genuine remix reads as a mismatch here. That asymmetry is deliberate —
+    a wrongly-flagged track is blanked pending a source, never deleted from the
+    catalogue."""
+    from ..store.dedup import parse_title  # stdlib-only, no cycle
+
+    if not track_name or not youtube_title:
+        return None
+    our_base, want = parse_title(track_name)
+    _, got = parse_title(youtube_title)
+    if want == got:
+        return None
+
+    want_toks, got_toks = set(want.split()), set(got.split())
+    # The source names the SAME take and merely says more about it
+    # ("Let It Ride - Live on Display" ← "(Official Video - Live on Display)").
+    # Only in this direction: if OUR tag says more, the source is a lesser take.
+    if want_toks and want_toks <= got_toks:
+        return None
+    # The song is NAMED after a version word ("Speed Garage" by Bradderz), so
+    # the source repeating the title is not a version claim at all.
+    if got and got == our_base:
+        return None
+
+    if want and not got:
+        return f"track is the {want!r} take but the source looks like the original"
+    if got and not want:
+        return f"track is the plain take but the source is the {got!r} version"
+    return f"track is the {want!r} take but the source is the {got!r} version"
+
+
 def leading_artist_segment(youtube_title: Optional[str]) -> Optional[str]:
     """The part of a candidate title before its 'Artist - Title' separator, or
     None when it has none. Our artist appearing AFTER the separator is usually

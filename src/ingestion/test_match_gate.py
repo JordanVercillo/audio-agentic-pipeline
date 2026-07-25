@@ -15,6 +15,7 @@ from .match_gate import (
     rejection_reason,
     select_confident,
     title_contained,
+    version_mismatch,
 )
 
 
@@ -201,3 +202,51 @@ def test_rejection_reason_names_the_real_cause():
         "Lights On", "The Blue Stones",
         _cand("The Blue Stones - Lights On", "The Blue Stones", 40.0), 189.0)
     assert rejection_reason("x", "y", None, 100.0) == "no candidates"
+
+
+# ── version_mismatch: the wrong TAKE of the right song ───────────────────────
+# Every case below is a real row from the live corpus on 2026-07-24.
+
+def test_version_mismatch_catches_a_remix_sourced_from_the_original():
+    """The class no other check can see. These scored 0.80–0.85 on
+    match_confidence (right song, right artist, plausible length) and 1.0 on
+    title_recall (which measures the CORE title by design), so both passed them."""
+    assert version_mismatch("on & on - Sammy Virji Remix",
+                            "piri & tommy - on & on (official audio)")
+    assert version_mismatch("Low Again - Niall T Remix", "Low Again")
+    assert version_mismatch("Bliss - XX Anniversary RemiXX", "Muse - Bliss")
+    assert version_mismatch("Phonky Tribu - DJ HEARTSTRING Remix",
+                            "Funk Tribu - Phonky Tribu")
+    # ...and the reverse: we want the plain take, the source is some version
+    assert version_mismatch("Stay With Me",
+                            "You Me at Six - Stay With Me (Live at Reading)")
+    # ...and both tagged, but different takes
+    assert version_mismatch("Dancin (feat. Luvli) - southstar Remix",
+                            "Aaron Smith - Dancin (KRONO Remix) - Lyrics")
+
+
+def test_version_mismatch_accepts_the_right_take():
+    assert version_mismatch("Hysteria", "Muse - Hysteria (Official Video)") is None
+    assert version_mismatch("Starlight - Live", "Muse - Starlight (Live at Wembley)") is None
+    # a source that merely SAYS MORE about the same take is not a mismatch
+    assert version_mismatch("Let It Ride - Live on Display",
+                            "The Blue Stones - Let It Ride "
+                            "(Official Video - Live on Display)") is None
+    # "Original Mix" is electronic labelling for THE original, not a remix of it
+    assert version_mismatch("Do Me A Favour", "Do Me A Favour (Original Mix)") is None
+    assert version_mismatch("Missing Her", "Missing Her (Original Mix)") is None
+    # a song NAMED after a version word is not making a version claim
+    assert version_mismatch("Speed Garage", "Bradderz & 25KV - Speed Garage") is None
+    # missing data is never an accusation
+    assert version_mismatch(None, "anything") is None
+    assert version_mismatch("Song", None) is None
+
+
+def test_version_mismatch_is_directional():
+    """A source saying MORE is fine; a source saying LESS is the wrong take. Our
+    'Mixed' continuous edit is different audio from the standalone release
+    (owner call 2026-07-24), so the subset rule must not run both ways."""
+    assert version_mismatch("Whippet (Sweetie Irie Dub) - Mixed",
+                            "Whippet (Sweetie Irie Dub)")
+    assert version_mismatch("On My Mind (Conducta Remix) - Mixed",
+                            "On My Mind (Conducta Remix)")
