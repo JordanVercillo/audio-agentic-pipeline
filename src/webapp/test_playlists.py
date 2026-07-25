@@ -124,6 +124,12 @@ class _FakeCache:
         self.playlist_members[playlist_id] = list(track_ids)
         return len(track_ids)
 
+    def playlist_track_ids(self):
+        return dict(self.playlist_members)
+
+    def analyzed_ids(self):
+        return set(self.cached)
+
     def cached_ids(self, ids):
         return {i for i in ids if i in self.cached}
 
@@ -249,4 +255,72 @@ def test_analyze_guest_and_no_scope_blocked(client, monkeypatch):
     client.cookies.set(config.SESSION_COOKIE, _seed_session(scope="user-top-read"))
     n = client.post("/playlists/mine1/analyze", follow_redirects=False)
     assert n.status_code == 303 and n.headers["location"] == "/playlists"
+    assert fake.enqueued == []
+
+
+# ── a failed fetch is not an empty account (owner report, 2026-07-25) ────────
+def _rate_limited(*a, **k):
+    from spotipy.exceptions import SpotifyException
+    raise SpotifyException(429, -1, "rate/request limit")
+
+
+def test_rate_limited_playlists_page_says_so_instead_of_claiming_none(client, monkeypatch):
+    """THE bug the owner hit: 30 playlists vanished and the page said "No
+    importable playlists found" — a confident claim about his Spotify account
+    when the truth was a 429. Both fetches fail closed to None, which renders
+    identically to owning nothing.
+
+    Rate limits are now LIKELY (a whole playlist imports at once, and
+    client_from_session runs retries=0 because spotipy's default sleeps inside
+    the render — the session-36 hang), so this state needs its own words."""
+    monkeypatch.setattr("src.webapp.app.fetch_user_profile", _rate_limited)
+    monkeypatch.setattr("src.webapp.app.fetch_user_playlists", _rate_limited)
+    client.cookies.set(config.SESSION_COOKIE, _seed_session(scope=config.SCOPES))
+    r = client.get("/playlists")
+    assert r.status_code == 200
+    assert "didn't answer" in r.text and "temporary" in r.text
+    assert "Try again" in r.text
+    # ...and it must NOT make the false claim
+    assert "No importable playlists found" not in r.text
+
+
+def test_a_genuinely_empty_account_still_says_none(client, monkeypatch):
+    """The inverse — the honest empty state must survive. If both messages
+    collapsed into one, the fix would just be a different lie."""
+    import pandas as _pd
+    monkeypatch.setattr("src.webapp.app.fetch_user_profile", lambda c: {"user_id": "me"})
+    monkeypatch.setattr("src.webapp.app.fetch_user_playlists", lambda c: _pd.DataFrame())
+    client.cookies.set(config.SESSION_COOKIE, _seed_session(scope=config.SCOPES))
+    r = client.get("/playlists")
+    assert "No importable playlists found" in r.text
+    assert "didn't answer" not in r.text
+
+
+def test_rate_limited_analyze_does_not_accuse_you_of_not_owning_it(client, monkeypatch):
+    """The membership gate fails CLOSED, which is correct — but "that isn't your
+    playlist" is an accusation, and a 429 hasn't earned it."""
+    monkeypatch.setattr("src.webapp.app.fetch_user_profile", _rate_limited)
+    monkeypatch.setattr("src.webapp.app.fetch_user_playlists", _rate_limited)
+    fake = _FakeCache()
+    monkeypatch.setattr("src.webapp.app._feature_cache", lambda: fake)
+    client.cookies.set(config.SESSION_COOKIE, _seed_session(scope=config.SCOPES))
+    r = client.post("/playlists/mine1/analyze", follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "/playlists"
+    assert fake.enqueued == []                      # nothing queued, correctly
+    body = client.get("/playlists").text
+    assert "didn't answer" in body and "isn't one you own" not in body
+
+
+def test_a_failed_TRACK_fetch_says_so_instead_of_queued_zero(client, monkeypatch):
+    """`tdf = None` used to fall through to "Queued 0 new tracks", which reads as
+    "there was nothing new" rather than "we never got the list"."""
+    _mock_membership(monkeypatch)
+    monkeypatch.setattr("src.webapp.app.fetch_playlist_tracks", _rate_limited)
+    fake = _FakeCache()
+    monkeypatch.setattr("src.webapp.app._feature_cache", lambda: fake)
+    client.cookies.set(config.SESSION_COOKIE, _seed_session(scope=config.SCOPES))
+    client.post("/playlists/mine1/analyze", follow_redirects=False)
+    body = client.get("/playlists").text
+    assert "Couldn't read that playlist's tracks" in body
+    assert "Queued <b>0</b>" not in body
     assert fake.enqueued == []

@@ -1134,18 +1134,28 @@ def create_app() -> FastAPI:
     _PLAYLIST_ID_RE = re.compile(r"[0-9A-Za-z]{1,64}")  # base62 guard on the import id
 
     def _user_playlists(client):
-        """(me_id, playlists DataFrame) for the authed client — both absent-safe
-        (borrowed-time /me + /me/playlists). me_id None fails the membership
-        filter CLOSED (collaborative-only)."""
+        """(me_id, playlists DataFrame, reachable) for the authed client — both
+        absent-safe (borrowed-time /me + /me/playlists). me_id None fails the
+        membership filter CLOSED (collaborative-only).
+
+        `reachable` is the honesty bit. Both fetches fail closed to None, which
+        renders EXACTLY like "you own no importable playlists" — so a Spotify
+        429 told the owner a confident falsehood about his own account (his 30
+        playlists had not gone anywhere). Rate limiting is likely here now that
+        a whole playlist imports at once, and `client_from_session` runs
+        retries=0 on purpose (spotipy's default sleeps inside the render — the
+        session-36 hang), so a 429 is abrupt by design. The caller needs to be
+        able to say "we couldn't ask" instead of "the answer is none"."""
+        reachable = True
         try:
             me_id = fetch_user_profile(client).get("user_id")
         except Exception:  # noqa: BLE001
-            me_id = None
+            me_id, reachable = None, False
         try:
             df = fetch_user_playlists(client)
         except Exception:  # noqa: BLE001
-            df = None
-        return me_id, df
+            df, reachable = None, False
+        return me_id, df, reachable
 
     @app.get("/playlists", response_class=HTMLResponse)
     def playlists_page(request: Request):
@@ -1163,13 +1173,16 @@ def create_app() -> FastAPI:
         if not auth_web.has_playlist_scope(session):
             return templates.TemplateResponse(request, "playlists.html",
                                               {**base, "needs_consent": True, "cards": []})
-        me_id, df = _user_playlists(auth_web.client_from_session(session))
+        me_id, df, reachable = _user_playlists(auth_web.client_from_session(session))
         cache = _feature_cache()
         cards = playlists_mod.playlist_cards(
             df, me_id, members=cache.playlist_track_ids(),
             analyzed_ids=cache.analyzed_ids())
+        # "Spotify wouldn't answer" and "you own none" are different facts, and
+        # only one of them is about the visitor's account.
         return templates.TemplateResponse(request, "playlists.html",
-                                          {**base, "needs_consent": False, "cards": cards})
+                                          {**base, "needs_consent": False,
+                                           "cards": cards, "unreachable": not reachable})
 
     @app.post("/playlists/{playlist_id}/analyze")
     def playlist_analyze(request: Request, playlist_id: str):
@@ -1186,7 +1199,15 @@ def create_app() -> FastAPI:
         if not _PLAYLIST_ID_RE.fullmatch(playlist_id or ""):
             return RedirectResponse("/playlists", status_code=303)
         client = auth_web.client_from_session(session)
-        me_id, df = _user_playlists(client)
+        me_id, df, reachable = _user_playlists(client)
+        if not reachable:
+            # The membership gate fails CLOSED, which is right — but saying
+            # "that isn't your playlist" when Spotify simply didn't answer
+            # accuses the visitor of something untrue.
+            session["pl_msg"] = ("Spotify didn't answer just now (usually a rate "
+                                 "limit while a big import runs) — nothing was "
+                                 "queued. Try again in a minute.")
+            return RedirectResponse("/playlists", status_code=303)
         if playlist_id not in playlists_mod.importable_ids(df, me_id):
             session["pl_msg"] = "That playlist isn't one you own or collaborate on."
             return RedirectResponse("/playlists", status_code=303)
@@ -1194,11 +1215,17 @@ def create_app() -> FastAPI:
         try:
             tdf = fetch_playlist_tracks(playlist_id, client)
         except Exception:  # noqa: BLE001
-            tdf = None
+            # An empty fetch and a FAILED fetch both used to end as "Queued 0
+            # new tracks", which reads as "there was nothing new" rather than
+            # "we never got the list". Say which.
+            session["pl_msg"] = ("Couldn't read that playlist's tracks — Spotify "
+                                 "didn't answer (usually a rate limit). Nothing "
+                                 "was queued; try again in a minute.")
+            return RedirectResponse("/playlists", status_code=303)
         # bridge key MUST be a non-empty string (ground rule #1). Drop local/None
         # tracks — and note pandas turns None into a TRUTHY float('nan'), so an
         # isinstance-str check is load-bearing, not just `if id`.
-        recs = [] if tdf is None or tdf.empty else [
+        recs = [] if tdf is None or tdf.empty else [  # empty is now genuinely empty
             r for r in tdf.to_dict("records")
             if isinstance(r.get("spotify_track_id"), str) and r["spotify_track_id"]]
         # SKIP-then-CAP (owner report, session 36): cap slots are spent ONLY on

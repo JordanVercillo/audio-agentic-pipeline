@@ -428,6 +428,9 @@ a.prov-glyph:hover { text-decoration: underline; }
 /* per-playlist coverage: "N of M analyzed". `is-done` is the fully-imported
    state; `pl-cov-none` is the honest absence — a playlist we've never fetched,
    whose track ids we genuinely do not know. */
+/* a transient upstream failure, styled as a NOTICE not an empty state — the
+   difference between "Spotify didn't answer" and "you own no playlists" */
+.pl-unreachable { border-left: 3px solid var(--warn, #d8a657); padding-left: .8rem; }
 /* the catalog scrolls in its OWN box; the page body never scrolls sideways */
 .lib-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 /* library pager — tap targets sized for a phone (44px is the usual floor) */

@@ -48,6 +48,13 @@
     </div>
     {% endfor %}
   </div>
+  {% elif unreachable %}
+  {# NOT a claim about the visitor's account — we simply couldn't ask. #}
+  <p class="lede pl-unreachable">Spotify didn't answer just now, so this isn't
+    your playlist list — it's a temporary failure. It's usually a rate limit
+    while a large import is running, and it clears on its own in a minute.</p>
+  <p class="cap"><a class="btn" href="/playlists">Try again →</a>
+    Your playlists haven't changed; nothing was lost.</p>
   {% else %}
   <p class="cap">No importable playlists found. In Spotify's current API, only
     playlists you <b>own</b> or <b>collaborate on</b> expose their tracks —
