@@ -190,6 +190,26 @@ class ArtistMeta(Base):
     updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
 
 
+class PlaylistTrack(Base):
+    """Which tracks a playlist contained WHEN WE IMPORTED IT (Epic I, 2026-07-25).
+
+    Exists so `/playlists` can honestly report "X of Y analyzed" per card. A
+    playlist's membership is only knowable for one we've actually fetched, so
+    this is written at import time and never inferred — a card for a playlist
+    you haven't imported stays blank rather than guessing.
+
+    SOFT refs on both sides: `playlist_id` is Spotify's, `spotify_track_id` is
+    the bridge key, and NOTHING joins on this table — it is display context, not
+    a second id system. The pair is the primary key so a re-import is idempotent.
+    New table → create_all builds it; no _ADDED_COLUMNS entry (journal #18)."""
+
+    __tablename__ = "playlist_tracks"
+
+    playlist_id = Column(String, primary_key=True, index=True)
+    spotify_track_id = Column(String, primary_key=True, index=True)
+    remembered_at = Column(DateTime, default=utcnow)
+
+
 class TrackProvenance(Base):
     """One ACQUISITION EVENT — where a track's audio came from + how confident
     the match was (Epic Q / D-51). Append-only history (soft `spotify_track_id`

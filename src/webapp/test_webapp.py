@@ -1854,7 +1854,11 @@ def test_library_says_no_source_not_analyzing_for_dead_letters():
         shown=3, total=3, analyzed=0, my_count=0, viewer=False, authed=False)
     assert html.count("analyzing…") == 1            # only the live one
     assert "no source" in html and "Analysis stopped" in html
-    assert html.count('href="/queue"') == 1         # no queue link on a stopped row
+    # exactly ONE queue link per analyzing row — a stopped row must not offer to
+    # watch a queue it isn't in. (The nav's own Queue tab is the other one, so
+    # this counts links inside the table body rather than the whole document.)
+    body = html.split("<tbody>", 1)[-1]
+    assert body.count('href="/queue"') == 1
 
 
 def test_ask_without_dashboard_redirects_to_dashboard(client):

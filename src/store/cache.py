@@ -23,7 +23,7 @@ from datetime import timedelta
 from pathlib import Path
 from typing import Any, Optional
 
-from sqlalchemy import create_engine, event, select, text
+from sqlalchemy import create_engine, event, func, select, text
 from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import sessionmaker
@@ -35,6 +35,7 @@ from .models import (
     ChatLabel,
     ChatLog,
     ExtractionJob,
+    PlaylistTrack,
     TrackCluster,
     TrackFeatures,
     TrackMeta,
@@ -867,6 +868,21 @@ class FeatureCache:
         detection needs both members of a pair."""
         return set(self.duplicate_flags())
 
+    def analyzed_ids(self) -> set[str]:
+        """Every analyzed track's bridge key — IDS ONLY.
+
+        `set(self.all_features())` was the same answer at ~90x the cost: it
+        parsed the entire 82-column feature dict for every track (plus, through
+        the ORM row, the loudness curve, beat grid and sections — measured at
+        6.6 MB of JSON on the live corpus) and then discarded every value to
+        keep the keys. Measured 2026-07-25: 87.5 ms -> 0.7 ms.
+
+        This sits under `unvalidated_ids` -> `excluded_from_aggregates`, i.e.
+        under /song, /explore, /recommend, cluster training and every mart
+        rebuild — it was the single most-repeated wasted read in the app."""
+        with self._Session() as s:
+            return set(s.execute(select(TrackFeatures.spotify_track_id)).scalars())
+
     def unvalidated_ids(self) -> set[str]:
         """Analyzed tracks whose audio traces to no recorded source (D-57).
 
@@ -879,7 +895,7 @@ class FeatureCache:
         validated = self.source_validated_ids()
         if not validated:
             return set()
-        return set(self.all_features()) - validated
+        return self.analyzed_ids() - validated
 
     def excluded_from_aggregates(self) -> set[str]:
         """THE population filter every aggregate shares: flagged twins +
@@ -1075,6 +1091,55 @@ class FeatureCache:
                  for r in pop if r.spotify_track_id != track_id]
         dists.sort(key=lambda x: x[1])
         return dists[:k]
+
+    def queue_count(self) -> int:
+        """How many tracks are ACTUALLY waiting (queued + running).
+
+        `queue_rows` is display-capped, so its length is the size of a list, not
+        of the queue. /queue derived both its count and its ETA from that list
+        and under-reported any backlog past the cap — invisible while imports
+        were capped at 100, materially wrong now that a whole playlist lands at
+        once."""
+        with self._Session() as s:
+            return int(s.execute(select(func.count(ExtractionJob.spotify_track_id))
+                                 .where(ExtractionJob.status.in_(
+                                     (JOB_QUEUED, JOB_RUNNING)))).scalar() or 0)
+
+    def remember_playlist_tracks(self, playlist_id: str, track_ids: list[str]) -> int:
+        """Record which tracks a playlist contained, at import time.
+
+        Membership is what lets /playlists say "X of Y analyzed" per card. It is
+        only knowable for a playlist we have actually fetched, so it is written
+        HERE and never inferred: a card for a playlist you've not imported stays
+        honestly blank rather than guessing.
+
+        Replaces the playlist's rows wholesale — a playlist is mutable upstream,
+        so the latest import is the truth. Soft refs both ways: no foreign key,
+        no bridge-key minting, nothing joins on playlist_id."""
+        if not playlist_id or not track_ids:
+            return 0
+        with self._Session() as s:
+            for r in s.execute(select(PlaylistTrack).where(
+                    PlaylistTrack.playlist_id == playlist_id)).scalars().all():
+                s.delete(r)
+            s.flush()
+            seen: set[str] = set()
+            for tid in track_ids:
+                if isinstance(tid, str) and tid and tid not in seen:
+                    seen.add(tid)
+                    s.add(PlaylistTrack(playlist_id=playlist_id, spotify_track_id=tid))
+            s.commit()
+            return len(seen)
+
+    def playlist_track_ids(self) -> dict[str, list[str]]:
+        """{playlist_id: [track_id, …]} for every playlist we've imported."""
+        with self._Session() as s:
+            rows = s.execute(select(PlaylistTrack.playlist_id,
+                                    PlaylistTrack.spotify_track_id)).all()
+        out: dict[str, list[str]] = {}
+        for pid, tid in rows:
+            out.setdefault(pid, []).append(tid)
+        return out
 
     def dead_lettered_ids(self) -> set[str]:
         """Tracks the extraction path has PERMANENTLY given up on (failed at

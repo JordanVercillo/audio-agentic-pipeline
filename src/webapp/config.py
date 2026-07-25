@@ -51,7 +51,13 @@ SCOPES = " ".join(BASE_SCOPES + PLAYLIST_SCOPES)
 # serial on one worker, so a playlist import is capped to this many tracks —
 # a TOTAL, enforced by slicing before enqueue (the fetcher's `limit` is only a
 # page size). 100 ≈ 83 min worst-case worker time. Config-tunable.
-PLAYLIST_IMPORT_CAP = int(os.environ.get("WEBAPP_PLAYLIST_IMPORT_CAP", "100"))
+# 0 = NO CAP: import the whole playlist (owner call 2026-07-25 — "I want to be
+# able to upload an entire playlist"). The cap existed so one playlist couldn't
+# monopolise the worker, but the queue is a DB-backed FIFO the worker drains at
+# its own pace: a big import makes the queue LONGER, never heavier. What the cap
+# actually did was silently truncate a 1004-track playlist to its first 100 and
+# require eleven more clicks to walk the rest.
+PLAYLIST_IMPORT_CAP = int(os.environ.get("WEBAPP_PLAYLIST_IMPORT_CAP", "0"))
 
 # ── Sessions ──
 SESSION_COOKIE = "va_sid"

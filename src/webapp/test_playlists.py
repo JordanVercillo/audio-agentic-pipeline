@@ -118,6 +118,11 @@ class _FakeCache:
         self.active = active or set()
         self.enqueued: list = []
         self.remembered: list = []
+        self.playlist_members: dict = {}
+
+    def remember_playlist_tracks(self, playlist_id, track_ids):
+        self.playlist_members[playlist_id] = list(track_ids)
+        return len(track_ids)
 
     def cached_ids(self, ids):
         return {i for i in ids if i in self.cached}
@@ -138,22 +143,47 @@ def _mock_membership(monkeypatch):
     monkeypatch.setattr("src.webapp.app.fetch_user_playlists", lambda c: _PL_DF)
 
 
-def test_analyze_cap_spends_slots_on_new_tracks_only(client, monkeypatch):
-    # owner report (session 36): analyzed/queued tracks must be SKIPPED first,
-    # the cap applied to what's genuinely new — re-Analyze walks deeper each time.
-    _mock_membership(monkeypatch)
+def _big_playlist(monkeypatch, n=2000):
     big = pd.DataFrame([{"spotify_track_id": f"t{i}", "track_name": f"S{i}",
-                         "artist_names": "A"} for i in range(2000)])
+                         "artist_names": "A"} for i in range(n)])
     monkeypatch.setattr("src.webapp.app.fetch_playlist_tracks", lambda pid, c: big)
-    fake = _FakeCache(cached={f"t{i}" for i in range(30)},      # first 30 analyzed
+    return _FakeCache(cached={f"t{i}" for i in range(30)},      # first 30 analyzed
                       active={f"t{i}" for i in range(30, 50)})  # next 20 already queued
+
+
+def test_analyze_imports_the_WHOLE_playlist_and_lands_on_the_queue(client, monkeypatch):
+    """Owner call 2026-07-25: "I want to be able to upload an entire playlist."
+
+    The 100-track cap silently truncated a 1000-track playlist and demanded ten
+    more clicks. Uncapped, one Analyze queues everything genuinely new — the
+    already-analyzed and already-queued are still skipped first, so the count is
+    honest rather than merely large.
+
+    It also lands on /queue, not /playlists: the visitor gets VISIBLE proof the
+    tracks were queued, and we skip re-fetching every playlist over the network
+    (most of what made Analyze feel frozen)."""
+    _mock_membership(monkeypatch)
+    fake = _big_playlist(monkeypatch)
     monkeypatch.setattr("src.webapp.app._feature_cache", lambda: fake)
     client.cookies.set(config.SESSION_COOKIE, _seed_session(scope=config.SCOPES))
     r = client.post("/playlists/mine1/analyze", follow_redirects=False)
-    assert r.status_code == 303 and r.headers["location"] == "/playlists"
-    cap = config.PLAYLIST_IMPORT_CAP
-    assert len(fake.enqueued) == cap                          # cap = a TOTAL of NEW tracks
-    assert fake.enqueued == [f"t{i}" for i in range(50, 50 + cap)]  # skip → then cap
+    assert r.status_code == 303 and r.headers["location"] == "/queue"
+    assert fake.enqueued == [f"t{i}" for i in range(50, 2000)]   # all 1950 new ones
+    # membership recorded for the coverage line, over the FULL playlist
+    assert len(fake.playlist_members["mine1"]) == 2000
+
+
+def test_an_explicit_cap_still_truncates(client, monkeypatch):
+    """The cap didn't disappear, it defaults to off — WEBAPP_PLAYLIST_IMPORT_CAP
+    still bounds an import for anyone who wants that, and the skip-then-cap
+    ordering (session 36) is unchanged."""
+    _mock_membership(monkeypatch)
+    fake = _big_playlist(monkeypatch)
+    monkeypatch.setattr("src.webapp.app._feature_cache", lambda: fake)
+    monkeypatch.setattr(config, "PLAYLIST_IMPORT_CAP", 100)
+    client.cookies.set(config.SESSION_COOKIE, _seed_session(scope=config.SCOPES))
+    client.post("/playlists/mine1/analyze", follow_redirects=False)
+    assert fake.enqueued == [f"t{i}" for i in range(50, 150)]     # skip → then cap
 
 
 def test_analyze_excludes_local_and_none_ids(client, monkeypatch):

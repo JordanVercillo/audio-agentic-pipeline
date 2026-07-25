@@ -425,6 +425,12 @@ a.prov-glyph:hover { text-decoration: underline; }
 /* Playlists (P3.4) */
 .pl-analyze { margin: .4rem 0 0; }
 .pl-analyze .btn { margin: 0; font-size: .85rem; padding: .3rem .7rem; }
+/* per-playlist coverage: "N of M analyzed". `is-done` is the fully-imported
+   state; `pl-cov-none` is the honest absence — a playlist we've never fetched,
+   whose track ids we genuinely do not know. */
+.pl-cov { display: block; font-size: .8rem; color: var(--muted); margin-top: .15rem; }
+.pl-cov.is-done { color: var(--spotify); }
+.pl-cov-none { font-style: italic; opacity: .7; }
 .cap.ok { color: var(--spotify); font-size: .85rem; }
 /* a track whose acquisition permanently stopped — states a fact, never a
    pending promise (the "analyzing… forever" fix) */

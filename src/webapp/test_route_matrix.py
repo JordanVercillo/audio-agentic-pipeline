@@ -638,6 +638,43 @@ def test_dead_lettered_tracks_reach_the_repair_queue(matrix_app, wiring):
     assert "deadltr2" not in cache.dead_lettered_ids()
 
 
+def test_logging_in_clears_a_previous_demo_persona(matrix_app, wiring, monkeypatch):
+    """Owner report: "when I click back it doesn't load my Spotify page, it just
+    brings me to the demo."
+
+    `is_guest` was STICKY. `_store.rotate()` preserves session data across the
+    login rotation, so a visitor who had ever clicked "View as guest" stayed
+    flagged a guest forever — demo banner on every page, and the owner's
+    snapshot taste sitting in their session until /dashboard overwrote it. A
+    real login must supersede the demo persona."""
+    from spotipy.oauth2 import SpotifyPKCE
+
+    from . import auth_web
+    from .app import _signer, _store
+
+    sid = _store.new()
+    sess = _store.get(sid)
+    sess["is_guest"] = True                       # they browsed the demo first
+    sess["taste"] = {"range_ids": {"short_term": ["demo_track"]}}
+    auth_web.build_authorize_url(sess)            # start a real login
+    state = sess["pkce"]["state"]
+    monkeypatch.setattr(SpotifyPKCE, "get_access_token", lambda self, code=None,
+                        check_cache=True: self.cache_handler.save_token_to_cache(
+                            {"access_token": "tok", "token_type": "Bearer",
+                             "expires_in": 3600, "scope": config.SCOPES}) or "tok")
+
+    client = TestClient(matrix_app, follow_redirects=False)
+    client.cookies.set(config.SESSION_COOKIE, _signer.sign(sid))
+    r = client.get(f"/callback?code=abc&state={state}")
+    assert r.status_code == 303 and r.headers["location"] == "/dashboard"
+
+    served = _signer.unsign(r.cookies.get(config.SESSION_COOKIE))
+    after = _store.get(served)
+    assert auth_web.is_authenticated(after), "the login itself must still work"
+    assert not after.get("is_guest"), "a logged-in user was left flagged a guest"
+    assert "taste" not in after, "the demo snapshot survived into a real session"
+
+
 def test_owner_gate_fails_closed_without_env(matrix_app, wiring, monkeypatch):
     """The control that FLIPS. If someone stubs the owner gate open to "simplify
     the fixture", every OWNER cell still passes — but this one must fail. It

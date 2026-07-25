@@ -613,6 +613,42 @@ def test_clearing_a_twin_flag_does_not_strand_the_track(cache):
     assert cache.enqueue(["twin"]) == [] or cache.job_states()["twin"][0] == "queued"
 
 
+def test_queue_count_is_the_queue_not_the_page(cache):
+    """`queue_rows` is display-capped, so /queue derived its count AND its ETA
+    from the length of a truncated list. Invisible while imports were capped at
+    100; materially wrong now that a whole playlist lands at once — a 1000-track
+    import would have reported "200 tracks · 167 min" instead of a day."""
+    ids = [f"q{i:04d}" for i in range(250)]
+    cache.remember_meta([{"spotify_track_id": t, "track_name": t,
+                          "artist_names": "A"} for t in ids])
+    cache.enqueue(ids)
+    assert cache.queue_count() == 250
+    assert len(cache.queue_rows()) < 250        # the display cap still applies
+    cache.claim_next()                          # running still counts as queued work
+    assert cache.queue_count() == 250
+
+
+def test_playlist_membership_is_recorded_and_replaced(cache):
+    """Membership is what lets /playlists say "N of M analyzed". A playlist is
+    mutable upstream, so a re-import REPLACES its rows rather than accumulating
+    a union of everything it ever contained."""
+    cache.remember_playlist_tracks("pl1", ["a", "b", "c", "b"])   # dupes collapse
+    assert sorted(cache.playlist_track_ids()["pl1"]) == ["a", "b", "c"]
+    cache.remember_playlist_tracks("pl1", ["a", "d"])             # track removed upstream
+    assert sorted(cache.playlist_track_ids()["pl1"]) == ["a", "d"]
+    assert cache.remember_playlist_tracks("pl2", []) == 0         # nothing to record
+    assert "pl2" not in cache.playlist_track_ids()
+
+
+def test_analyzed_ids_matches_the_full_feature_read(cache):
+    """The 90x cheaper path must be the SAME answer — it replaced
+    `set(all_features())` under excluded_from_aggregates(), which gates every
+    aggregate in the app."""
+    for t in ("a", "b", "c"):
+        cache.upsert(t, _FEATURES)
+    assert cache.analyzed_ids() == set(cache.all_features()) == {"a", "b", "c"}
+
+
 def test_unstranding_never_reopens_a_real_failure(cache):
     """Only jobs the dedup path authored may be re-opened. A genuine failure
     keeps its error and its attempt count — otherwise a dead-lettered track

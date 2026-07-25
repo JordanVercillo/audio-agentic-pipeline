@@ -592,6 +592,17 @@ def create_app() -> FastAPI:
             return templates.TemplateResponse(
                 request, "error.html", {"detail": str(exc), "authed": False},
                 status_code=400)
+        # A real login SUPERSEDES the demo persona. `rotate` preserves session
+        # DATA, so without this `is_guest` survives the login and never clears —
+        # the visitor stays flagged a guest forever, sees the demo banner on
+        # every page, and hitting Back lands on the owner's snapshot instead of
+        # their own library. Owner-reported: "when I click back it brings me to
+        # the demo". The stale demo taste goes too, so /analytics and /explore
+        # can't render snapshot numbers to a logged-in user before /dashboard
+        # rebuilds their real ones.
+        session = request.state.session
+        session.pop("is_guest", None)
+        session.pop("taste", None)
         # Session-fixation defense: fresh id now that we're authenticated.
         request.state.sid = _store.rotate(request.state.sid)
         return RedirectResponse("/dashboard", status_code=303)
@@ -1153,7 +1164,10 @@ def create_app() -> FastAPI:
             return templates.TemplateResponse(request, "playlists.html",
                                               {**base, "needs_consent": True, "cards": []})
         me_id, df = _user_playlists(auth_web.client_from_session(session))
-        cards = playlists_mod.playlist_cards(df, me_id)
+        cache = _feature_cache()
+        cards = playlists_mod.playlist_cards(
+            df, me_id, members=cache.playlist_track_ids(),
+            analyzed_ids=cache.analyzed_ids())
         return templates.TemplateResponse(request, "playlists.html",
                                           {**base, "needs_consent": False, "cards": cards})
 
@@ -1197,13 +1211,22 @@ def create_app() -> FastAPI:
         ids = [r["spotify_track_id"] for r in uniq]
         skip = cache.cached_ids(ids) | cache.active_ids(ids)
         fresh = [r for r in uniq if r["spotify_track_id"] not in skip]
-        selected = fresh[:cap]                                  # cap is a TOTAL of NEW tracks
+        selected = fresh if cap <= 0 else fresh[:cap]   # cap 0 = the whole playlist
         if selected:
             cache.remember_meta(selected)
         queued = cache.enqueue([r["spotify_track_id"] for r in selected])  # O1 guard applies
+        # Remember WHICH playlist these came from, so /playlists can report
+        # "X of Y analyzed" per card. Membership is only knowable for a playlist
+        # we've actually fetched — hence recorded here, at import, and never
+        # guessed for one we haven't seen.
+        cache.remember_playlist_tracks(playlist_id, ids)
         session["pl_msg"] = playlists_mod.coverage_line(
             len(queued), len(uniq) - len(fresh), len(fresh) - len(selected), cap)
-        return RedirectResponse("/playlists", status_code=303)
+        # Land on the QUEUE, not back on /playlists. Two reasons, both reported:
+        # the visitor gets VISIBLE proof the tracks were queued instead of a
+        # silent bounce, and /playlists would re-fetch /me + every playlist over
+        # the network again — which is most of what made Analyze feel frozen.
+        return RedirectResponse("/queue", status_code=303)
 
     @app.get("/queue", response_class=HTMLResponse)
     def queue_page(request: Request):
@@ -1211,12 +1234,21 @@ def create_app() -> FastAPI:
         NOW and what's up next, in the worker's true FIFO order, with the honest
         ~50 s/track ETA. PUBLIC — the same posture as /library, which already
         shows every unanalyzed track as 'analyzing…' (D-18 corpus data)."""
-        rows = _feature_cache().queue_rows()
-        eta_min = max(1, round(len(rows) * _SECONDS_PER_TRACK / 60)) if rows else 0
+        cache = _feature_cache()
+        rows = cache.queue_rows()
+        # `queue_rows` is display-capped, so len(rows) is the size of the LIST,
+        # not of the queue. Deriving n and the ETA from it under-reported a
+        # 1000-track import as "200 tracks · 167 min" — now that a whole playlist
+        # can land at once, that gap is the difference between 3 hours and a day.
+        n = cache.queue_count()
+        eta_min = max(1, round(n * _SECONDS_PER_TRACK / 60)) if n else 0
+        session = request.state.session
         return templates.TemplateResponse(request, "queue.html", {
-            **_viewer_flags(request.state.session),
-            "rows": rows, "n": len(rows), "eta_min": eta_min,
+            **_viewer_flags(session),
+            "rows": rows, "n": n, "shown": len(rows), "eta_min": eta_min,
             "sec_per_track": _SECONDS_PER_TRACK,
+            # the post-import confirmation, carried over from /playlists
+            "msg": session.pop("pl_msg", None),
         })
 
     @app.get("/library", response_class=HTMLResponse)
