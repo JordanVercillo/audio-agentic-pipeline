@@ -1480,3 +1480,64 @@ surface is not its imports; it's every byte of state the request path touches.
 > asserts a UI affordance appears, assert the DATA that summons it too: a
 > presence check passes for the right reason on one machine and the wrong reason
 > on another, and only the second machine tells you which.*
+
+## 56 — The site was slow because it read the audio to draw a table (2026-07-25, perf)
+
+"I don't want the website to be slow." Before designing anything I timed every
+route: `/` 9 ms, `/queue` 9 ms, `/privacy` 2 ms, `/status` 1 ms — and then
+`/library` 120 ms and `/song` 177 ms. Two outliers, and both turned out to be
+the same mistake wearing different clothes.
+
+`library_rows()` did `select(TrackFeatures)` to read three promoted floats per
+track. But the ORM row also carries the 82-column `features` dict, the 120-point
+loudness curve, the ~480-entry beat grid and the sections list. On the live
+corpus that is **6.6 MB of JSON parsed to produce 18 KB of numbers — a 370:1
+waste ratio**. `similar()` did the same thing and then, because
+`excluded_from_aggregates` → `unvalidated_ids` called `set(all_features())`,
+parsed all 6.6 MB a *second* time purely to keep the dictionary's keys and throw
+every value away.
+
+**The realization:** the cost had nothing to do with the number of tracks and
+everything to do with the *bytes of audio analysis per track*. A row count grows
+linearly with imports; a row's WEIGHT grew every time we added a feature — the
+loudness curve in F-v2, the beat grid in F-v2c, the sections in F-v3. Each of
+those was a display column deliberately kept out of the 77-dim vector so it
+wouldn't contaminate the model, and each one silently made an unrelated table
+render slower, because nobody re-examined what the catalog query was dragging
+along. The ORM made the whole row look free.
+
+> *When a page is slow, ask what it LOADS before you ask how many rows it loads
+> — the two scale on different axes. `select(Model)` is a promise to read every
+> column forever, including the ones added next year, so on any request path
+> name the columns you actually need. And a guard for this belongs on the SHAPE
+> (does this query mention the heavy columns?) rather than the clock: the fault
+> is categorical, so a synthetic 12-row corpus can catch deterministically what
+> a timing threshold could only catch on production data.*
+
+## 57 — Two mechanisms, each correct, with a track lost in the gap (2026-07-25)
+
+Answering "is fixing each source all that's left?" I checked instead of
+asserting, and found 16 blank tracks the repair queue wasn't showing. Thirteen
+were mid-retry and two were about to be enqueued — fine. One, "Fukk A Interview",
+was dead-lettered at MAX_ATTEMPTS: `enqueue` would never retry it, and it had no
+ledger entry, so `/library?filter=needs-source` — the one place the owner would
+look — never listed it. Permanently blank, permanently invisible.
+
+Neither mechanism was buggy. The re-extraction runner and the quarantine scripts
+write ledger entries, and the repair queue reads the ledger; that pairing is
+coherent. The ordinary worker dead-letters a job in the `extraction_jobs` table;
+that is coherent too. The defect lived in the seam: "needs a manual source" was
+defined as *one* of its two populations.
+
+**The realization:** this is journal #44 again from the other direction. There,
+a flag existed and no consumer read it. Here, two producers write the same
+real-world fact into two different stores, and the reader was written against
+whichever one its author had in mind. A definition that names a mechanism
+("what's in the ledger") instead of a condition ("what will stay blank without
+a human") silently excludes every future producer of that condition.
+
+> *Define a queue by the CONDITION that puts something in it, not by the table
+> that happens to record it. When two subsystems can both create the same state,
+> enumerate the state's producers and assert the reader covers all of them —
+> and check the population by hand once, because a filter that returns 100 rows
+> looks equally correct whether the true answer is 100 or 101.*

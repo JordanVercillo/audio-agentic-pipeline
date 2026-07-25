@@ -876,6 +876,66 @@
   all false); `check_duplicates` gained its known blind spot IN WRITING (it runs
   the rule over a population the rule already filtered, so it cannot see a false
   merge — only the pair tests can).
+  ✅ **DQ WRONG-TAKE QUARANTINE + EPIC I UNCAP + THE PERF PASS (2026-07-25,
+  session 60, Opus + orchestrator; commits e7319b2→c2d45d4, 803 tests, CI green,
+  both audits clear, deployed, browser-validated).** **① DQ (owner: "I don't want
+  any data that's not verified on the app"):** the corrected count was NOT 105 —
+  50 unvalidated + 27 never-analyzed = 77 were ALREADY blank (the two groups
+  overlap by 39). The real find was **34 source-validated tracks showing features
+  from a DIFFERENT RECORDING of the right song**, invisible to every existing
+  check: `match_confidence` scores them 0.80–0.85 (song, artist, length all
+  right) and QA3's `title_recall` measures the CORE title BY DESIGN, so a remix
+  sourced from its original scores 1.0. Only O4's version tags could see it.
+  `match_gate.version_mismatch` is the instrument (sibling of `title_affinity` =
+  wrong SONG and `implausible_duration` = wrong LENGTH). **Precision fixed BEFORE
+  executing:** the first dry run flagged 38; reading all 38 found 4 false
+  positives with systematic causes → "Original Mix" is a RELEASE qualifier (also
+  correct for dedup), a source that merely SAYS MORE about the same take is not a
+  mismatch (directional subset rule — our "- Mixed" still fails), and a song
+  NAMED after a version word ("Speed Garage") makes no version claim. 38→34, diff
+  exactly those four. Owner chose DELETE over withhold; `quarantine_tracks` also
+  DEAD-LETTERS so the worker can't re-grab the same wrong audio. Corpus 769→735
+  analyzed, gold 728→695, silhouette 0.174→0.176, `confident_match` 82.4%→84.1%.
+  **② The dead-letter gap (journal #57):** one track was blank, unretried AND
+  invisible to `/library?filter=needs-source` — the repair queue read only the
+  re-extraction LEDGER, and the ordinary worker doesn't write one. `_needs_source`
+  is now the union with `cache.dead_lettered_ids()`. **③ EPIC I UNCAPPED (owner:
+  "I want to be able to upload an entire playlist"):** `PLAYLIST_IMPORT_CAP`
+  defaults to 0 = off (an explicit cap still works, skip-then-cap intact);
+  Analyze now redirects to **/queue** (visible proof + it stopped re-fetching
+  every playlist, which was half the reported "freeze"); `/queue` had been LYING
+  past 200 (count and ETA both derived from a display-capped list) → `queue_count()`,
+  verified live reading "350 tracks · 292 min" where the old code said 200/167;
+  new `playlist_tracks` table records membership at import so cards show "N of M
+  analyzed" (never-imported = "not imported yet", an absence not a claim); Queue
+  tab in the nav. **④ THE STICKY DEMO BUG (owner: "when I click back it brings me
+  to the demo"):** `is_guest` was never cleared and `_store.rotate()` preserves
+  session data, so anyone who had once viewed the demo stayed flagged a guest
+  FOREVER — banner on every page, owner's snapshot taste in their session. A real
+  login now supersedes the demo persona. **⑤ THE PERF PASS (journal #56):**
+  measured first — everything was 2–15 ms except `/library` 120 ms and `/song`
+  177 ms, both from `select(TrackFeatures)` dragging the 82-col dict + loudness
+  curve + beat grid + sections (6.6 MB of JSON for 18 KB of floats, a 370:1 waste)
+  to read a few promoted scalars. Fixes: column projection, `analyzed_ids()`
+  (87→0.7 ms, sits under every aggregate), `feature_columns()` for the 13
+  in-JSON similarity cols, and the **similarity plane** — a per-process memo
+  behind a freshness token DERIVED from the source tables (row count + newest
+  extraction + promoted sums + twin set + validated set), recomputed every call
+  so no future writer can forget to invalidate it (bug A5 defused by
+  construction). `similar()` 176 ms → 7.7 ms warm. **P4 guards assert WORK DONE,
+  not milliseconds** (`test_store_perf.py`): SQL-shape tripwires, an amortization
+  check, constant query count, and 4 staleness tripwires — one per invalidation
+  edge — plus the inverse (a display-only backfill must NOT rebuild).
+  **⑥ /library PAGINATION:** the server was fast but the PAGE still shipped every
+  row (757 KB / 1,259 rows). `page_slice` consumes `library_view`'s output and
+  never sees unsorted rows, so a page-local sort is UNREPRESENTABLE; the lede
+  stays whole-corpus, `rows` survives the slice (so the my-songs count can't
+  shrink to a page), the pager always reaches the last page, `?per=all` stays.
+  **757 KB → 64 KB, now CONSTANT in corpus size; /library 120 ms → 16 ms.**
+  Mobile fixed too: the body scrolled horizontally at 375px (572px wide) → the
+  catalog now scrolls in its own `.lib-wrap`, tap targets 40×42 → 44×44.
+  Live proof of the global sort: tempo desc gives 172 bpm on page 1, 117 on page
+  7, page 13 the final partial slice.
   **➡️ NEXT ACTION — PHASE 5: MPD/Spark (metadata-only, D-26…D-29), launching
   from a defensibly-complete base as D-55 intended.** First slice per
   `docs/VISION_SPECS.md` §Phase 5: **verify the AIcrowd MPD dataset is still
@@ -2634,3 +2694,21 @@ narrative goes to `notes/engineering_journal.md`, plans to
   Owner track, at leisure: the ~65 needs-source queue; the one O4d disagreement
   (Muse "Won't Stand Down") is a D-56 repair, not a dedup decision. NEW SESSION:
   run `/resume`.**
+- **2026-07-25 (session 60 — DQ wrong-take, Epic I uncap, the perf pass; Opus +
+  orchestrator):** owner ran the app hard and reported five bugs; consulted
+  data-platform + webapp in parallel on performance, both red-teaming their own
+  plans. Shipped: the 34-track wrong-TAKE quarantine (a class no existing check
+  could see — journal #56's sibling finding), the dead-letter repair-queue gap
+  (journal #57), whole-playlist import + /queue landing + honest queue counts +
+  per-playlist coverage + Queue nav tab, the sticky-demo login fix, and the perf
+  pass (journal #56): `/library` **120 ms → 16 ms and 757 KB → 64 KB (now
+  constant in corpus size)**, `similar()` **176 ms → 7.7 ms**. **Left off: 803
+  tests, ruff clean, CI green, both audits clear, live smoke 14/14, app-verify
+  ALL-FALSE, deployed and browser-validated at 375px. Corpus is GROWING fast
+  (1,258 known / 886 analyzed, imports draining). NEXT is unchanged = Phase 5
+  (MPD/Spark) starting with the AIcrowd dataset + license check. Owner track:
+  ~100 needs-source repairs, and the DMARC quarantine→reject DNS flip (verified
+  still `p=quarantine`, due now). Deferred perf tails, both flagged and NOT
+  bundled: origin gzip (1 line, ~9x on the tunnel leg, but verify /audio Range
+  scrubbing after) and `/static` carrying a session cookie so Cloudflare reads
+  CF-Cache-Status: BYPASS on every asset. NEW SESSION: run `/resume`.**
