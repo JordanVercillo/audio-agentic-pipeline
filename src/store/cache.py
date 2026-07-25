@@ -18,10 +18,11 @@ import logging
 import math
 import os
 import statistics
+import threading
 from collections import Counter
 from datetime import timedelta
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Optional, Sequence
 
 from sqlalchemy import create_engine, event, func, select, text
 from sqlalchemy import inspect as sa_inspect
@@ -98,6 +99,14 @@ class FeatureCache:
         Base.metadata.create_all(self.engine)
         self._migrate_added_columns()
         self._Session = sessionmaker(self.engine, expire_on_commit=False)
+        # The similarity plane (see `_similarity_plane`): a per-PROCESS memo of
+        # the z-scored corpus matrix, guarded by a freshness token. The lock
+        # stops a burst of concurrent /song requests each building their own
+        # copy during an import drain.
+        self._plane = None
+        self._plane_token = None
+        self._plane_lock = threading.Lock()
+        self._plane_builds = 0
 
     # Forward-only column adds (create_all never ALTERs an existing table).
     # A DB created before a column was introduced gets it here, idempotently —
@@ -290,35 +299,70 @@ class FeatureCache:
                                     TrackMeta.duration_ms)).all()
         return {tid: dur for tid, dur in rows}
 
+    def feature_columns(self, columns: Sequence[str]) -> dict[str, dict]:
+        """{track_id: {col: value|None}} for NAMED feature keys only — projected
+        in SQL, never by parsing the whole dict in Python.
+
+        `all_features()` returns the full 82-column contract and, through the ORM
+        row, drags in loudness_curve / beat_times / sections as well: 6.6 MB of
+        JSON on the live corpus. Every caller on a REQUEST path wanted between 3
+        and 13 of those keys. Use this when you know the columns; use
+        `all_features()` only when you genuinely need the contract.
+
+        Portable by design: compiles to json_extract() on SQLite and ->> on
+        Postgres, the same way the rest of this cache is (D-12). A missing key
+        or a JSON null reads as None — exactly what `(r.features or {}).get(c)`
+        returned before."""
+        cols = list(columns)
+        proj = [TrackFeatures.features[c].as_float().label(c) for c in cols]
+        with self._Session() as s:
+            rows = s.execute(select(TrackFeatures.spotify_track_id, *proj)).all()
+        return {r[0]: {c: r[i] for i, c in enumerate(cols, start=1)} for r in rows}
+
     def library_rows(self) -> list[dict]:
         """Every cached track as a flat display row for the /library catalog (H1):
         metadata + the promoted feature columns + the analyzed flag + the dedup
         flag. A read-only projection — deliberately NOT a widening of all_meta()
         (which serves hot paths a 2-field dict). Metadata-only rows (enqueued
         misses, dedup twins) ride along with analyzed=False so the catalog can be
-        honest about coverage."""
+        honest about coverage.
+
+        PROJECTION, not ORM rows: the catalog reads exactly three promoted
+        scalars per track, but `select(TrackFeatures)` materialised the whole
+        row — the 82-column features dict plus loudness_curve, beat_times and
+        sections. Measured 2026-07-25: 6.6 MB of JSON parsed to produce 18 KB of
+        floats, 99 ms → 9 ms. That is the difference between O(bytes of audio
+        analysis) and O(rows), which is why the display JSON columns must never
+        be named in this query."""
         with self._Session() as s:
-            feats = {r.spotify_track_id: r
-                     for r in s.execute(select(TrackFeatures)).scalars()}
-            metas = s.execute(select(TrackMeta)).scalars().all()
+            feats = {tid: (tempo, rms, centroid) for tid, tempo, rms, centroid in
+                     s.execute(select(TrackFeatures.spotify_track_id,
+                                      TrackFeatures.tempo_bpm,
+                                      TrackFeatures.rms_mean,
+                                      TrackFeatures.spectral_centroid_mean)).all()}
             prov = self._provenance_glyph_map(s)  # Q2/D-51: ✓/~ glyph (∅ = absent)
             rows = []
-            for m in metas:
-                fr = feats.get(m.spotify_track_id)
+            for (tid, name, artist, art, pop, dup, paid) in s.execute(
+                    select(TrackMeta.spotify_track_id, TrackMeta.track_name,
+                           TrackMeta.artist_names, TrackMeta.album_image_url,
+                           TrackMeta.popularity, TrackMeta.duplicate_of,
+                           TrackMeta.primary_artist_id)).all():
+                fr = feats.get(tid)
+                p = prov.get(tid) or {}
                 rows.append({
-                    "id": m.spotify_track_id,
-                    "name": m.track_name or m.spotify_track_id,
-                    "artist": m.artist_names or "",
-                    "art": m.album_image_url,
-                    "popularity": m.popularity,
-                    "duplicate_of": m.duplicate_of,
-                    "primary_artist_id": m.primary_artist_id,  # the artist-rollup join key (D-49)
+                    "id": tid,
+                    "name": name or tid,
+                    "artist": artist or "",
+                    "art": art,
+                    "popularity": pop,
+                    "duplicate_of": dup,
+                    "primary_artist_id": paid,  # the artist-rollup join key (D-49)
                     "analyzed": fr is not None,
-                    "tempo": fr.tempo_bpm if fr else None,
-                    "energy": fr.rms_mean if fr else None,
-                    "brightness": fr.spectral_centroid_mean if fr else None,
-                    "provenance": (prov.get(m.spotify_track_id) or {}).get("state"),
-                    "source_url": (prov.get(m.spotify_track_id) or {}).get("url"),
+                    "tempo": fr[0] if fr else None,
+                    "energy": fr[1] if fr else None,
+                    "brightness": fr[2] if fr else None,
+                    "provenance": p.get("state"),
+                    "source_url": p.get("url"),
                 })
         return rows
 
@@ -1052,43 +1096,106 @@ class FeatureCache:
             return {"worker_name": hb.worker_name, "pid": hb.pid,
                     "interval_seconds": hb.interval_seconds, "beat_at": hb.beat_at}
 
+    def _population_token(self) -> tuple:
+        """A fingerprint of everything the similarity plane depends on.
+
+        DERIVED FROM THE DATA ITSELF, never bumped by a writer — that is the
+        whole point. A version counter someone must remember to increment is how
+        bug A5 happened (a repair updated the source while /explore served the
+        old numbers); this token is recomputed on every call and is a pure
+        function of the source tables, so there is no window in which it can be
+        stale, and no future write path can forget to invalidate it.
+
+        Three components, one per way the population can move: the feature rows
+        (count + newest extraction + the promoted sums, so an in-place edit to a
+        promoted column still moves it), the twin set, and the validated set —
+        because a repair writes provenance and re-admits a track.
+
+        Biased toward OVER-invalidation on purpose: a spurious rebuild costs one
+        plane build; a missed one serves numbers we already told the visitor
+        were wrong."""
+        with self._Session() as s:
+            fp = s.execute(select(
+                func.count(TrackFeatures.spotify_track_id),
+                func.max(TrackFeatures.extracted_at),
+                func.sum(TrackFeatures.tempo_bpm),
+                func.sum(TrackFeatures.rms_mean),
+                func.sum(TrackFeatures.spectral_centroid_mean))).one()
+        return (tuple(str(x) for x in fp), frozenset(self.excluded_from_aggregates()))
+
+    def _similarity_plane(self):
+        """The z-scored corpus matrix, memoised per process behind the token.
+
+        `similar()` used to load every TrackFeatures row — full JSON dicts,
+        curves, beat grids, sections — and recompute the corpus means and stds
+        on EVERY call, i.e. on every view of the public /song page. Measured
+        2026-07-25: 176 ms, linear in corpus size, and it loaded the corpus
+        TWICE because `excluded_from_aggregates` went through `all_features()`.
+
+        The z-constants are a property of the corpus, not of the query, so they
+        belong in a memo. Rebuilt under a lock so a burst of concurrent requests
+        during an import drain cannot each build their own copy."""
+        token = self._population_token()
+        if self._plane is not None and self._plane_token == token:
+            return self._plane
+        with self._plane_lock:
+            if self._plane is not None and self._plane_token == token:
+                return self._plane          # another thread won the race
+            excluded = token[1]
+            proj = [TrackFeatures.features[c].as_float().label(c)
+                    for c in _SIMILARITY_COLS]
+            with self._Session() as s:
+                raw = s.execute(select(TrackFeatures.spotify_track_id, *proj)).all()
+            pop = [r for r in raw if r[0] not in excluded]
+            cols = tuple(c for i, c in enumerate(_SIMILARITY_COLS, start=1)
+                         if any(r[i] is not None for r in pop))
+            idx = {c: _SIMILARITY_COLS.index(c) + 1 for c in cols}
+            means = {c: statistics.fmean(float(r[idx[c]] or 0.0) for r in pop)
+                     for c in cols}
+            stds = {c: (statistics.pstdev(float(r[idx[c]] or 0.0) for r in pop) or 1.0)
+                    for c in cols}
+
+            def _z(r):
+                return tuple((float(r[idx[c]] or 0.0) - means[c]) / stds[c] for c in cols)
+
+            self._plane = {
+                "cols": cols, "means": means, "stds": stds,
+                "vecs": {r[0]: _z(r) for r in pop},
+                "raw": {r[0]: r for r in raw},
+                "idx": idx,
+            }
+            self._plane_token = token
+            self._plane_builds += 1
+            return self._plane
+
     def similar(self, track_id: str, k: int = 6) -> list[tuple[str, float]]:
         """Nearest cached tracks by z-scored acoustic distance → [(id, distance)].
 
-        Portable (works on SQLite + Postgres). Loads the cached population and
-        computes distance in Python — fine at pilot scale; prod swaps in pgvector
+        Portable (works on SQLite + Postgres). Computes distance in Python over a
+        memoised plane — fine at pilot scale; prod swaps in pgvector
         (`ORDER BY vector <-> :target`) over the Epic-B Vector(77) column.
         O3b: flagged twins sit out of the CANDIDATE pool (a track's nearest
         neighbor is otherwise literally itself under another id); a twin can
         still be the QUERY (its /song page keeps working). Source-unvalidated
         tracks sit out too — recommending a neighbour is presenting its
         features as fact, which is exactly what we don't do until validated.
+
+        The z-constants now come from the CANONICAL corpus alone. Previously an
+        excluded query track was appended to its own population before the stats
+        were computed, so a twin's page ranked against very slightly different
+        constants than its canonical's; measured across every excluded query on
+        the live corpus, the neighbour SETS were identical and one page had two
+        middle ranks swapped. The corpus-property reading is the defensible one.
         """
-        twins = self.excluded_from_aggregates()
-        with self._Session() as s:
-            target = s.get(TrackFeatures, track_id)
-            if target is None:
-                return []
-            pop = [r for r in s.execute(select(TrackFeatures)).scalars().all()
-                   if r.spotify_track_id not in twins
-                   or r.spotify_track_id == track_id]
-        if len(pop) < 2:
+        plane = self._similarity_plane()
+        raw = plane["raw"].get(track_id)
+        if raw is None or len(plane["vecs"]) < 2 or not plane["cols"]:
             return []
-
-        cols = [c for c in _SIMILARITY_COLS
-                if any((r.features or {}).get(c) is not None for r in pop)]
-        if not cols:
-            return []
-        means = {c: statistics.fmean(float((r.features or {}).get(c) or 0.0) for r in pop) for c in cols}
-        stds = {c: (statistics.pstdev(float((r.features or {}).get(c) or 0.0) for r in pop) or 1.0)
-                for c in cols}
-
-        def zvec(feats: dict) -> list[float]:
-            return [(float((feats or {}).get(c) or 0.0) - means[c]) / stds[c] for c in cols]
-
-        tz = zvec(target.features)
-        dists = [(r.spotify_track_id, math.dist(tz, zvec(r.features)))
-                 for r in pop if r.spotify_track_id != track_id]
+        idx, means, stds = plane["idx"], plane["means"], plane["stds"]
+        tz = plane["vecs"].get(track_id) or tuple(
+            (float(raw[idx[c]] or 0.0) - means[c]) / stds[c] for c in plane["cols"])
+        dists = [(tid, math.dist(tz, v)) for tid, v in plane["vecs"].items()
+                 if tid != track_id]
         dists.sort(key=lambda x: x[1])
         return dists[:k]
 
