@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from .cache import FeatureCache
+from .cache import MAX_ATTEMPTS, FeatureCache
 
 _FEATURES = {
     "tempo_bpm": 128.0, "rms_mean": 0.20, "spectral_centroid_mean": 2100.0,
@@ -808,3 +808,57 @@ def test_remember_meta_threads_art_and_primary_artist(cache):
         assert row.album_image_url == "http://art/1"
         assert row.primary_artist_id == "ar1"
         assert row.track_name == "Song v2"
+
+
+def test_requeue_retryable_converges_instead_of_stalling(cache):
+    """A failed-under-cap job was only retried when something re-enqueued that
+    id — a dashboard visit or a playlist import. A playlist-imported track is
+    never revisited, so 142 of them sat at attempt 1 indefinitely while
+    /library advertised "analyzing…" and the queue was empty."""
+    cache.remember_meta([{"spotify_track_id": t, "track_name": t,
+                          "artist_names": "A"} for t in ("stuck", "dead", "ok")])
+    cache.enqueue(["stuck", "dead", "ok"])
+    # attempts climb on CLAIM, not on fail — drive the real state machine
+    while cache.claim_next() is not None:
+        pass
+    cache.fail("stuck", "audio acquisition failed")          # attempts -> 1
+    cache.fail("ok", "transient")
+    for _ in range(MAX_ATTEMPTS):
+        cache.fail("dead", "no usable source")
+        cache.enqueue(["dead"])
+        cache.claim_next()
+    cache.fail("dead", "no usable source")                   # dead-lettered
+    assert cache.job_states()["stuck"][0] == "failed"
+
+    requeued = cache.requeue_retryable()
+    assert "stuck" in requeued and "dead" not in requeued    # cap is respected
+    assert cache.job_states()["stuck"][0] == "queued"
+    assert cache.job_states()["stuck"][1] == 1, "attempts must NOT reset"
+    assert cache.job_states()["dead"][0] == "failed"
+
+
+def test_requeue_retryable_closes_a_job_whose_track_got_analyzed(cache):
+    """If the track was analyzed by some other path since it failed, there is
+    nothing to retry — close the job rather than queueing dead work."""
+    cache.remember_meta([{"spotify_track_id": "later", "track_name": "L",
+                          "artist_names": "A"}])
+    cache.enqueue(["later"])
+    cache.claim_next()
+    cache.fail("later", "transient")
+    cache.upsert("later", _FEATURES)                         # analyzed meanwhile
+    assert cache.requeue_retryable() == []
+    assert cache.job_states()["later"][0] == "done"
+
+
+def test_requeue_retryable_cannot_hot_loop(cache):
+    """Attempts are preserved, so a permanently-failing track walks to
+    MAX_ATTEMPTS and dead-letters into the needs-source queue (journal #22)."""
+    cache.remember_meta([{"spotify_track_id": "bad", "track_name": "B",
+                          "artist_names": "A"}])
+    cache.enqueue(["bad"])
+    for i in range(1, MAX_ATTEMPTS + 1):
+        assert cache.claim_next() == "bad"                   # attempts -> i
+        cache.fail("bad", "no usable source")
+        expected = ["bad"] if i < MAX_ATTEMPTS else []       # converges at the cap
+        assert cache.requeue_retryable() == expected
+    assert "bad" in cache.dead_lettered_ids()

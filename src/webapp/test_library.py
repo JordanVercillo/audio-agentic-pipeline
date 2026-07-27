@@ -76,7 +76,10 @@ def test_queue_state_tells_coming_apart_from_stopped():
            for r in library.annotate_queue_state(rows, states, max_attempts=3)}
     assert got["live"] == "analyzing"        # genuinely in flight
     assert got["dead"] == "no_source"        # dead-lettered: enqueue never retries
-    assert got["retry"] == "analyzing"       # under the cap → re-queued later
+    # Under the cap a retry IS coming (the worker re-queues these now), but the
+    # track is not in flight this second — and calling it "analyzing" while the
+    # queue page showed nothing is exactly what the owner reported.
+    assert got["retry"] == "retry_pending"
     assert got["never"] is None              # no job row → make no claim
     assert got["done"] is None               # analyzed rows are untouched
 
@@ -364,3 +367,34 @@ def test_pager_urls_carry_the_view_but_never_junk():
 def test_empty_result_reports_zero_not_a_phantom_row():
     v = library.page_slice(library.library_view(_many(50), q="nothing matches"), per=50)
     assert v["page_rows"] == [] and v["from_index"] == 0 and v["to_index"] == 0
+
+
+# ── "analyzing…" must mean the queue can show it (owner report 2026-07-25) ───
+def test_a_failed_job_under_the_cap_is_not_called_analyzing():
+    """142 tracks said "analyzing…" while /queue was empty. A failure under the
+    cap was labelled "analyzing" on the theory a later dashboard visit would
+    re-queue it — but a playlist-imported track is never revisited, so the retry
+    never came and the label advertised work nothing was doing."""
+    rows = [{"id": "a", "analyzed": False}, {"id": "b", "analyzed": False},
+            {"id": "c", "analyzed": False}, {"id": "d", "analyzed": False}]
+    states = {"a": ("queued", 0), "b": ("running", 1),
+              "c": ("failed", 1), "d": ("failed", 3)}
+    out = {r["id"]: r["queue_state"]
+           for r in library.annotate_queue_state(rows, states, max_attempts=3)}
+    assert out["a"] == "analyzing" and out["b"] == "analyzing"
+    assert out["c"] == "retry_pending", "a failed job is not being analyzed"
+    assert out["d"] == "no_source"
+
+
+def test_only_queue_visible_work_may_claim_to_be_analyzing():
+    """THE invariant behind the report: every row that says "analyzing…" links
+    to /queue, so it must be a job the queue page would actually list —
+    queued or running, nothing else."""
+    states = {f"t{i}": s for i, s in enumerate([
+        ("queued", 0), ("running", 0), ("failed", 1), ("failed", 3),
+        ("done", 1), (None, 0)])}
+    rows = [{"id": f"t{i}", "analyzed": False} for i in range(6)]
+    annotated = library.annotate_queue_state(rows, states, max_attempts=3)
+    claiming = {r["id"] for r in annotated if r["queue_state"] == "analyzing"}
+    on_queue_page = {t for t, (s, _) in states.items() if s in ("queued", "running")}
+    assert claiming == on_queue_page

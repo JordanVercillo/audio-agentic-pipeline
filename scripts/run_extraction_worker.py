@@ -76,6 +76,15 @@ if __name__ == "__main__":
                 requeued = cache.requeue_stale_running()
                 if requeued:
                     print(f"re-queued {len(requeued)} stale running job(s)")
+                # A failed-under-cap job was only ever retried by a dashboard
+                # visit or a playlist import that happened to include it — so a
+                # playlist-imported track's retry never came, and it sat at
+                # attempt 1 forever while /library called it "analyzing…".
+                # Attempts are preserved, so this converges: success, or
+                # dead-lettered into the needs-source queue for a human.
+                retryable = cache.requeue_retryable()
+                if retryable:
+                    print(f"re-queued {len(retryable)} retryable failed job(s)")
                 beat()
                 result = drain(cache, audio_dir=Path(audio_dir),
                                spectrogram_dir=_SPECTROGRAM_DIR, max_jobs=args.max,

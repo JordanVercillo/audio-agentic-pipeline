@@ -86,6 +86,8 @@
         {% elif r.provenance %}<span class="prov-glyph {{ r.provenance }}" title="Owner-supplied audio file (no public link)">⏏</span>
         {% else %}<span class="prov-glyph none" title="Source not recorded yet">∅</span>{% endif %}</td>
       <td>{% if r.queue_state == 'analyzing' %}<a class="cap" href="/queue">analyzing…</a>
+        {% elif r.queue_state == 'retry_pending' %}<span class="cap waiting"
+          title="An earlier attempt to find this track's audio failed. It is queued to be retried — it is not being analyzed right now, which is why it isn't on the queue page.">retry queued</span>
         {% elif r.queue_state == 'no_source' %}<span class="cap stopped"
           title="Analysis stopped — no usable audio source was found for this track, so it has no features.">no source</span>{% endif %}</td>
     </tr>

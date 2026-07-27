@@ -44,10 +44,17 @@ def annotate_queue_state(rows: list[dict], job_states: dict,
     the nearest generic state instead of what actually happened.
 
     A job dead-letters at `max_attempts` and `enqueue` never retries it, so it
-    is honestly finished; a failure UNDER the cap is re-queued on the next
-    dashboard visit that includes the track, so it is honestly still coming.
-    No job row at all → no claim (blank): metadata-only rows were never
-    requested. Analyzed rows are left untouched."""
+    is honestly finished. No job row at all → no claim (blank): metadata-only
+    rows were never requested. Analyzed rows are left untouched.
+
+    "analyzing" now means ONLY queued-or-running — i.e. work the /queue page can
+    actually show you. A failure under the cap used to say "analyzing…" too, on
+    the theory that a later dashboard visit would re-queue it; but a
+    playlist-imported track is never revisited, so 142 of them advertised work
+    that nothing was doing while the queue sat empty (owner report 2026-07-25:
+    "there's songs that say analyzing but the queue is empty"). They get their
+    own state: a retry IS coming — the worker re-queues them now — but they are
+    not in progress this second, and the two are different claims."""
     for r in rows:
         if r.get("analyzed"):
             r["queue_state"] = None
@@ -58,7 +65,7 @@ def annotate_queue_state(rows: list[dict], job_states: dict,
         elif status == "failed" and attempts >= max_attempts:
             r["queue_state"] = "no_source"
         elif status == "failed":
-            r["queue_state"] = "analyzing"      # under the cap → re-queued later
+            r["queue_state"] = "retry_pending"
         else:
             r["queue_state"] = None
     return rows

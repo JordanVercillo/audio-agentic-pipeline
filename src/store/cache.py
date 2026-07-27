@@ -1259,6 +1259,37 @@ class FeatureCache:
             out.setdefault(pid, []).append(tid)
         return out
 
+    def requeue_retryable(self, limit: int = 200) -> list[str]:
+        """Re-queue jobs that FAILED under MAX_ATTEMPTS but nothing will retry.
+
+        `enqueue` retries a failed-under-cap job — but only when something calls
+        it with that id, which happens on a dashboard visit (your top tracks) or
+        a playlist import. A track imported from a playlist is never revisited,
+        so its retry was scheduled for "later" and later never came: 142 tracks
+        sat at attempt 1 indefinitely while /library advertised them as
+        "analyzing…" and the queue was empty (owner report 2026-07-25).
+
+        Bounded and convergent: attempts are PRESERVED, so a track that keeps
+        failing walks to MAX_ATTEMPTS and dead-letters into the needs-source
+        queue, where a human can repair it. This cannot hot-loop — that is what
+        MAX_ATTEMPTS is for (journal #22)."""
+        with self._Session() as s:
+            rows = s.execute(select(ExtractionJob).where(
+                ExtractionJob.status == JOB_FAILED,
+                ExtractionJob.attempts < MAX_ATTEMPTS).limit(limit)).scalars().all()
+            cached = set(s.execute(select(TrackFeatures.spotify_track_id).where(
+                TrackFeatures.spotify_track_id.in_([r.spotify_track_id for r in rows]))
+            ).scalars()) if rows else set()
+            out = []
+            for job in rows:
+                if job.spotify_track_id in cached:
+                    job.status = JOB_DONE      # analyzed since; nothing to retry
+                    continue
+                job.status = JOB_QUEUED        # attempts PRESERVED (no reset)
+                out.append(job.spotify_track_id)
+            s.commit()
+        return out
+
     def dead_lettered_ids(self) -> set[str]:
         """Tracks the extraction path has PERMANENTLY given up on (failed at
         MAX_ATTEMPTS). `enqueue` never retries these, so without a manual source

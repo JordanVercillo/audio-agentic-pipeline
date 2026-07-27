@@ -454,6 +454,9 @@ a.prov-glyph:hover { text-decoration: underline; }
 /* a track whose acquisition permanently stopped — states a fact, never a
    pending promise (the "analyzing… forever" fix) */
 .cap.stopped { cursor: help; font-style: italic; opacity: .75; }
+/* a retry is genuinely scheduled, but nothing is running RIGHT NOW — distinct
+   from "analyzing…", which links to a queue page that would show it */
+.cap.waiting { cursor: help; opacity: .8; }
 
 /* Talk to your data (K1c) */
 .chat-log { display: flex; flex-direction: column; gap: .75rem; margin: 1rem 0; }
