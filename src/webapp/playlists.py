@@ -89,25 +89,46 @@ def importable_ids(df: Optional[pd.DataFrame], me_id: Optional[str]) -> set[str]
 
 
 def coverage_line(queued: int, skipped: int, remaining: Optional[int],
-                  cap: int) -> str:
-    """Honest post-Analyze summary. `queued` = newly queued, `skipped` = already
-    analyzed or already in the queue (cap slots are NEVER spent on these).
+                  cap: int, *, scanned: Optional[int] = None,
+                  queue_depth: Optional[int] = None) -> str:
+    """Honest post-Analyze summary: what we READ, what was already done, and what
+    is now queued — the three numbers that tell a visitor whether the click did
+    anything (owner, 2026-07-27: "I don't see any tracks getting extracted").
+
+    The common case on a well-imported library is queued=0 with a large
+    `skipped`, and that is a SUCCESS, not a no-op: the playlist's next tracks
+    were already analyzed. Saying only "queued 0" made a working click look
+    broken, so `scanned` anchors it — we looked at N, N were already done.
 
     `remaining` is None when the import stopped EARLY — we capped out or hit the
     page ceiling and never reached the end, so we genuinely don't know how many
     are left. That is different from 0 ("we walked the whole playlist and there
     is nothing more"), and saying "0 remaining" on a partial walk would tell the
     visitor a 1004-track playlist was finished after 50."""
-    msg = f"Queued <b>{queued}</b> new track{'s' if queued != 1 else ''} for analysis"
+    scanned_bit = (f"Checked <b>{scanned}</b> track{'s' if scanned != 1 else ''} "
+                   f"in this playlist — " if scanned else "")
+    if queued == 0:
+        if skipped > 0:
+            msg = (f"{scanned_bit}all <b>{skipped}</b> already analyzed or in the "
+                   f"queue, so there was nothing new to add")
+        else:
+            msg = f"{scanned_bit}nothing new to add"
+        if remaining is None:
+            msg += (" · there may be more further in — click again and it picks "
+                    "up where it left off")
+        return msg + "."
+
+    msg = (f"{scanned_bit}queued <b>{queued}</b> new track"
+           f"{'s' if queued != 1 else ''} for analysis")
     if skipped > 0:
-        msg += f" · skipped <b>{skipped}</b> already analyzed or queued"
+        msg += f", <b>{skipped}</b> were already done"
+    if queue_depth:
+        mins = max(1, round(queue_depth * 50 / 60))
+        msg += (f" · the worker is analyzing them now — <a href=\"/queue\">"
+                f"{queue_depth} in the queue, ~{mins} min</a>")
     if remaining is None:
-        msg += (" · there may be more in this playlist — click Analyze again "
-                "once these finish and it picks up where it left off")
+        msg += (" · click again once these finish and it picks up where it "
+                "left off")
     elif remaining > 0 and cap > 0:
-        msg += (f" · <b>{remaining}</b> more held by the {cap}-track cap — "
-                f"run Analyze again once these finish")
-    if queued == 0 and skipped > 0:
-        msg = (f"Nothing new to queue — all <b>{skipped}</b> track"
-               f"{'s are' if skipped != 1 else ' is'} already analyzed or in the queue")
+        msg += (f" · <b>{remaining}</b> more held by the {cap}-track cap")
     return msg + "."

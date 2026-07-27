@@ -21,12 +21,17 @@
     A whole playlist imports at once; the worker drains the queue steadily in
     the background.{% endif %}</p>
 
-  {% if msg %}<p class="cap ok">{{ msg|safe }} <a href="/queue">Watch the queue →</a></p>{% endif %}
+  {% if msg %}<p class="pl-flash">✓ {{ msg|safe }}</p>{% endif %}
+  {% if queue_depth %}
+  <p class="cap">The worker is analyzing <b>{{ queue_depth }}</b> track{{ 's' if queue_depth != 1 else '' }}
+    right now (~50 s each) — <a href="/queue">watch the queue →</a>. You can keep
+    importing while it runs.</p>
+  {% endif %}
 
   {% if cards %}
   <div class="artist-grid">
     {% for c in cards %}
-    <div class="acard">
+    <div class="acard{{ ' is-acted' if c.id == msg_id else '' }}">
       {% if c.image %}<img class="art" src="{{ c.image }}" alt="" loading="lazy">
       {% else %}<span class="art art-ph" title="no cover">♪</span>{% endif %}
       <span class="ainfo">

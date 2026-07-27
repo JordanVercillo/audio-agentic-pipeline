@@ -447,6 +447,13 @@ a.prov-glyph:hover { text-decoration: underline; }
   color: #08120c; font-weight: 600; }
 .pager .page.gap { border: 0; color: var(--muted); min-width: 1rem; min-height: 0;
   padding: .6rem .2rem; }
+/* the post-Analyze confirmation — deliberately louder than a .cap caption,
+   because "nothing new to add" IS a successful outcome and used to read as a
+   no-op when the visitor was dropped on an empty queue page */
+.pl-flash { background: rgba(30, 215, 96, .09); border-left: 3px solid var(--spotify);
+  padding: .6rem .8rem; border-radius: 4px; margin: .8rem 0; font-size: .92rem; }
+/* the card that was just acted on, so the message has an obvious referent */
+.acard.is-acted { border-color: var(--spotify); }
 .pl-cov { display: block; font-size: .8rem; color: var(--muted); margin-top: .15rem; }
 .pl-cov.is-done { color: var(--spotify); }
 .pl-cov-none { font-style: italic; opacity: .7; }

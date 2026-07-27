@@ -55,9 +55,10 @@ def test_nan_cover_becomes_none_not_truthy():
 
 def test_coverage_line_reports_queued_skipped_and_remaining():
     line = playlists.coverage_line(queued=100, skipped=40, remaining=24, cap=100)
-    assert "100" in line and "skipped <b>40</b>" in line and "24" in line and "cap" in line
+    assert "100" in line and "<b>40</b> were already done" in line
+    assert "24" in line and "cap" in line
     clean = playlists.coverage_line(queued=12, skipped=0, remaining=0, cap=100)
-    assert "12" in clean and "skipped" not in clean and "cap" not in clean
+    assert "12" in clean and "already done" not in clean and "cap" not in clean
 
 
 # ── route matrix ─────────────────────────────────────────────────────────────
@@ -146,6 +147,9 @@ class _FakeCache:
         self.enqueued = ids
         return list(ids)
 
+    def queue_count(self):
+        return len(self.enqueued) + len(self.active)
+
 
 def _mock_membership(monkeypatch):
     monkeypatch.setattr("src.webapp.app.fetch_user_profile", lambda c: {"user_id": "me"})
@@ -166,10 +170,11 @@ def _big_playlist(monkeypatch, n=2000):
                       active={f"t{i}" for i in range(30, 50)})  # next 20 already queued
 
 
-def test_analyze_lands_on_the_queue_and_skips_before_it_caps(client, monkeypatch):
-    """Analyze lands on /queue, not /playlists: the visitor gets VISIBLE proof
-    the tracks were queued, and we skip re-fetching every playlist over the
-    network (most of what made Analyze feel frozen).
+def test_analyze_stays_on_playlists_and_skips_before_it_caps(client, monkeypatch):
+    """Analyze returns to /playlists (owner, 2026-07-27). Landing on /queue was
+    meant to prove the click worked, but the common case is a playlist whose next
+    tracks are ALREADY analyzed — nothing new to queue — so it dropped the
+    visitor on an empty queue page, which reads as "nothing happened".
 
     Skip-then-cap (session 36) still holds — the 50 already analyzed/queued are
     passed over before the cap is spent, so a repeat click walks deeper."""
@@ -179,7 +184,7 @@ def test_analyze_lands_on_the_queue_and_skips_before_it_caps(client, monkeypatch
     monkeypatch.setattr(config, "PLAYLIST_IMPORT_CAP", 100)
     client.cookies.set(config.SESSION_COOKIE, _seed_session(scope=config.SCOPES))
     r = client.post("/playlists/mine1/analyze", follow_redirects=False)
-    assert r.status_code == 303 and r.headers["location"] == "/queue"
+    assert r.status_code == 303 and r.headers["location"] == "/playlists"
     assert fake.enqueued == [f"t{i}" for i in range(50, 150)]     # skip → then cap
 
 
@@ -370,7 +375,7 @@ def test_a_1000_track_playlist_imports_a_capped_slice_without_draining_it(
     monkeypatch.setattr(config, "PLAYLIST_IMPORT_CAP", 50)
     client.cookies.set(config.SESSION_COOKIE, _seed_session(scope=config.SCOPES))
     r = client.post("/playlists/mine1/analyze", follow_redirects=False)
-    assert r.status_code == 303 and r.headers["location"] == "/queue"
+    assert r.status_code == 303 and r.headers["location"] == "/playlists"
     assert fake.enqueued == [f"t{i}" for i in range(50)]      # exactly the cap
     # membership recorded is a PREFIX, not the whole playlist
     assert 0 < len(fake.playlist_members["mine1"]) < 1004
@@ -433,10 +438,15 @@ def test_the_page_ceiling_bounds_api_calls_even_when_nothing_is_new(
 def test_a_partial_walk_never_claims_the_playlist_is_finished():
     """"0 remaining" on a partial walk would tell the visitor a 1004-track
     playlist was done after 50. Unknown is its own state."""
+    # Assert the INVARIANT (does it invite another click?), not the exact
+    # wording — the copy is allowed to change, the honesty is not.
     partial = playlists.coverage_line(queued=50, skipped=0, remaining=None, cap=50)
-    assert "may be more" in partial and "picks up where it left off" in partial
+    assert "picks up where it left off" in partial
+    partial_none = playlists.coverage_line(queued=0, skipped=50, remaining=None,
+                                           cap=50, scanned=50)
+    assert "may be more" in partial_none
     complete = playlists.coverage_line(queued=7, skipped=3, remaining=0, cap=50)
-    assert "may be more" not in complete
+    assert "picks up where it left off" not in complete and "may be more" not in complete
 
 
 def test_card_denominator_is_spotifys_count_not_what_we_have_read():
@@ -449,3 +459,52 @@ def test_card_denominator_is_spotifys_count_not_what_we_have_read():
     assert card["n_known"] == 40 and card["n_analyzed"] == 2   # 40 = Spotify's count
     other = next(c for c in cards if c["id"] == "collab1")
     assert other["n_known"] is None                            # never imported
+
+
+# ── the confirmation must make a working click LOOK like one (2026-07-27) ────
+def test_nothing_new_reads_as_success_not_a_no_op():
+    """Owner: "when I click analyze next 50 it just goes to the queue but I
+    don't see any tracks getting extracted." The common case on a well-imported
+    library is queued=0 with a large `skipped` — the playlist's next tracks were
+    already analyzed. That is a SUCCESS, but "queued 0" plus an empty queue page
+    reads as a broken button. `scanned` anchors it."""
+    line = playlists.coverage_line(queued=0, skipped=50, remaining=None, cap=50,
+                                   scanned=50)
+    assert "Checked <b>50</b>" in line
+    assert "already analyzed" in line and "nothing new to add" in line
+    assert "picks up where it left off" in line       # there IS more to do
+
+
+def test_a_real_import_says_what_was_queued_and_what_was_already_done():
+    line = playlists.coverage_line(queued=30, skipped=20, remaining=None, cap=50,
+                                   scanned=50, queue_depth=30)
+    assert "Checked <b>50</b>" in line
+    assert "queued <b>30</b>" in line and "<b>20</b> were already done" in line
+    # the "is it working?" answer, with the queue as evidence
+    assert "analyzing them now" in line and 'href="/queue"' in line and "min" in line
+
+
+def test_the_confirmation_is_shown_on_the_playlists_page(client, monkeypatch):
+    """The message belongs next to the card that was clicked — that is the whole
+    point of not bouncing to /queue."""
+    _mock_membership(monkeypatch)
+    fake = _big_playlist(monkeypatch)
+    monkeypatch.setattr("src.webapp.app._feature_cache", lambda: fake)
+    monkeypatch.setattr(config, "PLAYLIST_IMPORT_CAP", 50)
+    client.cookies.set(config.SESSION_COOKIE, _seed_session(scope=config.SCOPES))
+    client.post("/playlists/mine1/analyze", follow_redirects=False)
+    body = client.get("/playlists").text
+    assert "pl-flash" in body and "Checked" in body
+    assert "is-acted" in body, "the acted-on card is not highlighted"
+
+
+def test_the_flash_is_consumed_once(client, monkeypatch):
+    """A stale confirmation on a later visit would claim work that isn't
+    happening — the same class of lie as "analyzing…" on an empty queue."""
+    _mock_membership(monkeypatch)
+    fake = _big_playlist(monkeypatch)
+    monkeypatch.setattr("src.webapp.app._feature_cache", lambda: fake)
+    client.cookies.set(config.SESSION_COOKIE, _seed_session(scope=config.SCOPES))
+    client.post("/playlists/mine1/analyze", follow_redirects=False)
+    assert "pl-flash" in client.get("/playlists").text
+    assert "pl-flash" not in client.get("/playlists").text     # gone on reload

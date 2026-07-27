@@ -1210,7 +1210,9 @@ def create_app() -> FastAPI:
         # server-side flash (trusted, built from ints) — NEVER a query param, so a
         # crafted /playlists?msg=<script> can't reach the |safe render.
         msg = session.pop("pl_msg", None)
-        base = {**flags, "cap": config.PLAYLIST_IMPORT_CAP, "msg": msg}
+        base = {**flags, "cap": config.PLAYLIST_IMPORT_CAP, "msg": msg,
+                "msg_id": session.pop("pl_msg_id", None),
+                "queue_depth": _feature_cache().queue_count()}
         if not auth_web.has_playlist_scope(session):
             return templates.TemplateResponse(request, "playlists.html",
                                               {**base, "needs_consent": True, "cards": []})
@@ -1325,12 +1327,16 @@ def create_app() -> FastAPI:
         # knows the full membership and may replace it.
         cache.remember_playlist_tracks(playlist_id, ids, replace=exhausted)
         session["pl_msg"] = playlists_mod.coverage_line(
-            len(queued), n_skipped, 0 if exhausted else None, cap)
-        # Land on the QUEUE, not back on /playlists. Two reasons, both reported:
-        # the visitor gets VISIBLE proof the tracks were queued instead of a
-        # silent bounce, and /playlists would re-fetch /me + every playlist over
-        # the network again — which is most of what made Analyze feel frozen.
-        return RedirectResponse("/queue", status_code=303)
+            len(queued), n_skipped, 0 if exhausted else None, cap,
+            scanned=len(seen), queue_depth=cache.queue_count())
+        session["pl_msg_id"] = playlist_id      # highlight the card we just acted on
+        # Stay on /playlists (owner, 2026-07-27). Landing on /queue was meant to
+        # be proof the click worked, but the common case is a playlist whose next
+        # tracks are ALREADY analyzed — nothing new to queue — so it dropped the
+        # visitor on an empty queue page, which reads as "nothing happened". The
+        # confirmation belongs next to the card that was clicked, and it now
+        # states what was scanned, what was already done, and what was queued.
+        return RedirectResponse("/playlists", status_code=303)
 
     @app.get("/queue", response_class=HTMLResponse)
     def queue_page(request: Request):
