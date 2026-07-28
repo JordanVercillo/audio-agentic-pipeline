@@ -1541,3 +1541,62 @@ a human") silently excludes every future producer of that condition.
 > enumerate the state's producers and assert the reader covers all of them —
 > and check the population by hand once, because a filter that returns 100 rows
 > looks equally correct whether the true answer is 100 or 101.*
+
+## 58 — Four surfaces, one lie: a failed read reported as a fact (2026-07-25/28)
+
+In a single session the owner reported four unrelated-looking faults, and every
+one turned out to be the same sentence written four ways:
+
+- "the playlist section is now empty" — a Spotify 429 rendered as **"No
+  importable playlists found"**, complete with an explanation of *why* he owned
+  none. His thirty playlists were fine.
+- a rate-limited import rendered as **"Queued 0 new tracks"**, which reads as
+  "there was nothing new" rather than "we never got the list".
+- "why is the app down?" — a 429 on the post-login dashboard returned **502**,
+  which is in Cloudflare's origin-down set, so the fallback Worker replaced the
+  page with "Demo offline". The app was healthy throughout.
+- "songs say analyzing but the queue is empty" — a failed-under-cap job labelled
+  **"analyzing…"** because a future dashboard visit *might* re-queue it. For
+  playlist-imported tracks that visit never comes.
+
+**The realization:** each one is an ABSENCE being rendered as a VALUE. The code
+had a defensible local reason every time — fail closed to `None`, catch broadly,
+name the nearest generic state — and in each case the absent value happened to
+be indistinguishable from a real, meaningful answer: no playlists, nothing new,
+origin dead, work in progress. The bug is never the failure; it is that the
+failure and a legitimate answer share a representation. `(None, None)` means
+both "you own nothing" and "we couldn't ask", and only one of those is a claim
+about the user.
+
+> *When a read can fail, the failure needs its own value — not the falsy default
+> that already means something. Ask of every fallback: "if this returns the
+> empty answer, what will the UI assert about the user?" If that sentence would
+> be a lie, the empty answer is the wrong representation. And check your status
+> codes against what sits IN FRONT of the app: 502 was locally invisible and
+> catastrophic in production, because a proxy is entitled to interpret it.*
+
+## 59 — The fix that made dormant bad data reachable (2026-07-28)
+
+Playlist membership recorded every id an import paged over; `remember_meta`
+stored only the ids that click actually QUEUED. So tracks beyond the 50-cap had
+membership rows with no name. That inconsistency sat in the database for weeks
+doing no harm at all, because nothing ever read those rows.
+
+Then I shipped the backlog fix — enqueue known-but-unqueued members, no fetch
+needed — and 214 tracks were queued with nothing to search for, burned three
+attempts each, and dead-lettered as "no track metadata". The owner saw a queue
+that filled and drained with nothing analyzed.
+
+**The realization:** the fix was correct and the data was already broken; what
+was new was the REACH. A latent inconsistency is only latent because no code
+path touches it, so every change that widens what the system acts upon converts
+some quantity of dormant bad data into live failures — and the blast radius is
+whatever accumulated while nobody was looking, not whatever arrives next. I
+tested that the backlog queued the right IDS. I never asked whether those ids
+were fit to be acted on.
+
+> *Before extending a code path over a population it never touched, audit that
+> population for the invariants the path assumes — the data has only been valid
+> for the readers it has had so far. And prefer the guard to the repair: `never
+> enqueue what cannot be searched` is one line, would have prevented all 214
+> losses, and keeps working for defects nobody has imagined yet.*

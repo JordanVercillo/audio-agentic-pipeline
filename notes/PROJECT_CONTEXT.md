@@ -936,7 +936,69 @@
   catalog now scrolls in its own `.lib-wrap`, tap targets 40×42 → 44×44.
   Live proof of the global sort: tempo desc gives 172 bpm on page 1, 117 on page
   7, page 13 the final partial slice.
-  **➡️ NEXT ACTION — PHASE 5: MPD/Spark (metadata-only, D-26…D-29), launching
+  ✅ **THE PRODUCT-USE ERA (2026-07-25→28, sessions 60–62, Opus + orchestrator;
+  commits 678cd92→fae810a, 838 tests, ruff clean, deployed): Jordan USED the app
+  hard and it produced more real bugs than any design session has.** Corpus
+  **1,742 analyzed** (was 730 — 2.4×) as playlist imports drained.
+  **① PERF (journal #56):** measured first — everything 2–15 ms except `/library`
+  120 ms and `/song` 177 ms, both from `select(TrackFeatures)` dragging the
+  82-col JSON + loudness curve + beat grid + sections (6.6 MB parsed for 18 KB of
+  floats) to read 3 promoted scalars. Column projection + `analyzed_ids()`
+  (87→0.7 ms, sits under every aggregate) + `feature_columns()` + the
+  **similarity plane** (a per-process memo behind a token DERIVED from the source
+  tables, recomputed every call so no writer can forget it — A5 defused by
+  construction). `/library` 120→16 ms, `similar()` 176→7.7 ms. **P4 guards assert
+  WORK DONE not milliseconds** (`test_store_perf.py`: SQL-shape tripwires,
+  amortization, constant query count, 4 staleness edges + the inverse).
+  **② /library PAGINATION:** 757 KB → **64 KB, constant in corpus size**;
+  `page_slice` consumes `library_view`'s output so a page-local sort is
+  UNREPRESENTABLE; lede stays whole-corpus; pager always reaches the last page;
+  `?per=all` kept. Mobile: body scrolled at 375 px (572 px wide) → `.lib-wrap`;
+  tap targets 40×42 → 44×44. **③ EPIC I REWORKED end-to-end** — whole-playlist
+  import (cap 50 by owner call, reliability over speed), **page-bounded +
+  resumable** (the drain of a 1004-track playlist was 21 API calls PER CLICK;
+  now 1–2, resume offset DERIVED from recorded membership, self-correcting on a
+  shrunken playlist, `PLAYLIST_IMPORT_MAX_PAGES=6` ceiling), Analyze **stays on
+  /playlists** with a scanned/already-done/queued confirmation beside the
+  highlighted card, Queue nav tab, `queue_count()` (the queue page had been
+  LYING past its 200-row display cap). **④ FOUR SURFACES, ONE LIE (journal
+  #58):** a 429 rendered as "No importable playlists found"; a failed fetch as
+  "Queued 0"; a rate-limited dashboard as **502** → Cloudflare's fallback showed
+  "Demo offline" (now 503 + session PRESERVED — it used to log you out, making
+  recovery cost more API calls); a failed-under-cap job as "analyzing…" while
+  the queue was empty. Standing tripwire: **no route may return a status in the
+  Worker's ORIGIN_DOWN set** (502/504/521-523/530) — invisible locally.
+  **⑤ THE ACCOUNTING TRILOGY** — a card reading "50 of 129" was accurate but
+  unexplained: dead-lettered tracks needed a MANUAL source (now counted), dedup
+  **twins** were counted as missing forever (130 corpus-wide — their canonical
+  carries the features), and Spotify's `track_count` includes local/
+  market-unavailable items the items endpoint never returns (`PlaylistImport`
+  records whether a walk REACHED THE END, so a complete walk counts what it
+  FOUND and names the gap "unavailable to import"). **⑥ MY REGRESSION, found by
+  using it (journal #59):** the backlog fix made dormant bad data reachable —
+  membership recorded ids `remember_meta` never saw, so **214 tracks were queued
+  with no name and dead-lettered as "no track metadata"**. Cause fixed (store
+  EVERY paged record), invariant added (`searchable_ids` — never enqueue what
+  cannot be looked up), damage repaired live by `scripts/repair_missing_meta.py`
+  (batched /tracks, 6 calls: **named 281/282, re-opened 213**, queue 0→210, 1
+  genuinely gone from Spotify). **⑦ `requeue_retryable`** — 142 failed-under-cap
+  jobs sat forever because only a dashboard visit re-queued them and
+  playlist-imported tracks are never revisited; the worker now converges them to
+  done or dead-lettered.
+  **➡️ NEXT ACTION — the corpus more than DOUBLED, so the derived planes owe a
+  rebuild before anything else.** Two audit flags are TRUE right now and both
+  have named causes: **GOLD_PLANE_STALE** (983 tracks only in serving — the
+  exporter hasn't run since the growth) and **FEATURE_DISTRIBUTION** (exactly
+  ONE broken extraction, "Defector" by Muse, tempo 0 / −180 dBFS — the D-52
+  class Q3 healed twice before). Wait for the ~210-track queue to drain, then:
+  `build_feature_marts.py` → `export_gold_from_cache.py` → quarantine or
+  re-extract Defector → re-run both audits → consider a cluster retrain (the
+  corpus is 2.4× the size the current model trained on, so the archetype may
+  legitimately move). THEN Phase 5 (MPD/Spark, D-26…D-29) as before, starting
+  with the AIcrowd dataset + license check. Owner track: ~394 needs-source
+  repairs (grew as the guard correctly refused bad audio), and the DMARC
+  `quarantine`→`reject` DNS flip.
+  **➡️ SUPERSEDED — PHASE 5: MPD/Spark (metadata-only, D-26…D-29), launching
   from a defensibly-complete base as D-55 intended.** First slice per
   `docs/VISION_SPECS.md` §Phase 5: **verify the AIcrowd MPD dataset is still
   obtainable + its license (research-expert, ~30 min) BEFORE committing the
@@ -1301,6 +1363,13 @@ narrative goes to `notes/engineering_journal.md`, plans to
 | `scripts/build_report.py` | THE one command: fresh gold layer → regenerate all artifacts → `taste_report.html` (0.99 MB, offline). `--no-rebuild`, `--llm-polish`. |
 | `src/agent/` | SPEC P5: `warehouse_agent.py` (pure DuckDB retrieval core — 2-layer SQL security D-10; reused by P8 RAG) + `mcp_server.py` (FastMCP stdio: get_schema / query_warehouse / get_insights). Test: `test_agent.py` (30). Run: `python -m src.agent.mcp_server`. |
 | `src/webapp/` | **SPEC P8 slice 1: FastAPI pilot.** `auth_web.py` (session-scoped PKCE — token in session, CSRF state gate, D-8 no secret), `sessions.py` (TTL `SessionStore` + signed cookie + rotate), `featurestore.py` (bridge-key overlap-join + acoustic insight), `app.py` (routes: `/ login callback dashboard logout healthz`), `config.py`, `templates/`, `static/`. Test: `test_webapp.py` (15). Run: `uv run python scripts/run_webapp.py` → :8000. |
+| `src/store/test_store_perf.py` | **The speed guards (P4, 2026-07-25).** Assert WORK DONE, not milliseconds — a timing threshold in CI measures the runner, and the regression is categorical anyway (one `select(TrackFeatures)` on a request path). SQL-shape tripwires (no heavy JSON column may be named), an amortization check (many `similar()` calls, ONE plane build), constant query count, and 4 staleness edges — extraction / quarantine / twin-flag / repair — each asserting the VISITOR sees the new answer, plus the inverse (a display-only backfill must NOT rebuild). |
+| `cache.{feature_columns,analyzed_ids,searchable_ids,queue_count,requeue_retryable}` | **The read-path primitives (2026-07-25/28).** `feature_columns` projects named keys OUT of the features JSON in SQL (portable); `analyzed_ids` is ids-only (87→0.7 ms, sits under `excluded_from_aggregates`); **`searchable_ids` is the invariant that cost 214 tracks** — never enqueue what has no stored name; `queue_count` is the real queue (not the display cap); `requeue_retryable` converges failed-under-cap jobs the dashboard would never revisit. |
+| `cache._similarity_plane` + `_population_token` | **The `/song` hot path (2026-07-25).** A per-process memo of the z-scored corpus matrix, keyed on a token DERIVED from the source tables (row count + newest extraction + promoted sums + twin set + validated set), recomputed on EVERY call — a version counter a writer must remember to bump is how bug A5 happened. 176 ms → 7.7 ms warm. |
+| `PlaylistTrack` / `PlaylistImport` (`models.py`) | **Playlist membership + walk completeness (Epic I, 2026-07-27/28).** Membership powers "N of M analyzed", the resume offset, and the zero-fetch backlog; `PlaylistImport.complete` records whether a walk REACHED THE END, which is what lets a finished playlist count what it FOUND (Spotify's `track_count` includes local/market-unavailable items the items endpoint never returns). Soft refs both ways; nothing joins on `playlist_id`. |
+| `scripts/repair_missing_meta.py` | Repairs the journal-#59 damage: playlist members recorded as ids but never named. Batched `/tracks` (50/call), re-opens ONLY jobs whose error was "no track metadata" — a real failure keeps its error and attempts. |
+| `scripts/smoke_public.py` | **QA-2 layer 5:** the standing browser-validation practice scripted. GET-only, credential-free, 14 checks through the public edge; **distinguishes ORIGIN DOWN (exit 2) from BROKEN (exit 1)** and proves the ORIGIN rendered each page via base.html's stylesheet tag. Not in CI (no tunnel, no corpus there). |
+| `src/webapp/test_route_matrix.py` | **QA-2 layer 3:** 28 routes × 4 personas, coverage enforced by SET EQUALITY, plus a **side-effects column** (the repair routes answer every persona with the same 303 — only "did the engine run" separates blocked from executed) and a standing tripwire that **no route may return a status in the fallback Worker's ORIGIN_DOWN set**. |
 | `src/webapp/{artists,library,playlists}.py` | **Vision-E product surfaces (pure view logic).** `artists.py` (P3.2 — rollup, genre strip, comparison SVG, `your_top_by_artist` D-33, `nearest_artists`). `library.py` (P3.3 — `library_view` search/sort/dedup-annotate/mine-overlay, `why_n_analyzed` from `_TOP_LIMIT`); fed by `cache.library_rows()`. `playlists.py` (P3.4 — `playlist_cards`/`importable_ids` own+collaborative filter, `coverage_line`); `/playlists` + `POST …/analyze` behind `auth_web.has_playlist_scope` (re-consent), cap `config.PLAYLIST_IMPORT_CAP`. `/library`+`/song`+`/spectrogram` PUBLIC (D-18/D-40); `/explore`+`/recommend`+`/playlists` gated. Tests: `test_artists.py`, `test_library.py`, `test_playlists.py`. |
 | `infra/cloudflare/origin-fallback-worker.js` | H5 (P3.6): the $0 origin-down fallback Worker — 502/504/521-523/530 → an honest 503 "runs on-demand" card; healthy origin untouched; /healthz keeps JSON truth. Owner deploys via dashboard paste (SELF_HOSTING §6a). |
 | `evals/runs/` | **Dated LLM-path eval artifacts (K0 convention):** `YYYY-MM-DD_<model>_<setname>.txt` — the committed numbers every D-42 gate measures against (gemma4:12b 9/15 2026-07-16 → 13/15 2026-07-17 after the K0.5 fixes). The fallback/constant anchors + a "by source" line ride in the same artifact. |
@@ -2712,3 +2781,30 @@ narrative goes to `notes/engineering_journal.md`, plans to
   bundled: origin gzip (1 line, ~9x on the tunnel leg, but verify /audio Range
   scrubbing after) and `/static` carrying a session cookie so Cloudflare reads
   CF-Cache-Status: BYPASS on every asset. NEW SESSION: run `/resume`.**
+- **2026-07-27→28 (sessions 61–62 — Epic I under real use; Opus + orchestrator):**
+  Jordan imported playlists in earnest and every report was a real defect.
+  **Four instances of ONE lie** (journal #58): a Spotify 429 rendered as "No
+  importable playlists found", a failed fetch as "Queued 0 new tracks", a
+  rate-limited dashboard as **502** — which is in Cloudflare's ORIGIN_DOWN set,
+  so the fallback Worker told every visitor the site was down while the app was
+  healthy — and a failed-under-cap job as "analyzing…" over an empty queue.
+  Fixed with distinct states, a session that SURVIVES an upstream hiccup, and a
+  standing tripwire that no route may return an ORIGIN_DOWN status. **Epic I
+  re-worked:** page-bounded resumable import (21 API calls per click → 1–2), the
+  zero-fetch backlog, Analyze stays on /playlists with a scanned/already-done/
+  queued confirmation, Queue nav tab, `queue_count`. **The accounting trilogy** —
+  dead-lettered, dedup twins (130 counted as missing forever), and Spotify's
+  unimportable local/market-locked items now each have a name. **Caught my own
+  regression** (journal #59): the backlog fix made dormant bad data reachable and
+  dead-lettered 214 tracks with no name to search for; cause fixed, invariant
+  added (`searchable_ids`), damage repaired live — named 281/282, re-opened 213.
+  **Left off: 838 tests green, ruff clean, deployed, smoke 14/14, tree synced
+  (fae810a). Corpus 1,742 analyzed — 2.4× the 730 this era began with — with
+  ~210 queued and draining. BOTH TRUE AUDIT FLAGS HAVE NAMED CAUSES:
+  GOLD_PLANE_STALE (983 only in serving, exporter owed after the growth) and
+  FEATURE_DISTRIBUTION (exactly ONE broken extraction — "Defector" by Muse,
+  tempo 0 / −180 dBFS, the D-52 class). NEXT = let the queue drain, then
+  build_feature_marts → export_gold_from_cache → fix Defector → re-run both
+  audits → consider a cluster retrain (the corpus is 2.4× what model #9 trained
+  on), THEN Phase 5. Owner track: ~394 needs-source repairs and the DMARC
+  reject-flip. NEW SESSION: run `/resume`.**
