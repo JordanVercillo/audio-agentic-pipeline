@@ -120,6 +120,7 @@ class _FakeCache:
         self.enqueued: list = []
         self.remembered: list = []
         self.playlist_members: dict = {}
+        self.walks: dict = {}
 
     def remember_playlist_tracks(self, playlist_id, track_ids, *, replace=False):
         # mirrors the real merge-unless-complete semantics
@@ -161,6 +162,12 @@ class _FakeCache:
 
     def duplicate_flags(self):
         return {t: "canon" for t in self.twins}
+
+    def mark_playlist_walk(self, playlist_id, *, complete, n_found):
+        self.walks[playlist_id] = bool(complete)
+
+    def playlist_walks(self):
+        return dict(self.walks)
 
 
 def _mock_membership(monkeypatch):
@@ -619,3 +626,29 @@ def test_twins_do_not_consume_cap_slots(client, monkeypatch):
     client.cookies.set(config.SESSION_COOKIE, _seed_session(scope=config.SCOPES))
     client.post("/playlists/mine1/analyze", follow_redirects=False)
     assert fake.enqueued == ["real"], "a twin took a cap slot"
+
+
+def test_a_fully_walked_playlist_counts_what_it_FOUND_not_spotifys_total():
+    """Cottage 2.0 read "55 of 57 analyzed" permanently, offering to fetch a 57th
+    track that does not exist for us: Spotify's track_count includes local files
+    and market-unavailable items that GET /playlists/{id}/items never returns as
+    playable tracks. Once the walk reached the END, what we found IS the total,
+    and the gap is named rather than left looking pending."""
+    members = {"mine1": [f"t{i}" for i in range(38)]}      # track_count is 40
+    cards = playlists.playlist_cards(
+        _PL_DF, me_id="me", members=members,
+        analyzed_ids={f"t{i}" for i in range(38)},
+        walked={"mine1": True})
+    card = next(c for c in cards if c["id"] == "mine1")
+    assert card["n_known"] == 38 and card["n_analyzed"] == 38   # complete
+    assert card["n_unavailable"] == 2
+
+
+def test_a_partial_walk_still_uses_spotifys_total():
+    """The inverse, and the reason the denominator isn't always len(members):
+    understating a 1004-track playlist as its first 50 would be the worse lie."""
+    cards = playlists.playlist_cards(
+        _PL_DF, me_id="me", members={"mine1": [f"t{i}" for i in range(10)]},
+        analyzed_ids=set(), walked={"mine1": False})
+    card = next(c for c in cards if c["id"] == "mine1")
+    assert card["n_known"] == 40 and card["n_unavailable"] == 0

@@ -36,6 +36,7 @@ from .models import (
     ChatLabel,
     ChatLog,
     ExtractionJob,
+    PlaylistImport,
     PlaylistTrack,
     TrackCluster,
     TrackFeatures,
@@ -1258,6 +1259,34 @@ class FeatureCache:
         for pid, tid in rows:
             out.setdefault(pid, []).append(tid)
         return out
+
+    def mark_playlist_walk(self, playlist_id: str, *, complete: bool,
+                           n_found: int) -> None:
+        """Record whether the import reached the END of this playlist.
+
+        Spotify's track_count includes items the items endpoint never returns as
+        playable tracks (local files, market-unavailable), so a fully-imported
+        playlist can hold fewer members than its advertised count. Knowing the
+        walk completed is what lets the card stop treating that gap as pending
+        work."""
+        if not playlist_id:
+            return
+        with self._Session() as s:
+            row = s.get(PlaylistImport, playlist_id)
+            if row is None:
+                row = PlaylistImport(playlist_id=playlist_id)
+                s.add(row)
+            row.complete = bool(complete)
+            row.n_found = int(n_found)
+            row.updated_at = utcnow()
+            s.commit()
+
+    def playlist_walks(self) -> dict[str, bool]:
+        """{playlist_id: walked_to_the_end}."""
+        with self._Session() as s:
+            rows = s.execute(select(PlaylistImport.playlist_id,
+                                    PlaylistImport.complete)).all()
+        return {pid: bool(done) for pid, done in rows}
 
     def requeue_retryable(self, limit: int = 200) -> list[str]:
         """Re-queue jobs that FAILED under MAX_ATTEMPTS but nothing will retry.

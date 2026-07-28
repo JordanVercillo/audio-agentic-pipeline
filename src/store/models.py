@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from sqlalchemy import Column, DateTime, Float, Integer, String
+from sqlalchemy import Boolean, Column, DateTime, Float, Integer, String
 from sqlalchemy.orm import declarative_base
 from sqlalchemy.types import JSON
 
@@ -208,6 +208,30 @@ class PlaylistTrack(Base):
     playlist_id = Column(String, primary_key=True, index=True)
     spotify_track_id = Column(String, primary_key=True, index=True)
     remembered_at = Column(DateTime, default=utcnow)
+
+
+class PlaylistImport(Base):
+    """Did we walk this playlist all the way to its END? (Epic I, 2026-07-27)
+
+    Spotify's `track_count` includes items `GET /playlists/{id}/items` will never
+    hand us as playable tracks — local files, and tracks unavailable in the
+    market. So a fully-imported playlist can still show fewer members than its
+    advertised count, and using that count as the denominator made a card read
+    "55 of 57" permanently while offering to analyze more.
+
+    Knowing the walk COMPLETED lets the card switch denominators honestly: what
+    we actually found becomes the total, and the shortfall is named as
+    unavailable rather than pending. A partial walk keeps Spotify's count, since
+    understating a 1004-track playlist as its first 50 would be the worse lie.
+
+    New table → create_all builds it; no _ADDED_COLUMNS entry (journal #18)."""
+
+    __tablename__ = "playlist_imports"
+
+    playlist_id = Column(String, primary_key=True)
+    complete = Column(Boolean, default=False)      # reached the last page
+    n_found = Column(Integer)                      # playable tracks the API gave us
+    updated_at = Column(DateTime, default=utcnow)
 
 
 class TrackProvenance(Base):

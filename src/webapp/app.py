@@ -1222,7 +1222,8 @@ def create_app() -> FastAPI:
             df, me_id, members=cache.playlist_track_ids(),
             analyzed_ids=cache.analyzed_ids(),
             needs_source_ids=cache.dead_lettered_ids(),
-            duplicate_of=cache.duplicate_flags())
+            duplicate_of=cache.duplicate_flags(),
+            walked=cache.playlist_walks())
         # "Spotify wouldn't answer" and "you own none" are different facts, and
         # only one of them is about the visitor's account.
         return templates.TemplateResponse(request, "playlists.html",
@@ -1371,6 +1372,14 @@ def create_app() -> FastAPI:
         # forget what the previous one learned. Only a walk that reached the end
         # knows the full membership and may replace it.
         cache.remember_playlist_tracks(playlist_id, ids, replace=exhausted)
+        # Whether we reached the END. Spotify's track_count includes items the
+        # items endpoint never returns as playable tracks (local files,
+        # market-unavailable), so a fully-walked playlist can hold fewer members
+        # than its advertised count — "Cottage 2.0" read 55 of 57 forever with a
+        # button offering to fetch a 57th track that does not exist for us.
+        if not fetch_failed:
+            cache.mark_playlist_walk(playlist_id, complete=exhausted,
+                                     n_found=len(set(ids)))
         session["pl_msg"] = playlists_mod.coverage_line(
             len(queued), n_skipped, 0 if exhausted else None, cap,
             scanned=len(seen), queue_depth=cache.queue_count(),

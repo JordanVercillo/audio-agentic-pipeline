@@ -48,6 +48,9 @@
         {% if c.n_needs_source %}
         <span class="pl-cov pl-cov-ns" title="Automatic acquisition failed for these — they need a pasted link or an uploaded file, not another Analyze click.">{{ c.n_needs_source }} need a source</span>
         {% endif %}
+        {% if c.n_unavailable %}
+        <span class="pl-cov pl-cov-none" title="Spotify counts these in the playlist but never returns them as playable tracks — local files, or tracks unavailable in your market. They can't be imported.">{{ c.n_unavailable }} unavailable to import</span>
+        {% endif %}
         {% else %}
         <span class="pl-cov pl-cov-none">not imported yet</span>
         {% endif %}

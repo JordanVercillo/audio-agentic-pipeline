@@ -28,7 +28,8 @@ def playlist_cards(df: Optional[pd.DataFrame], me_id: Optional[str],
                    *, members: Optional[dict] = None,
                    analyzed_ids: Optional[set] = None,
                    needs_source_ids: Optional[set] = None,
-                   duplicate_of: Optional[dict] = None) -> list[dict]:
+                   duplicate_of: Optional[dict] = None,
+                   walked: Optional[dict] = None) -> list[dict]:
     """Importable playlists → display cards, in Spotify's returned order.
 
     With `members` ({playlist_id: [track_id]}, recorded at import) and
@@ -43,6 +44,7 @@ def playlist_cards(df: Optional[pd.DataFrame], me_id: Optional[str],
     analyzed_ids = analyzed_ids or set()
     needs_source_ids = needs_source_ids or set()
     duplicate_of = duplicate_of or {}
+    walked = walked or {}
 
     def _covered(tid: str) -> bool:
         """Is this track's RECORDING in the library?
@@ -69,10 +71,19 @@ def playlist_cards(df: Optional[pd.DataFrame], me_id: Optional[str],
             "collaborative": bool(r.get("collaborative")),
             "track_count": int(r.get("track_count") or 0),
             "image": img if isinstance(img, str) and img else None,
-            # DENOMINATOR is Spotify's own count, not len(members): a capped
-            # import knows only a prefix, so counting members would shrink the
-            # playlist to whatever we happen to have read so far.
-            "n_known": int(r.get("track_count") or 0) if ids is not None else None,
+            # DENOMINATOR: Spotify's own count while the walk is PARTIAL — a
+            # capped import knows only a prefix, and counting members would
+            # shrink a 1004-track playlist to its first 50. Once we've reached
+            # the end, what we FOUND is the honest total: track_count includes
+            # local files and market-unavailable items the API never hands us as
+            # playable tracks, and treating that gap as pending work left a card
+            # reading "55 of 57" forever.
+            "n_known": ((len(ids) if walked.get(r.get("playlist_id"))
+                         else int(r.get("track_count") or 0))
+                        if ids is not None else None),
+            "n_unavailable": (max(0, int(r.get("track_count") or 0) - len(ids))
+                              if ids is not None
+                              and walked.get(r.get("playlist_id")) else 0),
             "n_analyzed": sum(1 for t in ids if _covered(t)) if ids else 0,
             "n_seen": len(ids) if ids is not None else 0,
             # Tracks whose acquisition permanently failed. Without this the card
