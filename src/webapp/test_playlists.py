@@ -151,9 +151,16 @@ class _FakeCache:
         return len(self.enqueued) + len(self.active)
 
     dead: set = frozenset()
+    twins: set = frozenset()
 
     def dead_lettered_ids(self):
         return set(self.dead)
+
+    def twin_ids(self):
+        return set(self.twins)
+
+    def duplicate_flags(self):
+        return {t: "canon" for t in self.twins}
 
 
 def _mock_membership(monkeypatch):
@@ -579,3 +586,36 @@ def test_coverage_line_explains_the_needs_source_shortfall():
     assert "filter=needs-source" in line
     # and it must NOT tell you to click again — clicking cannot fix these
     assert "picks up where it left off" not in line
+
+
+def test_a_dedup_twin_counts_as_covered_not_missing():
+    """Validation finding (2026-07-27): "Anna setlist" read 3 of 7 analyzed while
+    all seven RECORDINGS were in the library — the other four were dedup twins,
+    which hold no features of their own because the canonical carries them (O3).
+    Counting only analyzed_ids reported them missing forever, and no Analyze
+    click could ever change the number. 130 members corpus-wide were affected."""
+    cards = playlists.playlist_cards(
+        _PL_DF, me_id="me",
+        members={"mine1": ["real1", "twin1", "twin2", "orphan"]},
+        analyzed_ids={"real1", "canon1"},
+        duplicate_of={"twin1": "canon1", "twin2": "canon_unanalyzed"})
+    card = next(c for c in cards if c["id"] == "mine1")
+    # real1 analyzed + twin1 whose canonical IS analyzed = 2 covered.
+    # twin2's canonical is NOT analyzed, so it stays honestly uncovered.
+    assert card["n_analyzed"] == 2
+
+
+def test_twins_do_not_consume_cap_slots(client, monkeypatch):
+    """`enqueue` would skip a twin anyway (its job is closed), but leaving it in
+    the backlog spends a cap slot on work that cannot happen."""
+    _mock_membership(monkeypatch)
+    monkeypatch.setattr("src.webapp.app.iter_playlist_track_pages",
+                        lambda *a, **k: iter([([], True)]))
+    fake = _FakeCache()
+    fake.playlist_members["mine1"] = ["tw1", "tw2", "real"]
+    fake.twins = {"tw1", "tw2"}
+    monkeypatch.setattr("src.webapp.app._feature_cache", lambda: fake)
+    monkeypatch.setattr(config, "PLAYLIST_IMPORT_CAP", 2)
+    client.cookies.set(config.SESSION_COOKIE, _seed_session(scope=config.SCOPES))
+    client.post("/playlists/mine1/analyze", follow_redirects=False)
+    assert fake.enqueued == ["real"], "a twin took a cap slot"

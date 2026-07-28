@@ -27,7 +27,8 @@ def _is_mine(row: Any, me_id: Optional[str]) -> bool:
 def playlist_cards(df: Optional[pd.DataFrame], me_id: Optional[str],
                    *, members: Optional[dict] = None,
                    analyzed_ids: Optional[set] = None,
-                   needs_source_ids: Optional[set] = None) -> list[dict]:
+                   needs_source_ids: Optional[set] = None,
+                   duplicate_of: Optional[dict] = None) -> list[dict]:
     """Importable playlists → display cards, in Spotify's returned order.
 
     With `members` ({playlist_id: [track_id]}, recorded at import) and
@@ -41,6 +42,18 @@ def playlist_cards(df: Optional[pd.DataFrame], me_id: Optional[str],
     members = members or {}
     analyzed_ids = analyzed_ids or set()
     needs_source_ids = needs_source_ids or set()
+    duplicate_of = duplicate_of or {}
+
+    def _covered(tid: str) -> bool:
+        """Is this track's RECORDING in the library?
+
+        A dedup twin has no features of its own — the canonical carries them
+        (O3) — so counting only `analyzed_ids` reported it as missing forever.
+        "Anna setlist" read 3 of 7 while all 7 recordings were present: the
+        other four were twins of tracks already analyzed, and no Analyze click
+        would ever change that number. 130 members corpus-wide were undercounted
+        this way."""
+        return tid in analyzed_ids or duplicate_of.get(tid) in analyzed_ids
     cards: list[dict] = []
     for _, r in df.iterrows():
         if not _is_mine(r, me_id):
@@ -60,7 +73,7 @@ def playlist_cards(df: Optional[pd.DataFrame], me_id: Optional[str],
             # import knows only a prefix, so counting members would shrink the
             # playlist to whatever we happen to have read so far.
             "n_known": int(r.get("track_count") or 0) if ids is not None else None,
-            "n_analyzed": sum(1 for t in ids if t in analyzed_ids) if ids else 0,
+            "n_analyzed": sum(1 for t in ids if _covered(t)) if ids else 0,
             "n_seen": len(ids) if ids is not None else 0,
             # Tracks whose acquisition permanently failed. Without this the card
             # read "50 of 129 analyzed" next to "nothing new to add" and looked

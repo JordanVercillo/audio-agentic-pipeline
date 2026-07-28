@@ -1221,7 +1221,8 @@ def create_app() -> FastAPI:
         cards = playlists_mod.playlist_cards(
             df, me_id, members=cache.playlist_track_ids(),
             analyzed_ids=cache.analyzed_ids(),
-            needs_source_ids=cache.dead_lettered_ids())
+            needs_source_ids=cache.dead_lettered_ids(),
+            duplicate_of=cache.duplicate_flags())
         # "Spotify wouldn't answer" and "you own none" are different facts, and
         # only one of them is about the visitor's account.
         return templates.TemplateResponse(request, "playlists.html",
@@ -1301,8 +1302,14 @@ def create_app() -> FastAPI:
         if known_list:
             done_ids = cache.cached_ids(known_list) | cache.active_ids(known_list)
             dead = cache.dead_lettered_ids()
+            # A dedup twin has no features of its own because the CANONICAL
+            # carries them (O3) — the recording is already in the library, so it
+            # is resolved, not pending. `enqueue` would skip it anyway (its job
+            # is closed), but leaving it in the backlog would spend a cap slot
+            # on work that cannot happen.
+            twins = cache.twin_ids()
             for tid in known_list:
-                if tid in done_ids:
+                if tid in done_ids or tid in twins:
                     continue
                 if tid in dead:
                     n_needs_source += 1
