@@ -26,7 +26,8 @@ def _is_mine(row: Any, me_id: Optional[str]) -> bool:
 
 def playlist_cards(df: Optional[pd.DataFrame], me_id: Optional[str],
                    *, members: Optional[dict] = None,
-                   analyzed_ids: Optional[set] = None) -> list[dict]:
+                   analyzed_ids: Optional[set] = None,
+                   needs_source_ids: Optional[set] = None) -> list[dict]:
     """Importable playlists → display cards, in Spotify's returned order.
 
     With `members` ({playlist_id: [track_id]}, recorded at import) and
@@ -39,6 +40,7 @@ def playlist_cards(df: Optional[pd.DataFrame], me_id: Optional[str],
         return []
     members = members or {}
     analyzed_ids = analyzed_ids or set()
+    needs_source_ids = needs_source_ids or set()
     cards: list[dict] = []
     for _, r in df.iterrows():
         if not _is_mine(r, me_id):
@@ -60,6 +62,12 @@ def playlist_cards(df: Optional[pd.DataFrame], me_id: Optional[str],
             "n_known": int(r.get("track_count") or 0) if ids is not None else None,
             "n_analyzed": sum(1 for t in ids if t in analyzed_ids) if ids else 0,
             "n_seen": len(ids) if ids is not None else 0,
+            # Tracks whose acquisition permanently failed. Without this the card
+            # read "50 of 129 analyzed" next to "nothing new to add" and looked
+            # broken — 78 of the missing 79 needed a MANUAL source, which no
+            # number of Analyze clicks can supply.
+            "n_needs_source": (sum(1 for t in ids if t in needs_source_ids)
+                               if ids else 0),
         })
     return cards
 
@@ -90,7 +98,8 @@ def importable_ids(df: Optional[pd.DataFrame], me_id: Optional[str]) -> set[str]
 
 def coverage_line(queued: int, skipped: int, remaining: Optional[int],
                   cap: int, *, scanned: Optional[int] = None,
-                  queue_depth: Optional[int] = None) -> str:
+                  queue_depth: Optional[int] = None,
+                  needs_source: int = 0, fetch_failed: bool = False) -> str:
     """Honest post-Analyze summary: what we READ, what was already done, and what
     is now queued — the three numbers that tell a visitor whether the click did
     anything (owner, 2026-07-27: "I don't see any tracks getting extracted").
@@ -105,15 +114,28 @@ def coverage_line(queued: int, skipped: int, remaining: Optional[int],
     are left. That is different from 0 ("we walked the whole playlist and there
     is nothing more"), and saying "0 remaining" on a partial walk would tell the
     visitor a 1004-track playlist was finished after 50."""
+    # The tracks whose acquisition permanently failed are the missing piece that
+    # made a correct "nothing new" look broken: a card could read "50 of 129
+    # analyzed" with nothing to queue, because 78 of the other 79 need a MANUAL
+    # source and no amount of clicking Analyze will change that.
+    ns = (f" · <b>{needs_source}</b> couldn't be found automatically and need a "
+          f"source — <a href=\"/library?filter=needs-source\">repair them</a>"
+          if needs_source else "")
+    failed_bit = (" · Spotify stopped answering partway, so there may be more we "
+                  "couldn't reach" if fetch_failed else "")
     scanned_bit = (f"Checked <b>{scanned}</b> track{'s' if scanned != 1 else ''} "
                    f"in this playlist — " if scanned else "")
     if queued == 0:
         if skipped > 0:
             msg = (f"{scanned_bit}all <b>{skipped}</b> already analyzed or in the "
                    f"queue, so there was nothing new to add")
+        elif needs_source:
+            msg = (f"{scanned_bit}nothing left that can be fetched automatically"
+                   if scanned_bit else "Nothing left that can be fetched automatically")
         else:
             msg = f"{scanned_bit}nothing new to add"
-        if remaining is None:
+        msg += ns + failed_bit
+        if remaining is None and not needs_source:
             msg += (" · there may be more further in — click again and it picks "
                     "up where it left off")
         return msg + "."
@@ -126,6 +148,7 @@ def coverage_line(queued: int, skipped: int, remaining: Optional[int],
         mins = max(1, round(queue_depth * 50 / 60))
         msg += (f" · the worker is analyzing them now — <a href=\"/queue\">"
                 f"{queue_depth} in the queue, ~{mins} min</a>")
+    msg += ns + failed_bit
     if remaining is None:
         msg += (" · click again once these finish and it picks up where it "
                 "left off")

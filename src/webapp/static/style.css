@@ -457,6 +457,9 @@ a.prov-glyph:hover { text-decoration: underline; }
 .pl-cov { display: block; font-size: .8rem; color: var(--muted); margin-top: .15rem; }
 .pl-cov.is-done { color: var(--spotify); }
 .pl-cov-none { font-style: italic; opacity: .7; }
+/* tracks Analyze can never fix — they want a pasted link or an uploaded file,
+   so they are counted apart from the analyzed/unanalyzed split */
+.pl-cov-ns { color: var(--warn, #d8a657); cursor: help; }
 .cap.ok { color: var(--spotify); font-size: .85rem; }
 /* a track whose acquisition permanently stopped — states a fact, never a
    pending promise (the "analyzing… forever" fix) */

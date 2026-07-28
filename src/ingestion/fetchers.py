@@ -497,6 +497,14 @@ def fetch_user_playlists(
     return df
 
 
+class PlaylistFetchError(RuntimeError):
+    """A playlist page could not be READ — distinct from a playlist that ended.
+
+    Exists because the two used to be the same value (None), so an import that
+    was rate-limited mid-walk reported "nothing new to add" instead of "we
+    couldn't look"."""
+
+
 def iter_playlist_track_pages(
     playlist_id: str,
     sp: Optional[spotipy.Spotify] = None,
@@ -537,7 +545,14 @@ def iter_playlist_track_pages(
         )
 
         if results is None:
-            break
+            # `safe_api_call` swallows 403/404, network errors and RetryError
+            # (the 503 storms a rate limit produces) and returns None. Treating
+            # that as "end of playlist" made a FAILED read indistinguishable
+            # from a finished one, so the import reported "nothing new to add"
+            # when it had simply been unable to look (owner, 2026-07-27).
+            raise PlaylistFetchError(
+                f"could not read playlist {playlist_id} at offset {offset}"
+                + (f": {err}" if err else ""))
 
         items = results.get("items", [])
         if not items:

@@ -41,13 +41,18 @@
            don't know its track ids without fetching it, and "0 analyzed" would
            read as a claim rather than an absence. #}
         {% if c.n_known %}
-        <span class="pl-cov{{ ' is-done' if c.n_analyzed >= c.n_known else '' }}">
+        {# "done" = everything we CAN analyze is analyzed; the needs-source
+           tracks are accounted for separately rather than read as a shortfall #}
+        <span class="pl-cov{{ ' is-done' if c.n_analyzed + c.n_needs_source >= c.n_known else '' }}">
           {{ c.n_analyzed }} of {{ c.n_known }} analyzed</span>
+        {% if c.n_needs_source %}
+        <span class="pl-cov pl-cov-ns" title="Automatic acquisition failed for these — they need a pasted link or an uploaded file, not another Analyze click.">{{ c.n_needs_source }} need a source</span>
+        {% endif %}
         {% else %}
         <span class="pl-cov pl-cov-none">not imported yet</span>
         {% endif %}
         <form method="post" action="/playlists/{{ c.id }}/analyze" class="pl-analyze">
-          <button type="submit" class="btn">{% if c.n_known and c.n_analyzed >= c.n_known %}Re-check{% elif c.n_known %}Analyze next {{ cap }}{% else %}Analyze{% endif %}</button>
+          <button type="submit" class="btn">{% if c.n_known and c.n_analyzed + c.n_needs_source >= c.n_known %}Re-check{% elif c.n_known %}Analyze next {{ cap }}{% else %}Analyze{% endif %}</button>
         </form>
       </span>
     </div>

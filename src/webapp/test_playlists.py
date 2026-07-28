@@ -150,6 +150,11 @@ class _FakeCache:
     def queue_count(self):
         return len(self.enqueued) + len(self.active)
 
+    dead: set = frozenset()
+
+    def dead_lettered_ids(self):
+        return set(self.dead)
+
 
 def _mock_membership(monkeypatch):
     monkeypatch.setattr("src.webapp.app.fetch_user_profile", lambda c: {"user_id": "me"})
@@ -388,7 +393,10 @@ def test_the_next_click_resumes_instead_of_re_reading_the_prefix(client, monkeyp
     go stale."""
     _mock_membership(monkeypatch)
     calls = _paged(monkeypatch)
-    fake = _FakeCache()
+    # The 300 recorded members are ANALYZED, so the zero-fetch backlog is empty
+    # and this exercises the paging path it is here to test. (A backlog that can
+    # satisfy the cap is deliberately served first — see the backlog tests.)
+    fake = _FakeCache(cached={f"t{i}" for i in range(300)})
     fake.playlist_members["mine1"] = [f"t{i}" for i in range(300)]   # 6 pages done
     monkeypatch.setattr("src.webapp.app._feature_cache", lambda: fake)
     monkeypatch.setattr(config, "PLAYLIST_IMPORT_CAP", 50)
@@ -508,3 +516,66 @@ def test_the_flash_is_consumed_once(client, monkeypatch):
     client.post("/playlists/mine1/analyze", follow_redirects=False)
     assert "pl-flash" in client.get("/playlists").text
     assert "pl-flash" not in client.get("/playlists").text     # gone on reload
+
+
+# ── the backlog: known-but-unqueued tracks the resume walked past ────────────
+def test_known_but_unqueued_tracks_are_reachable_without_any_fetch(client, monkeypatch):
+    """Owner: "the playlist doesn't show all the songs as analyzed if there's
+    nothing new". A recorded track can still be unanalyzed — it failed, or was
+    never queued — and once the resume offset walked past it, paging could never
+    reach it again. 411 such tracks were stranded across the owner's playlists
+    while Analyze reported "nothing new to add". We hold their ids, so acting on
+    them needs no API call at all."""
+    _mock_membership(monkeypatch)
+
+    def _never(*a, **k):
+        raise AssertionError("the backlog must cost ZERO fetches")
+    monkeypatch.setattr("src.webapp.app.iter_playlist_track_pages", _never)
+    fake = _FakeCache(cached={"m0", "m1"})
+    fake.playlist_members["mine1"] = ["m0", "m1", "m2", "m3"]   # m2/m3 stranded
+    monkeypatch.setattr("src.webapp.app._feature_cache", lambda: fake)
+    monkeypatch.setattr(config, "PLAYLIST_IMPORT_CAP", 2)  # backlog fills it → no paging
+    client.cookies.set(config.SESSION_COOKIE, _seed_session(scope=config.SCOPES))
+    client.post("/playlists/mine1/analyze", follow_redirects=False)
+    assert fake.enqueued == ["m2", "m3"], "the stranded tracks were not queued"
+
+
+def test_dead_lettered_members_never_eat_the_cap(client, monkeypatch):
+    """One playlist held 78 dead-lettered tracks against a cap of 50. Merely
+    letting `enqueue` skip them would spend every slot on tracks that cannot be
+    queued and starve the ones that can."""
+    _mock_membership(monkeypatch)
+    monkeypatch.setattr("src.webapp.app.iter_playlist_track_pages",
+                        lambda *a, **k: iter([([], True)]))
+    fake = _FakeCache()
+    fake.playlist_members["mine1"] = [f"d{i}" for i in range(60)] + ["live1"]
+    fake.dead = {f"d{i}" for i in range(60)}
+    monkeypatch.setattr("src.webapp.app._feature_cache", lambda: fake)
+    monkeypatch.setattr(config, "PLAYLIST_IMPORT_CAP", 50)
+    client.cookies.set(config.SESSION_COOKIE, _seed_session(scope=config.SCOPES))
+    client.post("/playlists/mine1/analyze", follow_redirects=False)
+    assert fake.enqueued == ["live1"], "dead-lettered tracks consumed the cap"
+    assert "need a source" in client.get("/playlists").text
+
+
+def test_the_card_accounts_for_tracks_that_need_a_source():
+    """"50 of 129 analyzed" beside "nothing new to add" looked broken. The 78
+    that need a MANUAL source are now counted separately, so the shortfall is
+    explained rather than mysterious — and the card reads DONE when everything
+    fetchable is fetched."""
+    cards = playlists.playlist_cards(
+        _PL_DF, me_id="me", members={"mine1": [f"t{i}" for i in range(40)]},
+        analyzed_ids={f"t{i}" for i in range(10)},
+        needs_source_ids={f"t{i}" for i in range(10, 40)})
+    card = next(c for c in cards if c["id"] == "mine1")
+    assert card["n_analyzed"] == 10 and card["n_needs_source"] == 30
+    assert card["n_analyzed"] + card["n_needs_source"] == card["n_known"]
+
+
+def test_coverage_line_explains_the_needs_source_shortfall():
+    line = playlists.coverage_line(queued=0, skipped=0, remaining=None, cap=50,
+                                   scanned=0, needs_source=78)
+    assert "78" in line and "need a source" in line
+    assert "filter=needs-source" in line
+    # and it must NOT tell you to click again — clicking cannot fix these
+    assert "picks up where it left off" not in line

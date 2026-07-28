@@ -1220,7 +1220,8 @@ def create_app() -> FastAPI:
         cache = _feature_cache()
         cards = playlists_mod.playlist_cards(
             df, me_id, members=cache.playlist_track_ids(),
-            analyzed_ids=cache.analyzed_ids())
+            analyzed_ids=cache.analyzed_ids(),
+            needs_source_ids=cache.dead_lettered_ids())
         # "Spotify wouldn't answer" and "you own none" are different facts, and
         # only one of them is about the visitor's account.
         return templates.TemplateResponse(request, "playlists.html",
@@ -1272,7 +1273,8 @@ def create_app() -> FastAPI:
         # Self-correcting: if the playlist SHRANK below what we've seen, tracks
         # were removed and every later offset shifted, so rescan from 0. The
         # cost of being wrong is re-reading pages, never skipping a track.
-        known = set(cache.playlist_track_ids().get(playlist_id) or [])
+        known_list = cache.playlist_track_ids().get(playlist_id) or []
+        known = set(known_list)
         track_total = playlists_mod.track_count_for(df, playlist_id)
         start_offset = len(known) if (track_total is None
                                       or track_total >= len(known)) else 0
@@ -1282,9 +1284,40 @@ def create_app() -> FastAPI:
         n_skipped = 0
         exhausted = False
         pages_read = 0
+
+        # MEMBERSHIP FIRST, at zero API cost. A track we've already recorded can
+        # still be unanalyzed — it failed, or was never queued — and once the
+        # resume offset walked past it, paging could never reach it again: 411
+        # such tracks were stranded across the owner's playlists while Analyze
+        # reported "nothing new to add" (2026-07-27). We hold their ids already,
+        # so no fetch is needed to act on them.
+        #
+        # Dead-lettered ids are EXCLUDED rather than merely skipped by enqueue:
+        # they would otherwise consume every cap slot and starve the tracks that
+        # can actually be queued (one playlist had 78 of them against a cap of
+        # 50). They belong to the needs-source repair queue, and the card says so.
+        backlog: list[str] = []
+        n_needs_source = 0
+        if known_list:
+            done_ids = cache.cached_ids(known_list) | cache.active_ids(known_list)
+            dead = cache.dead_lettered_ids()
+            for tid in known_list:
+                if tid in done_ids:
+                    continue
+                if tid in dead:
+                    n_needs_source += 1
+                    continue
+                backlog.append(tid)
+            backlog = backlog[:cap] if cap > 0 else backlog
+            seen.update(backlog)
+        fetch_failed = False
+        room_left = cap <= 0 or len(backlog) < cap
         try:
-            for page, is_last in iter_playlist_track_pages(
-                    playlist_id, client, start_offset=start_offset):
+            # Skip the network entirely when the backlog already fills the cap —
+            # the cheapest import is the one that makes no API call at all.
+            for page, is_last in (iter_playlist_track_pages(
+                    playlist_id, client, start_offset=start_offset)
+                    if room_left else ()):
                 pages_read += 1
                 # bridge key MUST be a non-empty string (ground rule #1). Drop
                 # local/None tracks — pandas turns None into a TRUTHY
@@ -1302,24 +1335,29 @@ def create_app() -> FastAPI:
                     if r["spotify_track_id"] in skip:
                         continue
                     selected.append(r)
-                    if 0 < cap <= len(selected):
+                    if 0 < cap <= len(backlog) + len(selected):
                         break
                 exhausted = is_last
-                if 0 < cap <= len(selected):
+                if 0 < cap <= len(backlog) + len(selected):
                     break
                 if pages_read >= config.PLAYLIST_IMPORT_MAX_PAGES:
                     break          # hard API-call ceiling, reliability first
         except Exception:  # noqa: BLE001
-            # An empty fetch and a FAILED fetch both used to end as "Queued 0
-            # new tracks", which reads as "there was nothing new" rather than
-            # "we never got the list". Say which.
-            session["pl_msg"] = ("Couldn't read that playlist's tracks — Spotify "
-                                 "didn't answer (usually a rate limit). Nothing "
-                                 "was queued; try again in a minute.")
-            return RedirectResponse("/playlists", status_code=303)
+            # A failed READ is not an empty playlist (PlaylistFetchError exists
+            # to keep those apart). If the backlog gave us work anyway, do it and
+            # say the fetch failed — bailing entirely would waste a click that
+            # needed no network to be useful.
+            fetch_failed = True
+            if not backlog:
+                session["pl_msg"] = ("Couldn't read that playlist's tracks — Spotify "
+                                     "didn't answer (usually a rate limit). Nothing "
+                                     "was queued; try again in a minute.")
+                return RedirectResponse("/playlists", status_code=303)
         if selected:
             cache.remember_meta(selected)
-        queued = cache.enqueue([r["spotify_track_id"] for r in selected])  # O1 guard applies
+        # Backlog first: these are already-known ids, so they cost nothing to
+        # queue and would otherwise stay unreachable forever.
+        queued = cache.enqueue(backlog + [r["spotify_track_id"] for r in selected])
         # Remember WHICH playlist these came from, so /playlists can report
         # "N of M analyzed". We stopped early, so `ids` is a PREFIX of the
         # playlist — merge rather than replace, or each capped click would
@@ -1328,7 +1366,8 @@ def create_app() -> FastAPI:
         cache.remember_playlist_tracks(playlist_id, ids, replace=exhausted)
         session["pl_msg"] = playlists_mod.coverage_line(
             len(queued), n_skipped, 0 if exhausted else None, cap,
-            scanned=len(seen), queue_depth=cache.queue_count())
+            scanned=len(seen), queue_depth=cache.queue_count(),
+            needs_source=n_needs_source, fetch_failed=fetch_failed)
         session["pl_msg_id"] = playlist_id      # highlight the card we just acted on
         # Stay on /playlists (owner, 2026-07-27). Landing on /queue was meant to
         # be proof the click worked, but the common case is a playlist whose next
