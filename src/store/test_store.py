@@ -862,3 +862,16 @@ def test_requeue_retryable_cannot_hot_loop(cache):
         expected = ["bad"] if i < MAX_ATTEMPTS else []       # converges at the cap
         assert cache.requeue_retryable() == expected
     assert "bad" in cache.dead_lettered_ids()
+
+
+def test_searchable_ids_excludes_tracks_with_no_name(cache):
+    """The invariant that would have prevented 214 lost tracks: an id with no
+    stored name cannot be searched for, so enqueueing it only burns attempts."""
+    cache.remember_meta([{"spotify_track_id": "named", "track_name": "Song",
+                          "artist_names": "Band"}])
+    with cache._Session() as s:
+        from .models import TrackMeta
+        s.add(TrackMeta(spotify_track_id="bare"))     # membership row, no name
+        s.commit()
+    assert cache.searchable_ids(["named", "bare", "absent"]) == {"named"}
+    assert cache.searchable_ids([]) == set()

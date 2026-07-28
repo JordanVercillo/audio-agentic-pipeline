@@ -142,7 +142,7 @@ class _FakeCache:
         return {i for i in ids if i in self.active}
 
     def remember_meta(self, recs):
-        self.remembered = recs
+        self.remembered = [*self.remembered, *recs]
 
     def enqueue(self, ids):
         self.enqueued = ids
@@ -168,6 +168,11 @@ class _FakeCache:
 
     def playlist_walks(self):
         return dict(self.walks)
+
+    searchable = None      # None = "everything is searchable"
+
+    def searchable_ids(self, ids):
+        return set(ids) if self.searchable is None else set(ids) & self.searchable
 
 
 def _mock_membership(monkeypatch):
@@ -652,3 +657,38 @@ def test_a_partial_walk_still_uses_spotifys_total():
         analyzed_ids=set(), walked={"mine1": False})
     card = next(c for c in cards if c["id"] == "mine1")
     assert card["n_known"] == 40 and card["n_unavailable"] == 0
+
+
+def test_every_paged_track_gets_its_metadata_stored(client, monkeypatch):
+    """The regression that cost 214 tracks: membership recorded every id the
+    import paged over, but remember_meta saw only the ones that click QUEUED. A
+    track beyond the cap therefore got a membership row with no name, and the
+    later backlog pass enqueued it with nothing to search for — it dead-lettered
+    as "no track metadata for the audio search"."""
+    _mock_membership(monkeypatch)
+    fake = _big_playlist(monkeypatch, n=200)
+    monkeypatch.setattr("src.webapp.app._feature_cache", lambda: fake)
+    monkeypatch.setattr(config, "PLAYLIST_IMPORT_CAP", 10)
+    client.cookies.set(config.SESSION_COOKIE, _seed_session(scope=config.SCOPES))
+    client.post("/playlists/mine1/analyze", follow_redirects=False)
+    named = {r["spotify_track_id"] for r in fake.remembered}
+    recorded = set(fake.playlist_members["mine1"])
+    assert recorded, "nothing was recorded"
+    assert recorded <= named, (
+        f"{len(recorded - named)} member(s) recorded with NO metadata — they "
+        "would be enqueued with nothing to search for")
+
+
+def test_unsearchable_members_are_never_enqueued(client, monkeypatch):
+    """Even if a nameless member survives from an older import, it must not be
+    queued: three attempts would be spent to discover we cannot search."""
+    _mock_membership(monkeypatch)
+    monkeypatch.setattr("src.webapp.app.iter_playlist_track_pages",
+                        lambda *a, **k: iter([([], True)]))
+    fake = _FakeCache()
+    fake.playlist_members["mine1"] = ["has_name", "no_name"]
+    fake.searchable = {"has_name"}
+    monkeypatch.setattr("src.webapp.app._feature_cache", lambda: fake)
+    client.cookies.set(config.SESSION_COOKIE, _seed_session(scope=config.SCOPES))
+    client.post("/playlists/mine1/analyze", follow_redirects=False)
+    assert fake.enqueued == ["has_name"]

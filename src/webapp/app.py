@@ -1309,11 +1309,20 @@ def create_app() -> FastAPI:
             # is closed), but leaving it in the backlog would spend a cap slot
             # on work that cannot happen.
             twins = cache.twin_ids()
+            # A track with no stored name cannot be searched for — queueing it
+            # burns three attempts and dead-letters it as "no track metadata".
+            # THE invariant this whole class of bug needed: never enqueue what
+            # cannot be looked up. Paging supplies the missing metadata (it now
+            # stores every record it reads), so these recover on a later walk
+            # rather than being spent.
+            searchable = cache.searchable_ids(known_list)
             for tid in known_list:
                 if tid in done_ids or tid in twins:
                     continue
                 if tid in dead:
                     n_needs_source += 1
+                    continue
+                if tid not in searchable:
                     continue
                 backlog.append(tid)
             backlog = backlog[:cap] if cap > 0 else backlog
@@ -1337,6 +1346,16 @@ def create_app() -> FastAPI:
                                  or seen.add(r["spotify_track_id"]))]
                 page_ids = [r["spotify_track_id"] for r in uniq]
                 ids.extend(page_ids)
+                # Store metadata for EVERY track we page over, not just the ones
+                # this click queues. Membership recorded all of them, but
+                # remember_meta used to see only `selected` — so a track beyond
+                # the cap got a membership row with NO name, and the later
+                # backlog pass enqueued it with nothing to search on. 200 of
+                # #Rock's tracks dead-lettered as "no track metadata for the
+                # audio search" that way. We already fetched this; storing it is
+                # free and makes membership self-sufficient.
+                if uniq:
+                    cache.remember_meta(uniq)
                 skip = cache.cached_ids(page_ids) | cache.active_ids(page_ids)
                 n_skipped += len(skip)
                 for r in uniq:

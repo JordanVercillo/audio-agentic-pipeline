@@ -1260,6 +1260,22 @@ class FeatureCache:
             out.setdefault(pid, []).append(tid)
         return out
 
+    def searchable_ids(self, track_ids: list[str]) -> set[str]:
+        """Of these ids, the ones we could actually run a YouTube search for —
+        i.e. that have a stored track_name.
+
+        The acquisition path needs a name (and ideally an artist) to search; an
+        id alone is unusable, and enqueueing one spends three attempts before
+        dead-lettering it as "no track metadata for the audio search". 214 tracks
+        were lost that way (2026-07-28) because playlist MEMBERSHIP recorded ids
+        that `remember_meta` had never seen."""
+        if not track_ids:
+            return set()
+        with self._Session() as s:
+            rows = s.execute(select(TrackMeta.spotify_track_id, TrackMeta.track_name)
+                             .where(TrackMeta.spotify_track_id.in_(track_ids))).all()
+        return {tid for tid, name in rows if name}
+
     def mark_playlist_walk(self, playlist_id: str, *, complete: bool,
                            n_found: int) -> None:
         """Record whether the import reached the END of this playlist.
