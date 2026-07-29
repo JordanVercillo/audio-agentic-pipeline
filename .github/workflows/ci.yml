@@ -69,3 +69,18 @@ jobs:
 
       - name: Spark ↔ pandas parity (row-count + centroid)
         run: uv run python spark/parity_check.py
+
+  # Vision F P4.6.1 (F13): the repo is public and history already hid one
+  # secret in committed bytecode (journal #32) — the one-time L-flip scrub
+  # needs a continuous successor. Scans the full history on every push.
+  secret-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: gitleaks (full history)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
