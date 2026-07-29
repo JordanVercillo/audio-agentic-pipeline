@@ -1600,3 +1600,55 @@ were fit to be acted on.
 > for the readers it has had so far. And prefer the guard to the repair: `never
 > enqueue what cannot be searched` is one line, would have prevented all 214
 > losses, and keeps working for defects nobody has imagined yet.*
+
+## 60 — A fix that is a command, not a trigger, regresses on schedule (2026-07-29)
+
+Session 50 hand-retrained the clusters and coverage went 39% → 99.7%. Seven
+days later the Vision F fresh-eyes consult measured it at 36.7% again, with
+the model's LLM descriptions NULL — blank blurbs serving live on /analytics —
+and both audits GREEN throughout. The corpus had 2.6×'d under real playlist
+imports while the model sat frozen at its training set, and the one audit
+check pointed at cluster coverage (`CLUSTER_PROFILE_DRIFT`) only bounds
+`n_assigned` from ABOVE, so shrinking relative coverage can never trip it.
+The condition we'd already fixed once simply re-accumulated, because the fix
+was an action someone took, not a property the system maintains.
+
+**The realization:** in a system with a growing input, any derived plane
+whose refresh is manual is ALREADY stale — the only question is the rate.
+And a guard that bounds a quantity from one side is half a guard: it was
+written to catch over-counting, so under-coverage — the actual failure mode
+of growth — passed green forever. The freshness policy that came out of it
+(D-62) splits the cheap automatic act (train, always) from the identity
+event a human should see (promote), which is what makes automation safe to
+turn on.
+
+> *Every manual re-run of X is a vote that X should be a trigger. The second
+> time you fix the same staleness by hand, budget the trigger — and when you
+> write a bound, ask which DIRECTION the real failure approaches from.*
+
+## 61 — The consult that falsified the brief (2026-07-29)
+
+I briefed the throughput consult on two "facts" the whole session was
+carrying: extraction runs ~50 s/track, and a deliberate 5–30 s courtesy
+sleep sits between downloads — so the design frame was "hide DSP behind the
+sleep". The expert measured instead of accepting: the real gaps between
+consecutive extractions are p50 14.8 s (n=1,921), and the sleep exists ONLY
+in the batch-pipeline path — the worker path has none. Both premises false;
+the entire "free overlap" design evaporates, replaced by an honest dial
+(throughput and YouTube request rate are welded one-for-one). Same session,
+same method: `tempo_bpm` turned out to take exactly 20 distinct values in
+1,946 tracks — the librosa tempogram lag grid wearing the costume of a
+continuous feature — found only because the consult interrogated the corpus
+instead of the estimator's docs.
+
+**The realization:** the ~50 s figure was real once — it was the measured
+ETA constant from session 36 — and it fossilized into a premise nobody
+re-derived while the system underneath it changed. A design brief is a set
+of claims, and claims age. The consult's first duty was the one it
+performed: check the premises against the live system before designing on
+top of them.
+
+> *Numbers in a brief have a provenance and a shelf life. Re-measure the
+> load-bearing ones before designing against them — and profile the actual
+> corpus your estimators produced, not the estimator's promise: a
+> distribution with 20 distinct values is a grid, not a measurement.*

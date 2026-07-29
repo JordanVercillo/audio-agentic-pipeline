@@ -1024,6 +1024,30 @@
   chat log is the production monitor. `/chat` UX: the full async/streaming
   rebuild is still the "eventually" item (S3 removed the frozen-page feel, not
   the latency). Parked: MPD-audio, Epic M, instrumentalness, dupe-pruning.
+  ✅ **VISION F SPECCED + RATIFIED (2026-07-29, session 63, Fable +
+  orchestrator; commits 980f56c→bd412b0, CI green incl. the NEW gitleaks
+  full-history job):** the part-two re-envisioning — 5 expert consults +
+  live browser walk → the 17-finding evaluation ledger, strengths stop-list,
+  **D-61…D-67 ALL RATIFIED** with pinned execution parameters, Phases
+  4.6/4.7 inserted before Phase 5, and **D-65: Phase 5 re-substrated from
+  MPD (legally blocked — dataset withdrawn + license bars portfolio use) to
+  the AcousticBrainz CC0 dump** (29.5M rows; also our first independent DSP
+  ground truth). Key live-verified findings driving the plan: cluster plane
+  at 36.7% coverage w/ NULL descriptions (regressed silently in 7 days —
+  the one-sided audit bound), ~14.8 s/track real throughput welded to
+  YouTube request rate (no sleep exists to hide work behind), tempo
+  quantized to a 20-value lag grid + near-coin-flip mode (v2 candidates,
+  D-67-gated), `all_features()` on 2 request paths, 15 of 892 artists
+  browsable. Harness: `ui-ux-expert` agent registered; full spec + the
+  S1–S6 Opus plan in `docs/VISION_SPECS.md` §Vision F.
+  **➡️ NEXT ACTION — S1 of the Opus execution plan (quick wins, no design
+  needed):** yt-dlp pin ≥2026.07.04 + `--sleep-requests` on search + the
+  flat-search shape contract test; `/analytics` + `/artist/{id}` onto
+  `cache.feature_columns()` with the SQL-shape guard extended; move the
+  `/analytics` GET-write behind the promotion machinery. Owner step riding
+  S1: install JDK 17 + `hadoop.dll`, re-run `spark/parity_check.py` locally.
+  Then S2 (P4.6.3 freshness + THE RETRAIN — the F1 fix). Owner track
+  unchanged: needs-source repairs at leisure; the DMARC reject-flip.
 - ✅ **SECURITY + ROBUSTNESS REVIEW (2026-07-09, commits 26891b1←): whole-app
   audit via 2 review subagents + a strategic pass; 7 real fixes, all tested,
   deployed, 286 green.** **Security surface came back STRONG** — auth, session
@@ -2808,3 +2832,25 @@ narrative goes to `notes/engineering_journal.md`, plans to
   audits → consider a cluster retrain (the corpus is 2.4× what model #9 trained
   on), THEN Phase 5. Owner track: ~394 needs-source repairs and the DMARC
   reject-flip. NEW SESSION: run `/resume`.**
+- **2026-07-29 (session 63 — VISION F: the part-two re-envisioning; Fable +
+  orchestrator, 5 expert consults + lead browser walk; commits
+  980f56c→bd412b0):** owner called part two before Phase 5. Both audits were
+  ALL-GREEN at pickup (the e0cef8d post-drain chain had self-closed the two
+  predicted flags); corpus 1,946 analyzed / 1,894 canonical. **Vision F
+  specced AND RATIFIED same-day (D-61…D-67 + pinned execution parameters +
+  the S1–S6 Opus plan)** — the headline findings: the cluster plane silently
+  regressed to 36.7% coverage in 7 days with NULL descriptions serving
+  (journal #60, the audit's one-sided bound); **MPD is legally dead** and
+  Phase 5 re-substrates to the AcousticBrainz CC0 dump (D-65 — 29.5M rows,
+  2.8 GB, verified downloadable, doubles as independent DSP ground truth);
+  the dsp consult falsified two premises (journal #61 — no worker sleep
+  exists, ~14.8 s/track not ~50; tempo quantized to a 20-value lag grid,
+  mode near coin-flip); `all_features()` still on 2 request paths (20×);
+  no song→artist link anywhere with 15 of 892 artists browsable. Harness
+  gap-fill shipped: **gitleaks in CI (first full-history pass GREEN)** +
+  the **ui-ux-expert** agent (design lane, 3 dated late-caught defect
+  instances) + CLAUDE.md roster fix. A mid-session platform usage limit
+  killed the first dsp consult; respawned narrowed, report folded in.
+  **Left off: Vision F ratified and pushed (bd412b0), CI green ×3 incl.
+  gitleaks, both audits clean, tree synced. NEXT = S1 of the Opus execution
+  plan. NEW SESSION: run `/resume`.**
