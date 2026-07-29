@@ -1665,18 +1665,62 @@ gated on the owner's dataset download.
   ~480px breakpoint + `aria-current` nav · `--fg` CSS var + hover sweep ·
   raw-id library row renders an honest "metadata unavailable" label.
 
-## Phase 5 — re-substrated (pending D-65): AcousticBrainz at scale
+## Phase 5 — AcousticBrainz at scale (D-65 ratified; F1-DESIGNED 2026-07-29, session 64)
 
-J0 intake (2.8 GB dump → staged Parquet, resumable, byte-identical re-runs) →
-J0.5 the ISRC→MBID bridge + measured corpus coverage (the gating number,
-explainable via P4.6.6 release dates) → J1 the DSP validation harness (our
-tempo/key/loudness vs AB ground truth over ~68% of corpus — the first
-independent audit of our core claim; disagreements feed the provenance-QA
-flywheel) → J2 Spark parity benchmark over the full 29.46M rows (DuckDB
-production path + Spark parity path, the SCALING.md condition honored on real
-data) → J3 the honest writeup. Bridge-key rule unchanged: `spotify_track_id`
-is the only cross-layer key; MBID is a join attribute inside this phase's
-marts, never a second identity.
+**The full executable spec is [`docs/PHASE5_AB_SPEC.md`](PHASE5_AB_SPEC.md)**
+(F1 design session: Fable lead + dsp / data-platform / research consults —
+written so Opus executes P5-S1…S7 with no further design). Shape: J0a ISRC
+supply (D-70, rides P4.6.6) → J0b dump intake (schema contract, 16 hex
+buckets, submission grain) → J0.5 batched-MB bridge (D-72) + the coverage
+report (pre-registered prediction: 50–62%) → J1 submission dedup (D-71) +
+the **concordance** harness (D-68 framing, D-69 taxonomy) + owner-listening
+adjudication → J2 DuckDB/Spark parity jobs + the honest benchmark
+(pre-registered: DuckDB wins single-node) → J3 writeup + the D-73 three-verdict
+F2 memo. Bridge-key rule unchanged: `spotify_track_id` is the only
+cross-layer key; MBID is a nullable join attribute (never unique — ~8% of
+ISRCs map 2 corpus tracks to one recording), never a second identity.
+
+### F1 decisions (D-68…D-73 — proposed 2026-07-29, session 64; owner ratification pending)
+
+- **D-68 — the claim discipline:** the harness measures CONCORDANCE between
+  two uncalibrated estimators (MetaBrainz's own shutdown post disclaims AB's
+  bpm/key quality and confirms no confidence signal exists); "validate"/
+  "ground truth" are banned for this plane; disagreement is a hypothesis
+  until adjudicated; cross-submission spread (~3.9 rows/recording) is the
+  trust filter; the live AB API is borrowed-time garnish (sample-scale
+  enrichment only); the CC0 dump is the permanent asset.
+- **D-69 — taxonomy + bands + adjudication (pre-registered):** log-ratio
+  tempo classes (absolute-BPM bands rejected — they'd score our own grid as
+  error), the MB-length version gate BEFORE scoring, key marginals
+  (exact/tonic/mode) with PARALLEL as the measured leading weakness (25.1%
+  runner-up share — not relative-minor as folklore said), the falsifiable
+  double-time prediction (WE_DOUBLE ≥ 3× WE_HALF, publish the refutation if
+  wrong), and the 3-stage adjudication (free triage → n=20 owner listening
+  per class, insufficient-n refuses a rate → sample-only published refs).
+- **D-70 — ISRC supply (P4.6.6 scope amendment):** `TrackMeta.isrc`
+  forward-only + preserve-if-absent; rides the already-planned batched
+  `/tracks?ids=` backfill at ZERO marginal API cost (measured hole: 109
+  ISRCs ≈ 5.6% of corpus — the D-65 ~68% projection was over an attribute
+  that didn't exist; journal #61 class). Fix `_build_dim_tracks`'s silent
+  drop of requested-but-missing columns (warning + test).
+- **D-71 — submission-grain rule:** collapse to one row per MBID by
+  `PERCENTILE_DISC(0.5)` (never interpolating median — the cross-engine
+  parity anchor), mode w/ lexicographic ties for categoricals,
+  `n_submissions` + spread carried; high-spread recordings marked
+  `comparable=False` and skipped (precision over recall — a false "our DSP
+  is wrong" could wrongly justify D-67's irreversible Tier-B).
+- **D-72 — ISRC→MBID resolution:** batched Lucene search 50/request w/
+  explicit `limit=100` (the silent-25 degradation is a measured trap), 1.1 s
+  pacer, contactful UA, cached responses; multi-hit tie-break = duration ±3 s
+  → reproduction-marker rejection (reuse `match_gate` vocabulary) → prefer
+  AB-row-present → else `isrc_ambiguous` honest miss.
+- **D-73 — the F2 evidence bars (frozen pre-join):** tempo v2 and mode v2
+  each face conjunctive bars (agreement deltas w/ bootstrap CI, internal
+  beat-grid consistency, named-song pins, mode's tonic-churn guard and
+  mediant signal-support precondition) ending in exactly ONE of three
+  publishable verdicts: ADOPT v2 (owner-signed, full blast radius named) ·
+  KEEP v1 FOREVER · SOFTEN THE CLAIM (confidence display, display-only,
+  no re-extraction). Full bars in PHASE5_AB_SPEC §3.
 
 ## Sequence
 
