@@ -1379,9 +1379,9 @@ audio-feature sources · THEN the Spark/scale strategy — polish + architecture
 designed to scale.
 
 **Provenance of this spec:** five parallel expert consults (webapp,
-data-platform, research, agile-coach; dsp cut off by a session limit and
-respawned — its report folds into P4.6.5 when it lands) + the lead's live
-browser walk. Every number below marked *measured* was verified live
+data-platform, research, agile-coach, dsp — the dsp consult was cut off by a
+session limit, respawned narrowed, and its report is folded into F16/F17,
+D-64/D-67, and P4.6.5) + the lead's live browser walk. Every number below marked *measured* was verified live
 2026-07-29 against the running app / real cache. Delivered as **Phase 4.6**
 (platform + freshness + throughput) and **Phase 4.7** (transparency + Epic R +
 polish), inserted BEFORE Phase 5. **No renumbering** — Phase 4.5's exit stays
@@ -1424,6 +1424,8 @@ ratified; Phase 5/LLM-2/6 keep their numbers, only their start moves.
 | F13 | **CI has no secret scan** on a public repo taking weekly commits — history already hid one secret in bytecode (journal #32) | P4.6.1 |
 | F14 | **A GET writes**: `/analytics` persists `assign_track` assignments mid-read — currently writing from a 700-track fit | fold into P4.6.3 |
 | F15 | **Mobile/touch debt**: hover-only DSP popovers dead on touch, ONE breakpoint (720px), no active-nav state; `/library` row renders a raw Spotify id when meta is gone (lead walk) | P4.7.5 |
+| F16 | **Two weak estimators, found by interrogating the corpus** (measured): `tempo_bpm` takes exactly 20 distinct values corpus-wide — the librosa tempogram lag grid (2584.0/lag, lags 15–37), a ~6% quantization error at the fast end, with a FREE fix already stored (median inter-beat interval of `beat_times`: 41 values, named-song checks improve); `estimated_mode` is near coin-flip (50.5% major vs ~65–70% expected for pop/rock — Uprising reads D major, it's D minor). Both fixes move the frozen contracts → v2-gated, never silent | D-67 (v2 candidates, gated) |
+| F17 | **DSP method lineage is unversioned in practice**: `DSP_VERSION="77dim-v1"` is a dimensionality label, not a method label, duplicated as a literal in `seed_cache.py`; no audit flag catches a mixed-version corpus; 50 feature rows have no provenance row (no acquisition-side version at all). Upgrade reality measured: 115 tracks can re-extract from LOCAL audio, 1,831 need re-acquisition | D-67 + P4.6.5 |
 
 Scale items measured but deliberately deferred until ~10k: heavy display
 columns (`beat_times`+`sections`+`loudness_curve` = 45% of the DB file) →
@@ -1471,8 +1473,18 @@ sidecar; `_population_token` linear scan per request; incremental marts +
   into account-ban risk); one 429 = global circuit-breaker; parallelism that
   raises aggregate rate is a risk decision the owner signs; DQ throughput
   scales with drain throughput, so quarantine counts join the post-drain
-  report. The no-risk win ships first: overlap download-sleep with DSP compute
-  inside one worker (dsp-expert report pending).
+  report. **Corrected by the dsp-expert report (measured): there is NO
+  deliberate sleep in the worker path** (the 5–30s delays live only in the
+  batch `run_pipeline.py` path) and the real rate is ~14.8s/track p50 — so
+  throughput and YouTube request rate are welded one-for-one, and "overlap
+  the sleep" was a false premise. The pipeline+threading design below yields
+  ~3.5× at a 3.5× request-rate increase — a DIAL, shipped with an
+  `ACQUIRE_MIN_INTERVAL_S` pacer defaulting to 15s (today's measured rate,
+  i.e. risk-neutral on day one), stepped down only under a 429/error-rate
+  monitor. The genuinely risk-free wins ship first: thread-parallel DSP
+  (measured 2.08×, GIL released, NO multiprocessing) on the LOCAL-audio
+  paths (re-extract, backfills), and the bit-identical shared-STFT refactor
+  (~2× on the timbre block, equality-tested, no version bump).
 - **D-65 — Phase 5 substrate: MPD → AcousticBrainz.** MPD as specced (D-26/
   D-27, Epic J) cannot proceed (F9). Substitute the **AcousticBrainz CC0 dump**
   (29.46M rows, 2.8 GB, verified downloadable; frozen 2022): same real-data
@@ -1492,6 +1504,27 @@ sidecar; `_population_token` linear scan per request; incremental marts +
   Essentia models SKIP (CC BY-NC-SA); SoundStat/Cyanite/GetSongBPM SKIP.
   **"No credible third-party source replaces local DSP" is now a measured
   conclusion, not an assumption — say so in the case study.**
+- **D-67 — FEATURE_VERSION policy + v2 candidates (dsp-expert report,
+  session 63).** ① `FEATURE_VERSION` moves to `src/dsp/config.py` (the DSP
+  module owns the method; store re-exports; the `seed_cache.py` literal
+  dies), stamped on BOTH `track_features.dsp_version` (what serves) and
+  `track_provenance.dsp_version` (what ran at acquisition), with a
+  `FEATURE_VERSION_LOG` dict. ② Bump rule (goes in CLAUDE.md): bump only
+  when a stored NUMBER changes; bit-identical refactors ship with an
+  equality test instead; promoted display columns get a separate
+  `DISPLAY_VERSION` (never force a 77-vector re-extraction). ③ New audit
+  flag `MIXED_FEATURE_VERSION` (red on >1 distinct version, message names
+  the in-progress ledger during a planned migration). ④ FEATURE_VERSION is
+  lineage, NEVER cache invalidation — `_population_token` keeps that job.
+  ⑤ The v2 candidate list, all contract-breaking hence gated here: tempo
+  from stored `beat_times` median IBI (F16, zero extra compute), temporal/
+  bass-weighted mode estimation (F16), HPSS `n_fft=1024` (2.1× on the
+  dominant stage, +0.4% drift). Upgrade tiers: Tier A = 115 local-audio
+  tracks re-extract with NO re-download (the clean A/B for any new
+  estimator); Tier B = 1,831 re-acquisitions via the Q3 machinery
+  (`--stale-version` selector) — an irreversible corpus-scale run the owner
+  signs with a cost estimate (~7.5h serial, ~2–4h pipelined), honestly
+  framed: Tier B re-acquires audio, so the source can change too.
 - **D-66 — the transparency contract**: "full" = the 83 numeric cache-dict
   columns + an explicit "outside the dict" callout for promoted columns
   (loudness_curve, beat_times, sections, time_signature, match_confidence).
@@ -1531,10 +1564,24 @@ sidecar; `_population_token` linear scan per request; incremental marts +
   always on drain-idle), drop the duplicate `refresh_duplicate_flags`, batch
   `persist_perceptual`, `silhouette_score(sample_size=5000, random_state=42)`
   (kills the only O(N²) step).
-- **P4.6.5 — throughput (split):** instrumentation + p50/p95 per stage over
-  ≥50 real jobs (dsp-expert spec pending) → **D-64 written from the numbers**
-  → the download/DSP overlap build; any multi-worker concurrency only by
-  owner-signed D-64.
+- **P4.6.5 — throughput (split; the dsp-expert report in session-63's log
+  carries the full design):** ① the risk-free half first (Opus): DSP thread
+  pool for the LOCAL-audio paths + shared-STFT refactor with the
+  77-vector equality test + D-67's version plumbing + `MIXED_FEATURE_VERSION`
+  flag; ② instrumentation (`extraction_timings` ops table, stage hooks incl.
+  the search/download split, duration-normalized p50/p95 report); ③ the
+  3-stage single-process pipeline (acquire thread → DSP pool N=2–3 →
+  single persist thread; Queue(2) buffer; heartbeat on a daemon ticker) —
+  ships ONLY with its named guards: `ACQUIRE_MIN_INTERVAL_S=15` default
+  (rate-neutral), hard duration reject in the DSP path BEFORE concurrency
+  (MAX_DURATION_SEC only warns today — one slipped DJ set would OOM 3
+  jobs), graceful-shutdown buffer drain with attempts decrement, twin-check
+  pinned to the serial acquire thread + in-flight id set, all writes through
+  the persist thread (SQLite single-writer), `requeue_stale_running` ≥
+  buffer_depth × p95. Rate step-downs 15→10→7 are **owner-signed D-64**
+  moves under a 429-rate monitor. Failure drills before merge: the slipped
+  DJ set, the killed-worker attempts burn, the twin pair in one buffer
+  window, the three pinned named-song regressions.
 - **P4.6.6 — gold + album capture (Opus):** checked-in gold schema manifest +
   `GOLD_SCHEMA_SHRINK` flag; restore the shrunk `dim_tracks` columns; capture
   `album_id`/`album_type`/`album_release_date` (+`release_date`) in
