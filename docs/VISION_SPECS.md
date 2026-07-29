@@ -1365,4 +1365,234 @@ disciplines carry the review quality); `agile-coach` keeps these tags current.
 | Phase 5 **J1 modeling design + J3 benchmark interpretation** | **Fable** | Co-occurrence/embedding choices + honest at-scale claims are judgment |
 | Phase 5 **J0/J1 ETL execution** | **Opus** | Specced pipeline work with parity/audit gates |
 | Phase 6 **ML capstone scoping** | **Fable** | Unscoped by design |
+
+---
+
+# Vision F — part two: the scaling product era (specced 2026-07-29, orchestrator session 63)
+
+**The owner's re-envisioning ask, verbatim goals:** fresh-eyes flaws/strengths
+evaluation · gap-filling agents/skills · big fixes + feature additions + method
+upgrades · UI/visual/perf as the dataset grows · clusters + extraction stay
+updated with new data · per-song FULL feature transparency · full artist-section
+overhaul · parallelize queue processing within rate limits · review other
+audio-feature sources · THEN the Spark/scale strategy — polish + architecture
+designed to scale.
+
+**Provenance of this spec:** five parallel expert consults (webapp,
+data-platform, research, agile-coach; dsp cut off by a session limit and
+respawned — its report folds into P4.6.5 when it lands) + the lead's live
+browser walk. Every number below marked *measured* was verified live
+2026-07-29 against the running app / real cache. Delivered as **Phase 4.6**
+(platform + freshness + throughput) and **Phase 4.7** (transparency + Epic R +
+polish), inserted BEFORE Phase 5. **No renumbering** — Phase 4.5's exit stays
+ratified; Phase 5/LLM-2/6 keep their numbers, only their start moves.
+
+## The P4.6.0 evaluation ledger (⚠️ RATIFICATION PENDING — owner dispositions)
+
+### Strengths stop-list — what part two may NOT "improve"
+
+1. **The honesty layer IS the product** — provenance glyphs linking to the
+   exact YouTube recording, "features withheld until source verified" (D-57),
+   stated denominators everywhere, no-chorus/verse captions, tier badges
+   (measured/derived/experimental). Build more of it, never less.
+2. **The acceptance/dedup doctrine** — `match_gate` as the ONE policy,
+   filter-then-rank, O4's version-tag rules, quarantine discipline.
+3. **Pure-builder webapp discipline** (dict→dict builders, thin routes) and
+   **`test_route_matrix.py`** (set-equality route coverage + effects column).
+4. **The perf-guard vocabulary** — SQL-shape tripwires asserting WORK DONE,
+   the `_population_token` memo derived from data (never writer-bumped),
+   `feature_columns()` projection, `/library`'s pagination pattern.
+5. **The frozen 77-dim vector + 82-col contract**, the bridge key, absent-safe
+   garnish, real-data-only, $0. Non-negotiable as ever.
+
+### Findings (severity-ranked; every disposition is a proposal until ratified)
+
+| # | Finding (evidence class) | Disposition |
+|---|---|---|
+| F1 | **Cluster plane at 36.7% coverage, e4b descriptions NULL — serving blank blurbs now** (measured). Session 50 fixed this same condition by hand; it regressed in 7 days because the fix was a command, not a trigger. The audit only bounds coverage from ABOVE, so it stays green forever | P4.6.3 (freshness machinery + ratified retrain) |
+| F2 | **Two traps make naive retrain automation wrong** (measured): cluster ids SWAP across retrains (legend colors / "home sound" silently invert) and silhouette DROPS as corpus grows (0.176→0.148) so a "must improve" gate freezes the model forever | encoded in D-62 |
+| F3 | **Post-drain chain is O(corpus), breaks ~8k tracks** (measured 7s at 1.9k vs 30s poll): full mart rebuild per drain, `refresh_duplicate_flags` runs TWICE, `persist_perceptual` row-by-row | P4.6.4 |
+| F4 | **`all_features()` still on 2 request paths** (`/analytics`, `/artist/{id}`) — measured 20× slower / 15× heavier than the existing `feature_columns()`; 4.2 GB transient at 100k | P4.6.2 |
+| F5 | **No path from any song to its artist; `/artists` shows 15 of 892 corpus artists, viewer-gated** — largest IA hole, cheapest fix | P4.7.2 (Epic R R1) |
+| F6 | **Per-song transparency gap**: 83 numeric features stored, ~9 surfaced; the 3/6/8 summary/radar/signature subsets never state their relationship; the 83 raw columns have NO description anywhere the webapp can read | P4.7.1 (D-66) |
+| F7 | **O(corpus) DOM survivors** of the pagination pass: `/recommend` ships 1,895 `<option>`s (unusable control), `/explore` 153 KB scatter with 1,198 gray "not clustered" dots | P4.7.5 |
+| F8 | **Threshold/word constants duplicated ×3** (`_BANDS`, `_SIGNATURE_DIMS`, archetype rules) — every one explained in UI prose; Epic R doubles the consumers | P4.7.0 (before R) |
+| F9 | **MPD is legally blocked twice over** (verified): dataset no longer downloadable; license grants use "solely as required to prepare your Challenge Result", prohibits "make available" + derived-data commercial use; all mirrors are unlicensed redistribution | D-65 (substitute) |
+| F10 | **yt-dlp hygiene**: pin floor ≥2026.2.21 admits CVE-2026-55404 builds (fixed 2026.07.04); the SEARCH path is un-throttled (`--sleep-requests` unset) and is the larger request count; `extract_flat` output is actively churning upstream with no shape test here | P4.6.1 |
+| F11 | **Gold exporter silently shrank `dim_tracks`** (dropped `album_release_date`, `album_name`, `explicit`, `is_local`); 17 gold columns undocumented; no flag catches a vanished gold column | P4.6.6 |
+| F12 | **Spark does not run on this machine** (verified: PySpark 4.x needs JDK 17+, box has JDK 11; `hadoop.dll` missing) — the parity claim currently rests on Linux CI alone. ~10-min fix, but required before any Phase 5 planning | P4.6.1 |
+| F13 | **CI has no secret scan** on a public repo taking weekly commits — history already hid one secret in bytecode (journal #32) | P4.6.1 |
+| F14 | **A GET writes**: `/analytics` persists `assign_track` assignments mid-read — currently writing from a 700-track fit | fold into P4.6.3 |
+| F15 | **Mobile/touch debt**: hover-only DSP popovers dead on touch, ONE breakpoint (720px), no active-nav state; `/library` row renders a raw Spotify id when meta is gone (lead walk) | P4.7.5 |
+
+Scale items measured but deliberately deferred until ~10k: heavy display
+columns (`beat_times`+`sections`+`loudness_curve` = 45% of the DB file) →
+sidecar; `_population_token` linear scan per request; incremental marts +
+`population_n` percentile stamping; DuckDB read layer; mart partitioning
+(~500k). Recorded so they're chosen, not forgotten.
+
+## Decisions to ratify (D-61…D-66 — ALL PENDING OWNER)
+
+- **D-61 — Epic R un-deferred, superseding D-58.** What changed: the prototype
+  bar D-58 protected was met and exited; the corpus is 2.6×; the artist surface
+  is now the app's largest gap vs its data (15 shown / 892 known). Scope
+  fence: **no MusicBrainz in Epic R** — albums/chronology ride Spotify's
+  already-fetched-but-discarded fields (see P4.6.6) with the honest caption
+  "release date as Spotify reports it; a remaster reads as its reissue year";
+  `mbid` stays out of artist pages entirely (MusicBrainz enters only via
+  Phase 5's ISRC bridge if D-65 ratifies). Overrun rule: if R3 overruns one
+  session, ship the discography grid and defer the remainder as a numbered
+  decision.
+- **D-62 — model-freshness policy** (the F1/F2 fix): model rows gain
+  `n_trained`/`promoted_at`/`identity_map` (forward-only); the post-drain
+  chain **trains always** (cheap, nothing visitor-facing moves) and
+  **auto-promotes ONLY identity-stable retrains** (same k, every centroid
+  matched above cosine threshold, label words unchanged — ids remapped through
+  `identity_map` so cluster 0 keeps being the same SOUND); anything else holds
+  for owner ratification via a printed diff (`promote_cluster_model.py`).
+  Silhouette is recorded, NEVER a gate. `describe_clusters` is a step of the
+  chain, its absence a flag. Old models/assignments are never auto-deleted.
+  Triggers (any fires): coverage <0.95 · corpus ≥1.25× `n_trained` · feature
+  contract change · >7d + ≥50 new. New audit flags: `CLUSTER_COVERAGE`,
+  `CLUSTER_MODEL_STALE`, `CLUSTER_DESCRIPTION_MISSING`,
+  `CLUSTER_PROMOTION_PENDING`, `FEATURE_CONTRACT_DRIFT` (+`GOLD_SCHEMA_SHRINK`
+  in P4.6.6) — **four go RED on first run; that is the point.** Phase 6 is not
+  pre-empted: this is operational retraining of the same model family.
+- **D-63 — Vision F exit bar**: ① both audits green INCLUDING the new flags;
+  ② a promoted model covering ≥95% of canonical with live descriptions;
+  ③ `/song/{id}/features` shipped under the D-66 contract; ④ Epic R R1–R3
+  shipped (R4 may defer by numbered decision); ⑤ every UI change carries a
+  before/after number or a named defect. NOT in part two: MPD-audio, Epic M,
+  instrumentalness, dupe-pruning, K4 (appetite-gated as ever), K5/K6.
+- **D-64 — acquisition concurrency policy** — written ONLY after P4.6.5's
+  measurement slice. Standing principles it must encode: the governed quantity
+  is the **global aggregate request rate** (token bucket), never per-worker
+  sleeps; anonymous/no-cookies forever (cookies convert a recoverable IP block
+  into account-ban risk); one 429 = global circuit-breaker; parallelism that
+  raises aggregate rate is a risk decision the owner signs; DQ throughput
+  scales with drain throughput, so quarantine counts join the post-drain
+  report. The no-risk win ships first: overlap download-sleep with DSP compute
+  inside one worker (dsp-expert report pending).
+- **D-65 — Phase 5 substrate: MPD → AcousticBrainz.** MPD as specced (D-26/
+  D-27, Epic J) cannot proceed (F9). Substitute the **AcousticBrainz CC0 dump**
+  (29.46M rows, 2.8 GB, verified downloadable; frozen 2022): same real-data
+  Spark-scale portfolio story, zero license entanglement, PLUS what MPD never
+  offered — independent ground truth to validate our DSP (ISRC→MBID resolves
+  ~95%, ~68% of corpus covered; AB agrees with our tempo where ReccoBeats and
+  Deezer both report double-time). **Honest loss, stated in the UI:**
+  behavioral ("listened-to alike") similarity has NO legal source today —
+  "sounds alike in your library" keeps its precise label. Optional parallel
+  track: email Spotify Research for MPD access + written portfolio permission
+  (low expected yield). Mirrors are never used. Source verdicts recorded:
+  ReccoBeats SKIP (66% coverage, 4% on 2025+, contested provenance — likely a
+  redistributed pre-deprecation Spotify snapshot; using it for ML would breach
+  the no-training term by proxy, validating ground rule 3); Deezer
+  CONDITIONAL-NO (100% coverage but non-commercial terms + anti-download
+  clause — previews stay untouched absent an explicit owner reversal);
+  Essentia models SKIP (CC BY-NC-SA); SoundStat/Cyanite/GetSongBPM SKIP.
+  **"No credible third-party source replaces local DSP" is now a measured
+  conclusion, not an assumption — say so in the case study.**
+- **D-66 — the transparency contract**: "full" = the 83 numeric cache-dict
+  columns + an explicit "outside the dict" callout for promoted columns
+  (loudness_curve, beat_times, sections, time_signature, match_confidence).
+  ONE source of truth: descriptions live in the DSP layer (`RAW_FEATURE_DOC`
+  next to `FeatureGroup`), shipped as `raw_feature_dictionary.parquet` +
+  `raw_feature_stats.parquet`, read via the existing mtime-keyed loader. A
+  set-equality tripwire re-derives the documented set through the LIVE
+  extractor (an 84th feature can't ship undocumented; a removed one can't
+  linger). Percentiles come from the SAME twin/validated-filtered population
+  as every other surface (parity test). Categorical columns (key/mode) render
+  class histograms, never percentiles. MFCC/chroma/contrast blocks render as
+  SHAPES with per-coefficient tables nested, captioned "individual
+  coefficients aren't interpretable in isolation." The 82-col dict stays a
+  point-lookup asset — the route reads ONE row; population stats come from the
+  mart.
+
+## Phase 4.6 — platform, freshness, throughput (build order)
+
+- **P4.6.0 ✅ this session** — the ledger above + this spec. Exit = owner
+  ratifies dispositions + D-61…D-66.
+- **P4.6.1 — hygiene batch (Opus):** gitleaks in CI (F13) · yt-dlp pin
+  ≥2026.07.04 + `--sleep-requests` on search + flat-search shape contract test
+  (F10) · JDK 17 + `hadoop.dll` + local `parity_check.py` green (F12, owner
+  installs, ~10 min).
+- **P4.6.2 — request-path projections (Opus):** `/analytics` + `/artist/{id}`
+  → `feature_columns()` (F4); extend the SQL-shape guard to the `/analytics`
+  population load; move the `/analytics` GET-write (F14) behind the promotion
+  machinery.
+- **P4.6.3 — model freshness (split: Fable signed D-62, Opus builds):** the
+  D-62 columns, train-always wiring, promotion gate, identity remap, the 5
+  cluster audit flags + tripwire tests (incl.
+  `test_promotion_remap_preserves_cluster_identity`,
+  `test_growth_retrain_is_not_blocked_by_lower_silhouette`); THEN the ratified
+  retrain on today's corpus with the identity-diff report — the F1 fix, last
+  so it can never silently regress again.
+- **P4.6.4 — post-drain scalability (Opus):** debounce (`max(N new, T min)` +
+  always on drain-idle), drop the duplicate `refresh_duplicate_flags`, batch
+  `persist_perceptual`, `silhouette_score(sample_size=5000, random_state=42)`
+  (kills the only O(N²) step).
+- **P4.6.5 — throughput (split):** instrumentation + p50/p95 per stage over
+  ≥50 real jobs (dsp-expert spec pending) → **D-64 written from the numbers**
+  → the download/DSP overlap build; any multi-worker concurrency only by
+  owner-signed D-64.
+- **P4.6.6 — gold + album capture (Opus):** checked-in gold schema manifest +
+  `GOLD_SCHEMA_SHRINK` flag; restore the shrunk `dim_tracks` columns; capture
+  `album_id`/`album_type`/`album_release_date` (+`release_date`) in
+  `remember_meta` (preserve-if-absent) + `backfill_album_meta.py` (~48 batched
+  /tracks calls) — feeds R2 chronology AND Phase 5 overlap explainability;
+  describe the 17 undocumented gold columns.
+
+## Phase 4.7 — transparency, Epic R, polish (build order)
+
+- **P4.7.0 — consolidation before fan-out (Opus):** lift `_BANDS`/
+  `_SIGNATURE_DIMS`/archetype thresholds into one `scales.py` with
+  caption-parity tests (F8); extract the pager into a shared module.
+- **P4.7.1 — per-song transparency (Opus, D-66):** `RAW_FEATURE_DOC` + the two
+  raw marts + `GET /song/{track_id}/features` (public, same guards as
+  `/song`) + the doc tripwire; `/song` reorder + one caption stating the 3/6/8
+  subset relationship + "See all 83 measured features →".
+- **P4.7.2 — Epic R R1 (Opus):** corpus-scale artist index (grouped by
+  `primary_artist_id`, counted name-fallback, never a silent merge), `/artists`
+  public + paginated + searchable on the `/library` pattern, "All artists
+  (892) | Your artists" tabs; artist names LINK from `/library` + `/song`
+  (F5); route-matrix rows for every new route.
+- **P4.7.3 — R2 albums (Opus):** per-artist album grid from stored meta
+  (cover, counts, mean DSP profile) + chronology once P4.6.6 dates land, with
+  the D-61 remaster caption.
+- **P4.7.4 — R3+R4 artist depth (Opus):** artist signature via the EXISTING
+  `acoustic_signature()` (never a second routine) + spread (range-artist vs
+  formula-artist); drift ×2 — chronological (public, needs R2 dates) and
+  your-listening via `drift_over_rows` (viewer-only, honest "not enough
+  ranked tracks" empty state).
+- **P4.7.5 — polish batch (Opus, each with a number or named defect):** kill
+  the 1,895-option seed picker · sample/hex-bin `/explore` above ~600 pts
+  (visitor's tracks always on top, sampling captioned) · touch parity +
+  ~480px breakpoint + `aria-current` nav · `--fg` CSS var + hover sweep ·
+  raw-id library row renders an honest "metadata unavailable" label.
+
+## Phase 5 — re-substrated (pending D-65): AcousticBrainz at scale
+
+J0 intake (2.8 GB dump → staged Parquet, resumable, byte-identical re-runs) →
+J0.5 the ISRC→MBID bridge + measured corpus coverage (the gating number,
+explainable via P4.6.6 release dates) → J1 the DSP validation harness (our
+tempo/key/loudness vs AB ground truth over ~68% of corpus — the first
+independent audit of our core claim; disagreements feed the provenance-QA
+flywheel) → J2 Spark parity benchmark over the full 29.46M rows (DuckDB
+production path + Spark parity path, the SCALING.md condition honored on real
+data) → J3 the honest writeup. Bridge-key rule unchanged: `spotify_track_id`
+is the only cross-layer key; MBID is a join attribute inside this phase's
+marts, never a second identity.
+
+## Sequence
+
+**P4.6.1+P4.6.2 (one quick-win slice) → P4.6.3 (freshness + THE RETRAIN) →
+P4.6.6 → P4.7.0 → P4.7.1 → P4.7.2 → P4.7.3 → P4.7.4 → P4.7.5**, with P4.6.4
+and P4.6.5 interleaved as capacity allows (4.6.5's measurement can run any
+time; its build waits for D-64). Phase 5 (re-substrated) after the D-63 exit
+bar. Phase LLM-2 and Phase 6 unchanged.
+
+**Model routing additions:** P4.6.3 trigger/identity policy + D-64 + any
+guardrail-doc edit = **Fable**; all other 4.6/4.7 slices = **Opus** on this
+spec's file-level pointers (the expert reports in session-63's log carry the
+implementation detail).
 | Any new vision/spec, security review, or surprising-behavior debugging | **Fable** | The #19/#25-class problems — where the model must fight its own gut |
