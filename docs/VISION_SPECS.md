@@ -1387,7 +1387,7 @@ D-64/D-67, and P4.6.5) + the lead's live browser walk. Every number below marked
 polish), inserted BEFORE Phase 5. **No renumbering** — Phase 4.5's exit stays
 ratified; Phase 5/LLM-2/6 keep their numbers, only their start moves.
 
-## The P4.6.0 evaluation ledger (⚠️ RATIFICATION PENDING — owner dispositions)
+## The P4.6.0 evaluation ledger (✅ RATIFIED — owner, 2026-07-29, dispositions accepted as written)
 
 ### Strengths stop-list — what part two may NOT "improve"
 
@@ -1433,7 +1433,7 @@ sidecar; `_population_token` linear scan per request; incremental marts +
 `population_n` percentile stamping; DuckDB read layer; mart partitioning
 (~500k). Recorded so they're chosen, not forgotten.
 
-## Decisions to ratify (D-61…D-66 — ALL PENDING OWNER)
+## Decisions (D-61…D-67 — ✅ ALL RATIFIED by the owner, 2026-07-29, session 63)
 
 - **D-61 — Epic R un-deferred, superseding D-58.** What changed: the prototype
   bar D-58 protected was met and exited; the corpus is 2.6×; the artist surface
@@ -1541,7 +1541,55 @@ sidecar; `_population_token` linear scan per request; incremental marts +
   point-lookup asset — the route reads ONE row; population stats come from the
   mart.
 
-## Phase 4.6 — platform, freshness, throughput (build order)
+## Pinned execution parameters (Fable, 2026-07-29 — so Opus builds without a design session)
+
+Owner directive at ratification: *"make all the decisions we can upfront with
+Fable now and let Opus do the building after."* These pins close every
+judgment call the slices would otherwise escalate:
+
+- **D-62 pins.** *Identity-stable* (auto-promote) = same `k` AND every new
+  centroid's best-match old centroid at **cosine ≥ 0.90 in the shared
+  z-scaled feature space** (match by Hungarian/greedy-best, no double-use)
+  AND each matched pair's label words byte-identical. Anything else →
+  `CLUSTER_PROMOTION_PENDING` + printed diff; the owner promotes via
+  `promote_cluster_model.py --model N`. The **first retrain after P4.6.3
+  ships is expected to be identity-UNSTABLE** (2.6× growth) — it goes to the
+  owner with the diff; that is the plan working, not a failure.
+- **D-64 pre-signed procedure** (execution needs no further design): pacer
+  `ACQUIRE_MIN_INTERVAL_S=15` default. Opus MAY step 15→12→10→7 when the
+  prior step held for **≥200 real acquisitions with a 429/"not available"
+  rate <1%**; ANY 429 → global circuit-break, revert one step, ≥1 h
+  cooldown. Below 7 s, or any multi-process worker, or any cookie use =
+  **owner sign-off, never assumed**. Quarantine/DQ counts print in every
+  post-drain report while the pacer is below 15.
+- **D-67 pin.** `FEATURE_VERSION` stays `77dim-v1` for all of Vision F. The
+  F16 v2 candidates (beat-interval tempo, temporal mode, HPSS n_fft) are
+  evaluated against the **AcousticBrainz ground truth in Phase 5 J1** (Tier A
+  local tracks = the clean A/B) BEFORE any bump is proposed — the bump and
+  the Tier-B corpus re-extraction remain owner calls with cost estimates.
+- **Epic R pins.** Album grids order by `album_release_date` desc once
+  P4.6.6 dates land (track-count order until then); the artist index default
+  tab is "All artists" for anon/guest and "Your artists" for viewers; every
+  new surface carries its coverage caption (the R5 ceilings) from day one.
+- **Standing rule for every Opus slice:** the session-63 expert reports
+  (chronicle log) are the implementation reference; where a report and this
+  spec disagree, **the spec wins**; where both are silent, follow the named
+  house pattern (`/library` pagination, `backfill_popularity.py`, route
+  matrix, SQL-shape guards) rather than inventing one.
+
+## The Opus execution plan (build order, ratified 2026-07-29)
+
+| Session | Slices | Definition of done |
+|---|---|---|
+| **S1 — quick wins** | P4.6.1 + P4.6.2 | gitleaks ✅ (already live, session 63) · yt-dlp pin ≥2026.07.04 + `--sleep-requests` + flat-search shape test · `/analytics`+`/artist` on `feature_columns()` with the SQL-shape guard extended · `/analytics` GET no longer writes · owner installs JDK 17, `parity_check.py` green locally |
+| **S2 — freshness + THE RETRAIN** | P4.6.3 | D-62 columns/wiring/flags/tests all green · train-always in the post-drain chain · the retrain runs, its identity-diff prints, owner promotes · `/analytics`+`/explore` captions derived from plotted counts · coverage ≥95% with live descriptions |
+| **S3 — post-drain scale + gold/albums** | P4.6.4 + P4.6.6 | chain debounced (measured before/after) · dup refresh dropped · batch persist · silhouette sampled · gold manifest + `GOLD_SCHEMA_SHRINK` · album/release columns captured + backfilled (~48 calls) · both audits green |
+| **S4 — transparency** | P4.7.0 + P4.7.1 | `scales.py` + caption-parity tests · `RAW_FEATURE_DOC` + 2 raw marts + `/song/{id}/features` + set-equality doc tripwire · `/song` reorder + subset caption · route-matrix rows · browser-validated 375/1280 |
+| **S5 — Epic R** | P4.7.2 → P4.7.3 → P4.7.4 | corpus artist index public/paginated/searchable · artist links from `/library`+`/song` · album grid + chronology w/ remaster caption · artist signature via `acoustic_signature()` + spread + both drift variants w/ honest empty states · D-61 overrun rule enforced |
+| **S6 — polish + throughput** | P4.7.5 + P4.6.5 | each polish item ships with its number · P4.6.5 ①risk-free half → ②instrumentation → ③pipeline with ALL named guards + failure drills · D-64 procedure governs any step-down |
+
+Then the **D-63 exit bar**, then **Phase 5 (AcousticBrainz)** — J0 intake
+gated on the owner's dataset download.
 
 - **P4.6.0 ✅ this session** — the ledger above + this spec. Exit = owner
   ratifies dispositions + D-61…D-66.
