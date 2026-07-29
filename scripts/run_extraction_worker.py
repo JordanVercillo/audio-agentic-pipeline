@@ -33,9 +33,12 @@ if str(_ROOT) not in sys.path:
 from src.store.cache import FeatureCache  # noqa: E402
 from src.store.extractor import another_worker_alive, drain  # noqa: E402
 from src.store.perceptual import PERCEPTUAL_VERSION, rebuild_marts  # noqa: E402
+from src.store.semantic import broken_extraction_ids  # noqa: E402
+from src.warehouse.from_cache import export_gold  # noqa: E402
 
 _SPECTROGRAM_DIR = _ROOT / "data" / "spectrograms"
 _MARTS_DIR = _ROOT / "data" / "marts"
+_MODELED_DIR = _ROOT / "data" / "warehouse" / "modeled"
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Drain the feature-cache extraction queue.")
@@ -107,6 +110,34 @@ if __name__ == "__main__":
                                   f"across {dup['n_clusters']} cluster(s)")
                     except Exception as exc:  # noqa: BLE001 — annotation only, never fatal
                         print(f"dedup refresh failed (next drain retries): {exc}")
+                    try:
+                        # D-60: the GOLD catalog plane. Only the serving marts
+                        # were refreshed here, so every import left dim_tracks
+                        # behind and GOLD_PLANE_STALE came back on its own —
+                        # 983 tracks adrift after one week of imports. The
+                        # exporter is deterministic and idempotent (a rerun is
+                        # byte-identical), so there is no reason it should have
+                        # needed a human. The drift PLANE is deliberately
+                        # untouched: its per-user grain can't be honestly
+                        # reproduced for the user-agnostic corpus.
+                        gold = export_gold(cache, _MODELED_DIR)
+                        print(f"gold catalog refreshed: {gold['dim_tracks']} tracks")
+                    except Exception as exc:  # noqa: BLE001 — derived, never fatal
+                        print(f"gold export failed (next drain retries): {exc}")
+                    try:
+                        # Surface data-quality problems the moment they enter the
+                        # corpus instead of waiting for someone to run the audit.
+                        # REPORT ONLY — a quarantine deletes analysis, and that
+                        # stays the owner's call (the Q3/D-52 doctrine); the
+                        # named script does it with a dry run and a backup.
+                        broken = broken_extraction_ids(cache)
+                        if broken:
+                            print(f"⚠ {len(broken)} broken extraction(s) "
+                                  f"(tempo 0 / silent): {', '.join(sorted(broken)[:5])}"
+                                  f"{' …' if len(broken) > 5 else ''} — review with "
+                                  f"scripts/quarantine_broken_extractions.py")
+                    except Exception as exc:  # noqa: BLE001 — a report, never fatal
+                        print(f"broken-extraction check failed: {exc}")
             except Exception as exc:  # noqa: BLE001 — one bad poll must not kill the worker
                 print(f"worker poll error (continuing next interval): {exc}")
             if not args.loop:

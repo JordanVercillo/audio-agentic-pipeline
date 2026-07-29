@@ -411,3 +411,23 @@ def test_audit_catches_cluster_profile_drift(corpus, tmp_path):
     _, warnings, _, flags = _audit().check_marts(marts)
     assert flags["CLUSTER_PROFILE_DRIFT"] is True
     assert any("share_of_corpus" in w for w in warnings)
+
+
+# ── the shared "broken extraction" definition (2026-07-28) ───────────────────
+def test_broken_extraction_ids_is_the_one_definition(corpus):
+    """The mart's feature_valid gate, the worker's post-drain report and the
+    quarantine script all ask the same question, so "broken" cannot come to mean
+    three slightly different things (the drift dedup.py exists to prevent)."""
+    from .semantic import _MIN_VALID_TEMPO, broken_extraction_ids, build_track_card
+
+    broken = broken_extraction_ids(corpus)
+    assert broken, "the fixture's broken row should be detected"
+    # whatever it flags must be exactly what the mart refuses to call valid
+    _, tc, _ = _semantic_frames(corpus)
+    invalid = set(tc.loc[~tc["feature_valid"], "spotify_track_id"])
+    assert broken == invalid
+
+    feats = corpus.feature_columns(["tempo_bpm"])
+    for tid in broken:
+        assert (feats[tid]["tempo_bpm"] or 0) <= _MIN_VALID_TEMPO
+    assert build_track_card is not None      # import guard for the gate itself

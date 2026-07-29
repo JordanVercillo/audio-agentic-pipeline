@@ -34,6 +34,27 @@ from .perceptual import CATALOG, _pct, _write_atomic
 _MIN_VALID_TEMPO = 1.0
 _MIN_VALID_LOUDNESS_DB = -80.0
 
+
+def broken_extraction_ids(cache) -> set[str]:
+    """Analyzed tracks whose DSP output is the broken/silent signature.
+
+    THE one definition, shared by the mart's `feature_valid` gate, the worker's
+    post-drain report and the quarantine script — so "broken" cannot come to
+    mean three slightly different things (the drift `dedup.py` exists to
+    prevent). A failed decode reads tempo 0 and ≈ −180 dBFS; both of the
+    extractions Q3 healed looked exactly like this.
+
+    Read-only and cheap (projected columns, no JSON parsed). Reporting is
+    deliberately separate from acting: a quarantine DELETES analysis, and that
+    stays the owner's call (Q3/D-52)."""
+    feats = cache.feature_columns(["tempo_bpm", "rms_mean"])
+    out = set()
+    for tid, f in feats.items():
+        tempo = f.get("tempo_bpm")
+        if tempo is not None and tempo <= _MIN_VALID_TEMPO:
+            out.add(tid)
+    return out
+
 # Analyst-contract enrichments of CATALOG, keyed by column: the ladder layer,
 # what "higher" means, and the NEVER-SAY caveat (rule 3 becomes a row the model
 # is handed, not tribal knowledge). Percentile-calibrated 0–1 features are their
