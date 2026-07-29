@@ -2854,3 +2854,25 @@ narrative goes to `notes/engineering_journal.md`, plans to
   **Left off: Vision F ratified and pushed (bd412b0), CI green ×3 incl.
   gitleaks, both audits clean, tree synced. NEXT = S1 of the Opus execution
   plan. NEW SESSION: run `/resume`.**
+- **2026-07-29 (session 64 — F1: Phase 5 designed in full; Fable-tier lead +
+  orchestrator, 3 consults; commit e157a5b):** owner's directive — bank the
+  Fable-grade designs now, execute on Opus later. **`docs/PHASE5_AB_SPEC.md`
+  is the executable Phase-5 spec** (P5-S1…S7, every judgment pinned;
+  D-68…D-73 PROPOSED, owner ratification pending). The consults corrected
+  the brief three more times (the #61 class): the "~68% AB coverage"
+  projection was over an ISRC attribute the corpus doesn't have (measured
+  5.6% — D-70 captures it at zero API cost riding P4.6.6); `beat_times` is
+  the SAME beat grid as tempo_bpm (0/1,946 octave disagreements — not a
+  third opinion on metrical level, and median-IBI is itself 10ms-quantized
+  → k-lag rate is the better v2 candidate); the mode failure is PARALLEL
+  major/minor (25.1% runner-up share), not relative. Research verified the
+  dump at its generating commit (submission grain: 29.46M rows over 7.56M
+  recordings; all-TEXT values; no confidence column — the publisher's own
+  disclaimer settles D-68's concordance-not-validation framing) and
+  measured the MB batched-ISRC bridge (~50/req, whole corpus <1 min, the
+  silent limit=25 trap). Pre-registered predictions on record: coverage
+  50–62%, WE_DOUBLE ≥3× WE_HALF, DuckDB beats Spark single-node.
+  **Left off: F1 spec pushed (e157a5b). PENDING OWNER: ratify D-68…D-73.
+  Remaining Fable-design debt: F3 (the concurrent-pipeline invariants,
+  P4.6.5 stage ③) — optional, skippable by design. NEXT unchanged = Vision
+  F S1 on Opus. NEW SESSION: run `/resume`.**
