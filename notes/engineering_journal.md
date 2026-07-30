@@ -1718,3 +1718,55 @@ than trusting them to be absent.
 > touches machine state, "my tests pass" is evidence about the wrong system —
 > name what else on the machine consumes it, and say explicitly that live
 > processes keep stale environment until they restart.*
+
+## 64 — The key that let one model erase another (2026-07-30)
+
+D-62's whole premise is "training is cheap and additive; promotion is the
+identity event", so a retrain can land without moving anything a visitor sees.
+I built the machinery, trained model 13 on the full corpus — and watched the
+SERVING model's coverage fall from 36.7% to 0.0%. `track_clusters` was keyed on
+`spotify_track_id` ALONE, so a track could hold exactly one assignment across
+all models and each training run's `merge` overwrote whatever model owned the
+row. Model 11 went from 700 assignments to 4. The residue of every previous
+retrain was sitting there in plain sight: models 5, 7 and 9 with 10, 36 and 2
+rows each.
+
+**The realization:** the premise I was building on was already false in the
+schema, and had been for every retrain this project ever ran. Nothing caught it
+because nobody had ever *needed* two models to coexist — the old
+`latest_model` read "highest id", so the previous model becoming a hollow shell
+was invisible by construction. The feature I was adding is precisely what made
+the latent defect reachable, which is journal #59's shape again: extending a
+code path over a population it never touched exposes whatever was quietly
+wrong there. The tell was available and I nearly walked past it — a coverage
+number that went to *zero*, not down.
+
+> *When you add a capability that depends on an invariant, check that the
+> STORAGE enforces it before trusting the code that assumes it. A uniqueness
+> constraint is a claim about how many of a thing may exist; if your new
+> feature needs two, the primary key is the first place to look, not the last.*
+
+## 65 — I un-scaled a normalized vector and called it a common space (2026-07-30)
+
+To decide whether a retrain is identity-stable, I compared old and new
+centroids. Since each model standardizes against its own population, I
+"correctly" re-expressed the old centroids in the new model's space:
+`raw = scaled * std + mean`, then re-scale. Principled-looking, and wrong —
+`_scale` standardizes AND L2-normalizes each row, and a centroid is the mean of
+normalized vectors, so the normalization cannot be undone from the centroid.
+On the live pair the round trip produced cosines of −0.73/+0.71, indistinguishable
+from noise. Compared directly, the same pair reads **−0.97/+0.97**: a textbook
+clean permutation. My "careful" transform would have declared an auto-promotable
+retrain unstable and escalated it to a human, forever.
+
+**The realization:** the bug survived review because it was *reasoned*, not
+measured — every step of the derivation was defensible and the composite was
+nonsense. What exposed it was refusing to accept the verdict: the labels were
+obviously the same two words in swapped slots, so "not identity-stable" was a
+claim I could check against something I already knew. That is the same move as
+journal #24's three tuning rounds — validate a transform against a case whose
+answer you can see, before trusting it on cases you can't.
+
+> *An invertible-looking formula over a non-invertible pipeline is a silent
+> lie. Before shipping a similarity metric, run it on a pair whose answer you
+> already know — and if it disagrees with the obvious, suspect the metric.*

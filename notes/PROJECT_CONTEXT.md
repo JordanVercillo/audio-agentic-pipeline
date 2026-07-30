@@ -1040,14 +1040,21 @@
   D-67-gated), `all_features()` on 2 request paths, 15 of 892 artists
   browsable. Harness: `ui-ux-expert` agent registered; full spec + the
   S1–S6 Opus plan in `docs/VISION_SPECS.md` §Vision F.
-  **➡️ NEXT ACTION — S1 of the Opus execution plan (quick wins, no design
-  needed):** yt-dlp pin ≥2026.07.04 + `--sleep-requests` on search + the
-  flat-search shape contract test; `/analytics` + `/artist/{id}` onto
-  `cache.feature_columns()` with the SQL-shape guard extended; move the
-  `/analytics` GET-write behind the promotion machinery. Owner step riding
-  S1: install JDK 17 + `hadoop.dll`, re-run `spark/parity_check.py` locally.
-  Then S2 (P4.6.3 freshness + THE RETRAIN — the F1 fix). Owner track
-  unchanged: needs-source repairs at leisure; the DMARC reject-flip.
+  **✅ S1 + S2 SHIPPED (2026-07-29/30) — see the session log.** S1: yt-dlp
+  CVE floor + search throttle + flat-search contract; `/analytics` +
+  `/artist/{id}` projections (280 ms/6.5 MB → 54 ms/0.6 MB). S2: **the F1 fix
+  — cluster coverage 36.7% → 100%** + the D-62 train/promote split, 4 audit
+  flags, and two pre-existing bugs killed (journal #64/#65). Spark now runs
+  and PASSES parity locally on WSL2 (`scripts/spark_wsl.ps1`); the Windows
+  Spark/Hadoop install was removed by owner decision.
+  **➡️ NEXT ACTION — Vision F S3 (P4.6.4 + P4.6.6):** debounce the post-drain
+  chain (measured to outgrow its own 30 s poll interval at ~8k tracks), drop
+  the duplicate `refresh_duplicate_flags`, batch `persist_perceptual`, and
+  bound the O(N²) `silhouette_score(sample_size=5000, random_state=42)`; then
+  the checked-in gold schema manifest + `GOLD_SCHEMA_SHRINK`, and the
+  album/release + **ISRC** capture with its ~48-call backfill (**D-70 — it
+  gates Phase 5's headline coverage number**, measured today at 5.6%). Owner
+  track unchanged: needs-source repairs at leisure; the DMARC reject-flip.
 - ✅ **SECURITY + ROBUSTNESS REVIEW (2026-07-09, commits 26891b1←): whole-app
   audit via 2 review subagents + a strategic pass; 7 real fixes, all tested,
   deployed, 286 green.** **Security surface came back STRONG** — auth, session
@@ -2956,4 +2963,74 @@ narrative goes to `notes/engineering_journal.md`, plans to
   WSL → run `spark/parity_check.py` there → THEN pin the env inside the repo
   so it can never be inherited again (#62 fix). S2 (P4.6.3 freshness + THE
   RETRAIN) is NOT blocked by any of this and is the higher-value next build.
+  NEW SESSION: run `/resume`.**
+- **2026-07-30 (session 68 — SPARK PROVEN LOCALLY + the cross-repo hardening;
+  Opus + orchestrator; commits 22465e9→0963961, CI green):** ✅ **WSL2 Spark
+  works and parity PASSES locally in 10.9 s** — the claim was CI-only for the
+  project's whole life. Getting there: the WSL app package was registered but
+  never deployed (`wsl.exe` resolved to the system32 stub) → elevated
+  `winget --force`; the Subsystem-Linux feature was Disabled → elevated DISM
+  (3010, reboot); Ubuntu installed `--no-launch` and driven by user to skip the
+  interactive prompt. **`hadoop.dll` IS required** (my earlier "not needed" was
+  wrong — the smoke test only exercised in-memory data): any local FILE read
+  hits `NativeIO$Windows.access0`, and because `FileUtil.canRead` catches
+  IOException but not `Error`, the globber's pool thread dies and the driver
+  waits on a future FOREVER — **the "10-minute slow run" was a deadlock.**
+  **OWNER DECISION: WSL2, never an unsigned community DLL**; the Windows
+  Spark/Hadoop install was then **removed surgically** (3 env vars, PATH
+  entries from BOTH User and Machine scope, `C:\spark` 424 MB, `C:\hadoop`,
+  Anaconda's pyspark 340 MB) with a verification between every step.
+  **Cross-repo handoff reconciled (journal #63):** 8f2d76b broke the sibling
+  **vercilloanalytics** because env vars outlive their directories inside
+  ALREADY-RUNNING processes — my verification read the registry, which was
+  correct and insufficient. Hardening: runner moved `--user root`→**jordan**,
+  versions derived from ONE place (`uv.lock` + `.venv/pyvenv.cfg`; the hosts
+  were 3.12.13 vs **3.14.4**, now identical), deps from **`uv sync --frozen`**
+  (the hand-picked list was a third encoding AND resolved an unbuildable
+  numba), `UV_PROJECT_ENVIRONMENT` + an assertion that the Windows `.venv`
+  survives, `.gitattributes`, and `spark/known_answer_check.py` (hand-computed
+  constants + a Python UDF — the class parity structurally cannot catch).
+  New key files: `scripts/spark_wsl.ps1`, `spark/known_answer_check.py`,
+  `.gitattributes`; docs in `docs/SCALING.md`.
+  **Left off: Spark proven + hardened, 844 tests, CI green.**
+- **2026-07-30 (session 69 — 🏁 VISION F S2 / P4.6.3: THE RETRAIN + D-62
+  freshness; Opus + orchestrator; commits aa77004→e3eff38, CI green on
+  e3eff38, 857 tests, ruff clean, BOTH audits ALL-FALSE, deployed +
+  browser-validated):** **THE F1 FIX IS DONE — cluster coverage 36.7% → 100%**
+  (model 13 trained on all 1,894 aggregate tracks, promoted with identity
+  remapping). The blank legend now renders both blurbs; **the archetype held
+  at "The Drifting Loyalist"** because the remap kept slot 0 meaning the same
+  sound. **The D-62 machinery:** `ClusterModel.n_trained`/`promoted_at`/
+  `identity_map` (forward-only) · `latest_model()` reads PROMOTED rows only,
+  with `_backfill_promoted_at()` blessing the already-serving model so the
+  upgrade could not blank `/analytics` (verified live) · `match_identity()`
+  (same k, cosine ≥0.90, label words byte-identical) · `promote_model()`
+  remaps cluster_id + labels/label_dims/descriptions · bootstrap-promote for
+  the first model of a kind · `freshness()` triggers · **4 new audit flags
+  that went RED on first run** (CLUSTER_COVERAGE, CLUSTER_MODEL_STALE,
+  CLUSTER_DESCRIPTION_MISSING, CLUSTER_PROMOTION_PENDING) · the post-drain
+  chain now **trains automatically and self-promotes ONLY identity-stable
+  retrains**, printing the diff otherwise. **TWO PRE-EXISTING BUGS EXPOSED:**
+  ① **`track_clusters` was keyed on the bridge key ALONE**, so every training
+  run overwrote the serving model's assignments — measured live, 700 → 4 rows
+  (journal #64); fixed with a composite (track, model) key + a data-preserving
+  SQLite rebuild. ② **my own `match_identity` un-scaled L2-normalized
+  centroids**, yielding noise (−0.73/+0.71) where direct comparison reads
+  −0.97/+0.97 — it would have refused a clean permutation forever (journal
+  #65). **F14:** `/analytics` no longer WRITES from a GET (pure
+  `nearest_cluster`). **Captions DERIVED** — "Every cached song" was wrong by
+  64%; my first fix over-counted by 4 (in-memory assignments have no
+  coordinates), caught by the live browser check and now asserted
+  caption-count == rendered `<circle>` count. Silhouette is recorded and
+  NEVER a staleness reason (it DROPPED 0.176→0.148 with growth — gating on it
+  would freeze the model at its smallest population; encoded as a test).
+  New key files: `scripts/promote_cluster_model.py`,
+  `src/store/test_cluster_freshness.py` (11 tripwires).
+  **Left off: S2 COMPLETE + live (coverage 1.0, growth 1.0, all flags FALSE).
+  ➡️ NEXT = Vision F S3 (P4.6.4 + P4.6.6): debounce the post-drain chain
+  (it outgrows its own 30 s poll interval at ~8k tracks), drop the duplicate
+  `refresh_duplicate_flags`, batch `persist_perceptual`,
+  `silhouette_score(sample_size=5000)`; then the gold schema manifest +
+  `GOLD_SCHEMA_SHRINK`, and the album/release + **ISRC** capture with its
+  ~48-call backfill (D-70 — it gates Phase 5's headline coverage number).
   NEW SESSION: run `/resume`.**
