@@ -211,3 +211,27 @@ Measured inside WSL: 30 GB RAM visible, repo reachable at
 `/mnt/c/Users/jverc/audio-agentic-pipeline`. Note `/mnt/c` I/O is slower than
 the WSL-native filesystem; for the Phase 5 J2 benchmark on 29.5M rows, stage
 the parquet inside the distro rather than reading across the mount.
+
+### The Windows Spark install was removed (2026-07-30)
+
+Standardising on WSL2 meant the half-configured Windows setup was pure
+downside: dead weight plus a live shadow. Removed, each step verified before
+the next: the three env vars (`SPARK_HOME`, `PYSPARK_PYTHON`,
+`PYSPARK_DRIVER_PYTHON`), the `C:\spark` and `C:\hadoop` PATH entries from
+**both** User and Machine scope, `HADOOP_HOME`, the directories themselves
+(424 MB + 0 MB), and Anaconda's pyspark 3.5.6 (340 MB).
+
+Verified after: no Spark env var in either scope, no spark/hadoop on either
+PATH, both directories gone, conda Python healthy with `import pyspark` now
+correctly failing, **WSL parity still PASSES**, live app `{"ok":true}`, and
+844 tests green. MACHINE PATH was backed up verbatim before editing and the
+script refuses to write a PATH shorter than 5 entries.
+
+Two traps worth recording. **PATH entries existed in Machine scope as well as
+User** — cleaning only the user's would have left `spark-submit` resolving.
+And an elevated helper script failed twice with exit 1 and *no output*: a
+single em-dash in a string. PowerShell 5.1 reads a UTF-8-no-BOM file as ANSI,
+so one non-ASCII character is a parse error that aborts the file before its
+first line — which looks exactly like a declined UAC prompt. **Elevated
+helper scripts here must be ASCII-only**, and worth validating with
+`[Parser]::ParseFile` before blaming elevation.
