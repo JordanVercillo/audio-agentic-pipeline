@@ -775,8 +775,10 @@ def create_app() -> FastAPI:
         twins = cache.twin_ids()
         # PROJECTION, not the 82-col contract: the signature reads exactly the
         # 8 _SIGNATURE_DIMS columns, and `all_features()` dragged the whole dict
-        # plus the display arrays across the wire for them (measured 2026-07-29:
-        # 1,092 ms / 21 MB vs 54 ms / 1.4 MB on the live corpus). Guarded by
+        # plus the display arrays across the wire for them. Measured on the live
+        # 1,946-track corpus (2026-07-29, warm best-of-3): 280 ms / 6.5 MB →
+        # 54 ms / 0.6 MB, 5.1x faster and 10.3x lighter, with zero value
+        # differences; both grow linearly with the corpus. Guarded by
         # test_analytics_population_never_reads_the_heavy_json_columns.
         population = [f for tid, f in
                       cache.feature_columns([c for c, *_ in _SIGNATURE_DIMS]).items()
