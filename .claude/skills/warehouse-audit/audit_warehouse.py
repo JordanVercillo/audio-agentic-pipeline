@@ -514,6 +514,103 @@ def check_plane_agreement(modeled_dir: Path, marts_dir: Path):
     return warns, flags
 
 
+def check_cluster_freshness():
+    """D-62: is the SERVING cluster model still describing today's corpus?
+
+    Why this exists: session 50 hand-fixed cluster coverage from 39% to 99.7%;
+    seven days later it measured 36.7% again with every audit green. The one
+    existing check (CLUSTER_PROFILE_DRIFT) only bounds `n_assigned` from ABOVE,
+    so shrinking RELATIVE coverage — the direction corpus growth actually
+    approaches from — could never trip it. A guard with one side is half a guard.
+
+    Absent-safe: no cache, no cluster table, or no promoted model yields no
+    flags, so a fresh checkout and CI stay quiet.
+
+    NOTE: stdlib sqlite3 + the existing marts ONLY. This file is a PEP-723
+    standalone script declaring just pandas/pyarrow, so importing src.store
+    (sqlalchemy, sklearn, numpy) raises ModuleNotFoundError and the check
+    silently degrades to a skip — which is how it first shipped, reporting
+    green because it never ran. FEATURE_CONTRACT_DRIFT is deliberately NOT
+    here: deciding which columns a retrain would pick needs the project code,
+    so it lives in `clusters.freshness()` and surfaces via the promote script.
+    """
+    flags = {"CLUSTER_COVERAGE": False, "CLUSTER_MODEL_STALE": False,
+             "CLUSTER_DESCRIPTION_MISSING": False,
+             "CLUSTER_PROMOTION_PENDING": False}
+    warnings: list[str] = []
+    report: dict = {}
+
+    db = REPO / "data" / "feature_cache.db"
+    card_path = MARTS / "track_card.parquet"
+    if not db.exists() or not card_path.exists():
+        return report, warnings, flags
+    try:
+        import sqlite3  # noqa: PLC0415 - stdlib, kept local to the check
+
+        # track_card IS the canonical analyzed population (plane-coherent by
+        # PLANE_COHERENCE above), so coverage is measured against the same set
+        # every other surface calls "the corpus".
+        population = set(pd.read_parquet(card_path)[BRIDGE])
+        n_pop = len(population)
+        if not n_pop:
+            return report, warnings, flags
+
+        con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+        try:
+            cols = {r[1] for r in con.execute("PRAGMA table_info(cluster_models)")}
+            if "promoted_at" not in cols:      # pre-D-62 DB — nothing to say yet
+                return report, warnings, flags
+            served = con.execute(
+                "SELECT id, k, descriptions, n_trained FROM cluster_models "
+                "WHERE kind='song' AND promoted_at IS NOT NULL "
+                "ORDER BY promoted_at DESC, id DESC LIMIT 1").fetchone()
+            newest = con.execute(
+                "SELECT id, promoted_at FROM cluster_models WHERE kind='song' "
+                "ORDER BY id DESC LIMIT 1").fetchone()
+            if served is None:
+                warnings.append("no promoted cluster model — CLUSTER_MODEL_STALE")
+                flags["CLUSTER_MODEL_STALE"] = True
+                return report, warnings, flags
+
+            model_id, _k, descriptions, n_trained = served
+            assigned = {r[0] for r in con.execute(
+                "SELECT spotify_track_id FROM track_clusters WHERE model_id = ?",
+                (model_id,))}
+        finally:
+            con.close()
+
+        coverage = len(assigned & population) / n_pop
+        growth = round(n_pop / n_trained, 3) if n_trained else None
+        report = {"model_id": model_id, "n_population": n_pop,
+                  "n_trained": n_trained, "coverage": round(coverage, 4),
+                  "growth_ratio": growth}
+
+        if coverage < 0.95:
+            warnings.append(
+                f"cluster model {model_id} covers {coverage:.1%} of the {n_pop}-track "
+                f"corpus (<95%) — CLUSTER_COVERAGE")
+            flags["CLUSTER_COVERAGE"] = True
+        if growth and growth >= 1.25:
+            warnings.append(
+                f"corpus is {growth}x the {n_trained} tracks model {model_id} trained "
+                f"on — CLUSTER_MODEL_STALE")
+            flags["CLUSTER_MODEL_STALE"] = True
+        if not descriptions or descriptions in ("null", "{}"):
+            warnings.append(
+                f"promoted model {model_id} has no cluster descriptions (the legend "
+                "renders blank) — CLUSTER_DESCRIPTION_MISSING")
+            flags["CLUSTER_DESCRIPTION_MISSING"] = True
+        if newest and newest[0] != model_id and newest[1] is None:
+            warnings.append(
+                f"model {newest[0]} is trained but unpromoted — review with "
+                f"`uv run python scripts/promote_cluster_model.py --model {newest[0]}` "
+                "— CLUSTER_PROMOTION_PENDING")
+            flags["CLUSTER_PROMOTION_PENDING"] = True
+    except Exception as exc:  # noqa: BLE001 - the audit must never be what breaks
+        warnings.append(f"cluster freshness check skipped: {type(exc).__name__}: {exc}")
+    return report, warnings, flags
+
+
 def main() -> int:
     errors: list[str] = []
     warnings: list[str] = []
@@ -669,6 +766,10 @@ def main() -> int:
     pa_warnings, pa_flags = check_plane_agreement(WAREHOUSE / "modeled", MARTS)
     warnings.extend(pa_warnings)
 
+    # --- cluster model freshness (D-62 / Vision F P4.6.3) -------------------
+    cf_report, cf_warnings, cf_flags = check_cluster_freshness()
+    warnings.extend(cf_warnings)
+
     flags = {
         "NO_WAREHOUSE": False,
         "MISSING_LAYER": missing_layer,
@@ -683,9 +784,11 @@ def main() -> int:
         **d_flags,
         **dis_flags,
         **pa_flags,
+        **cf_flags,
     }
     print(json.dumps({"layers": layers, "audio": audio, "marts": marts_report,
                       "duplicates": dup_report, "disagreements": dis_report,
+                      "cluster_freshness": cf_report,
                       "errors": errors,
                       "warnings": warnings, "flags": flags}, indent=2))
     return 0

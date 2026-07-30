@@ -24,7 +24,7 @@ from sqlalchemy import select
 
 from ..analysis.clustering import _CHARACTER_DIMS, VECTOR_77_COLUMNS, cluster_tracks
 from .cache import FeatureCache
-from .models import ArtistProfile, ClusterModel, TrackCluster
+from .models import ArtistProfile, ClusterModel, TrackCluster, utcnow
 
 logger = logging.getLogger(__name__)
 
@@ -182,7 +182,11 @@ def train_song_clusters(cache: FeatureCache, *, k_range: tuple[int, int] = (2, 6
     with cache._Session() as s:
         model = ClusterModel(kind="song", k=k, silhouette=silhouette, feature_cols=cols,
                              scaler_mean=mean.tolist(), scaler_std=std.tolist(),
-                             centroids=centroids, labels=names, label_dims=dims)
+                             centroids=centroids, labels=names, label_dims=dims,
+                             # D-62: the growth denominator, stamped at fit time.
+                             # Counting TrackCluster rows later would be wrong —
+                             # online assign_track inflates them.
+                             n_trained=len(ids))
         s.add(model)
         s.flush()  # get model.id
         for i, tid in enumerate(ids):
@@ -192,8 +196,9 @@ def train_song_clusters(cache: FeatureCache, *, k_range: tuple[int, int] = (2, 6
                 map_y=float(xy[i][1]) if xy is not None else None))
         s.commit()
         model_id = model.id
+    promoted = _promote_if_first(cache, "song", model_id)
     return {"model_id": model_id, "k": k, "silhouette": round(silhouette, 3),
-            "labels": names, "n_tracks": len(ids)}
+            "labels": names, "n_tracks": len(ids), "promoted": promoted}
 
 
 def train_artist_clusters(cache: FeatureCache, *, k_range: tuple[int, int] = (2, 5),
@@ -247,8 +252,9 @@ def train_artist_clusters(cache: FeatureCache, *, k_range: tuple[int, int] = (2,
                                   model_id=model.id, cluster_id=int(labels[i])))
         s.commit()
         model_id = model.id
+    promoted = _promote_if_first(cache, "artist", model_id)
     return {"model_id": model_id, "k": k, "silhouette": round(silhouette, 3),
-            "labels": names, "n_artists": len(artists)}
+            "labels": names, "n_artists": len(artists), "promoted": promoted}
 
 
 # ── K3: cluster-description plumbing ────────────────────────────────────────
@@ -285,11 +291,204 @@ def save_descriptions(cache: FeatureCache, model_id: int,
 
 # ── reads + online assignment ───────────────────────────────────────────────
 def latest_model(cache: FeatureCache, kind: str) -> Optional[ClusterModel]:
+    """The model currently SERVING — promoted only (D-62).
+
+    Was `ORDER BY id DESC`, i.e. "whatever was trained last". That is what made
+    training and promotion the same event, so a retrain could not happen
+    without immediately moving every visitor-facing number. Pre-D-62 rows are
+    back-promoted once by `FeatureCache._backfill_promoted_at`.
+    """
+    with cache._Session() as s:
+        return s.execute(
+            select(ClusterModel)
+            .where(ClusterModel.kind == kind,
+                   ClusterModel.promoted_at.isnot(None))
+            .order_by(ClusterModel.promoted_at.desc(), ClusterModel.id.desc())
+            .limit(1)
+        ).scalars().first()
+
+
+def newest_model(cache: FeatureCache, kind: str) -> Optional[ClusterModel]:
+    """The most recently TRAINED model, promoted or not — the promotion queue."""
     with cache._Session() as s:
         return s.execute(
             select(ClusterModel).where(ClusterModel.kind == kind)
             .order_by(ClusterModel.id.desc()).limit(1)
         ).scalars().first()
+
+
+# ── D-62: identity matching ─────────────────────────────────────────────────
+# Auto-promote ONLY an identity-stable retrain. Pinned by the owner
+# 2026-07-29: same k, every new centroid matches an old one at cosine >= this,
+# and the matched pair's label words are byte-identical.
+IDENTITY_COSINE_MIN = 0.90
+
+
+def _centroids_in_common_space(old: ClusterModel, new: ClusterModel) -> Optional[np.ndarray]:
+    """Old centroids expressed in the NEW model's scaled space, or None.
+
+    Centroids are stored scaled, and each model scales against its own
+    population — so the raw coordinates are not comparable between fits. We
+    un-scale with the old model's stats and re-scale with the new model's, which
+    puts both sets in one space. Returns None when the feature contract itself
+    changed, because then no comparison is meaningful (that is
+    FEATURE_CONTRACT_DRIFT, a different finding).
+    """
+    if list(old.feature_cols) != list(new.feature_cols):
+        return None
+    o_mean, o_std = np.array(old.scaler_mean), np.array(old.scaler_std)
+    n_mean, n_std = np.array(new.scaler_mean), np.array(new.scaler_std)
+    n_std = np.where(n_std == 0, 1.0, n_std)
+    raw = np.array(old.centroids) * o_std + o_mean          # -> raw units
+    return (raw - n_mean) / n_std                            # -> new scaled space
+
+
+def match_identity(old: ClusterModel, new: ClusterModel) -> Optional[dict[str, int]]:
+    """{new_cluster_id: old_cluster_id} if `new` is identity-stable, else None.
+
+    Greedy best-cosine with no double-use: two new clusters may not both claim
+    the same old identity, because that is precisely the "the buckets actually
+    changed" case we must NOT auto-promote.
+    """
+    if old.k != new.k:
+        return None
+    old_pts = _centroids_in_common_space(old, new)
+    if old_pts is None:
+        return None
+    new_pts = np.array(new.centroids)
+
+    pairs: list[tuple[float, int, int]] = []
+    for ni, nv in enumerate(new_pts):
+        for oi, ov in enumerate(old_pts):
+            denom = float(np.linalg.norm(nv) * np.linalg.norm(ov))
+            cos = float(np.dot(nv, ov) / denom) if denom else -1.0
+            pairs.append((cos, ni, oi))
+    pairs.sort(reverse=True)
+
+    mapping: dict[str, int] = {}
+    used_old: set[int] = set()
+    for cos, ni, oi in pairs:
+        if str(ni) in mapping or oi in used_old:
+            continue
+        if cos < IDENTITY_COSINE_MIN:
+            continue
+        mapping[str(ni)] = oi
+        used_old.add(oi)
+
+    if len(mapping) != new.k:
+        return None
+    # The words are the visitor-facing identity; a centroid can drift within
+    # tolerance and still get renamed, and a renamed bucket is a new bucket.
+    for ni, oi in mapping.items():
+        if str(new.labels.get(str(ni))) != str(old.labels.get(str(oi))):
+            return None
+    return mapping
+
+
+def promote_model(cache: FeatureCache, model_id: int, *,
+                  identity_map: Optional[dict[str, int]] = None) -> dict[str, Any]:
+    """Make a trained model the serving one, remapping ids through identity_map.
+
+    Remapping rewrites cluster_id (and the labels/label_dims/descriptions keyed
+    on it) so that cluster 0 keeps meaning the same SOUND across the promotion.
+    Without it, `cluster_color(0)` and the archetype's home bucket silently
+    point at a different bucket after every retrain.
+    """
+    with cache._Session() as s:
+        model = s.get(ClusterModel, model_id)
+        if model is None:
+            raise ValueError(f"no cluster model with id {model_id}")
+
+        if identity_map:
+            inv = {int(new): int(old) for new, old in identity_map.items()}
+            for row in s.execute(select(TrackCluster).where(
+                    TrackCluster.model_id == model_id)).scalars().all():
+                row.cluster_id = inv.get(int(row.cluster_id), int(row.cluster_id))
+            for attr in ("labels", "label_dims", "descriptions"):
+                cur = getattr(model, attr, None)
+                if cur:
+                    setattr(model, attr, {str(inv.get(int(k), int(k))): v
+                                          for k, v in cur.items()})
+            model.identity_map = {str(k): v for k, v in identity_map.items()}
+
+        model.promoted_at = utcnow()
+        s.commit()
+        return {"model_id": model_id, "k": model.k,
+                "remapped": bool(identity_map),
+                "labels": dict(model.labels)}
+
+
+def _promote_if_first(cache: FeatureCache, kind: str, model_id: int) -> bool:
+    """Bootstrap: the FIRST model of a kind serves immediately.
+
+    D-62 holds a retrain back because promotion changes an identity a visitor
+    has already seen. When nothing is promoted yet there is no such identity —
+    holding would just render the surface blank and call it caution. Returns
+    True if it promoted.
+    """
+    with cache._Session() as s:
+        existing = s.execute(
+            select(ClusterModel.id).where(ClusterModel.kind == kind,
+                                          ClusterModel.promoted_at.isnot(None))
+            .limit(1)).first()
+    if existing:
+        return False
+    promote_model(cache, model_id)
+    logger.info("%s model %d promoted on bootstrap (no prior model)", kind, model_id)
+    return True
+
+
+def freshness(cache: FeatureCache, kind: str = "song") -> dict[str, Any]:
+    """Why (or whether) `kind`'s serving model is due a retrain — D-62 triggers.
+
+    Read-only and cheap: this runs in the post-drain chain, which must never
+    pay for a decision it might not act on. Deliberately NOT a trigger:
+    silhouette decline. It is a CONSEQUENCE of corpus growth (measured live
+    0.176 -> 0.148 as the corpus grew), so gating on it would freeze the model
+    at its smallest, most flattering population forever.
+    """
+    served = latest_model(cache, kind)
+    population = set(cache.analyzed_ids()) - set(cache.excluded_from_aggregates())
+    n_pop = len(population)
+    out: dict[str, Any] = {"kind": kind, "n_population": n_pop,
+                           "model_id": None, "n_trained": None,
+                           "coverage": None, "growth_ratio": None,
+                           "reasons": [], "stale": False,
+                           "descriptions_missing": False}
+    if served is None:
+        out["reasons"].append("no promoted model")
+        out["stale"] = n_pop >= _MIN_TRACKS
+        return out
+
+    assigned = set(track_assignments(cache, served.id))
+    coverage = len(assigned & population) / n_pop if n_pop else 1.0
+    n_trained = served.n_trained or 0
+    out.update(model_id=served.id, n_trained=n_trained or None,
+               coverage=round(coverage, 4))
+
+    if coverage < 0.95:
+        out["reasons"].append(f"coverage {coverage:.1%} < 95%")
+    if n_trained:
+        ratio = n_pop / n_trained
+        out["growth_ratio"] = round(ratio, 3)
+        if ratio >= 1.25:
+            out["reasons"].append(f"corpus grew {ratio:.2f}x since training")
+    if list(served.feature_cols) != _current_feature_cols(cache):
+        out["reasons"].append("feature contract changed")
+    if not (served.descriptions or {}):
+        out["descriptions_missing"] = True
+
+    out["stale"] = bool(out["reasons"])
+    return out
+
+
+def _current_feature_cols(cache: FeatureCache) -> list[str]:
+    """The columns a retrain WOULD pick today — the contract-drift comparand."""
+    feats = _drop_twins(_drop_broken(cache.all_features()),
+                        cache.excluded_from_aggregates())
+    if len(feats) < _MIN_TRACKS:
+        return []
+    return select_feature_cols([feats[i] for i in feats])
 
 
 def assign_track(cache: FeatureCache, model: ClusterModel, track_id: str,

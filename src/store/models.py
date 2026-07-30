@@ -129,6 +129,26 @@ class ClusterModel(Base):
     # mart-rebuild hook); the cluster_profile mart only PROJECTS this.
     descriptions = Column(JSON)
     trained_at = Column(DateTime, default=utcnow)
+    # ── D-62 freshness (Vision F P4.6.3) ────────────────────────────────────
+    # Training is cheap and additive; PROMOTION is the identity event. These
+    # three columns are what let the two be separated.
+    #
+    # n_trained: the population size this model was fitted on. The growth
+    #   trigger's denominator — deliberately NOT derived by counting
+    #   TrackCluster rows, because online `assign_track` inflates those and
+    #   would make a stale model look freshly trained.
+    # promoted_at: NULL = trained but not serving. `latest_model` reads only
+    #   promoted rows, so a retrain can land without moving any visitor-facing
+    #   number until a human (or the identity-stable gate) says so.
+    # identity_map: {new_cluster_id: old_cluster_id} from centroid matching.
+    #   KMeans does not preserve label order across fits — measured live: a
+    #   retrain SWAPPED "Punchy · Smooth" and "Gentle · Noisy". Since
+    #   `cluster_color()` and the archetype's home bucket are keyed on the
+    #   integer, promoting without remapping silently inverts the legend and
+    #   moves the visitor's "home sound" with no data change at all.
+    n_trained = Column(Integer)
+    promoted_at = Column(DateTime)
+    identity_map = Column(JSON)
 
 
 class TrackCluster(Base):

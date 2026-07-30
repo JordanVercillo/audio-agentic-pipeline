@@ -99,6 +99,7 @@ class FeatureCache:
                 cur.close()
         Base.metadata.create_all(self.engine)
         self._migrate_added_columns()
+        self._backfill_promoted_at()
         self._Session = sessionmaker(self.engine, expire_on_commit=False)
         # The similarity plane (see `_similarity_plane`): a per-PROCESS memo of
         # the z-scored corpus matrix, guarded by a freshness token. The lock
@@ -125,8 +126,13 @@ class FeatureCache:
                       # K2c: chat_log predates the tool loop on live DBs
                       "chat_log": {"depth": "INTEGER"},
                       # K3: models trained before label_dims existed read NULL
+                      # D-62: pre-freshness models read NULL for all three and
+                      # are back-promoted once by _backfill_promoted_at().
                       "cluster_models": {"label_dims": "JSON",
-                                         "descriptions": "JSON"}}
+                                         "descriptions": "JSON",
+                                         "n_trained": "INTEGER",
+                                         "promoted_at": "DATETIME",
+                                         "identity_map": "JSON"}}
 
     def _migrate_added_columns(self) -> None:
         inspector = sa_inspect(self.engine)
@@ -141,6 +147,39 @@ class FeatureCache:
                         conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {name} {typ}"))
                 except OperationalError:
                     pass  # duplicate column (added concurrently) — self-heals
+
+    def _backfill_promoted_at(self) -> None:
+        """One-time D-62 migration: bless the model that was ALREADY serving.
+
+        `latest_model` now reads promoted rows only. Every model predating
+        D-62 has promoted_at NULL, so without this the first boot after the
+        upgrade would take `/analytics`, the archetype and the cluster legend
+        dark on live data — a migration that silently blanks a surface is
+        worse than the staleness it was written to fix.
+
+        The rule reproduces the OLD selection exactly (highest id per kind) and
+        stamps it with its own trained_at, so nothing about what a visitor sees
+        changes at the moment this ships. Idempotent: skips any kind that
+        already has a promoted model.
+        """
+        try:
+            with self.engine.begin() as conn:
+                kinds = [r[0] for r in conn.execute(
+                    text("SELECT DISTINCT kind FROM cluster_models")).fetchall()]
+                for kind in kinds:
+                    already = conn.execute(text(
+                        "SELECT 1 FROM cluster_models "
+                        "WHERE kind = :k AND promoted_at IS NOT NULL LIMIT 1"
+                    ), {"k": kind}).fetchone()
+                    if already:
+                        continue
+                    conn.execute(text(
+                        "UPDATE cluster_models SET promoted_at = trained_at "
+                        "WHERE id = (SELECT id FROM cluster_models WHERE kind = :k "
+                        "            ORDER BY id DESC LIMIT 1)"
+                    ), {"k": kind})
+        except OperationalError:
+            pass  # table/column not there yet on a fresh DB — create_all handles it
 
     def close(self) -> None:
         """Release pooled connections — required before file-level operations on
