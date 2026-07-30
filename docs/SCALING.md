@@ -175,11 +175,39 @@ publishes no official Windows Hadoop binaries; every `hadoop.dll` source is a
 community GitHub repo shipping an unsigned binary that would be loaded into
 the JVM — an unacceptable supply-chain addition for a public repo whose
 security posture is part of its story. WSL2 gives real Linux Spark (no
-winutils path at all) and full 16-core performance for the Phase 5 J2
-benchmark. Status: `Microsoft-Windows-Subsystem-Linux` + `VirtualMachinePlatform`
-enabled (DISM 3010) — **reboot required**, then a distro + JDK + the project
-env inside WSL.
+winutils path at all) and full performance for the Phase 5 J2 benchmark.
 
-Until then: **Spark parity remains CI-proven (Linux) only**, and that
-limitation is honest — a green CI badge was standing in for a local
-capability this machine did not have.
+### ✅ RESOLVED 2026-07-30 — parity is now proven LOCALLY
+
+`powershell -ExecutionPolicy Bypass -File scripts\spark_wsl.ps1 spark/parity_check.py`
+
+```
+Spark 4.1.2 · master local[*]
+[PASS] features dedup row-count   — pandas=30  spark=30
+[PASS] tracks dedup row-count     — pandas=90  spark=90
+[PASS] temporal centroid parity   — identical within 1e-3
+✅ Spark output matches pandas — parity verified.      (10.9 s)
+```
+
+**The claim "Spark parity is verified" is finally true off CI.** Getting
+there took three fixes, in order: (1) the WSL app package was registered but
+never deployed — `C:\Program Files\WSL\wsl.exe` did not exist while
+`wsl.exe` resolved to the old `system32` stub, so every call returned
+`REGDB_E_CLASSNOTREG`; an elevated `winget install --id Microsoft.WSL --force`
+deployed it. (2) The `Microsoft-Windows-Subsystem-Linux` optional feature was
+Disabled — enabled via elevated DISM (exit 3010, reboot required). (3) Ubuntu
+installed with `--no-launch` and driven `--user root`, which avoids the
+interactive username/password prompt entirely.
+
+`scripts/spark_wsl.ps1` is the durable artifact: `-Setup` provisions the
+distro (OpenJDK 17 + a venv with **pyspark pinned to the project's 4.1.2** —
+a parity check against a different Spark proves nothing), and the default
+path runs any repo script under it. Every Spark-relevant variable is SET,
+never inherited, which is the journal-#62 fix made mechanical. All bash is
+base64-encoded across the shell boundary, so neither PowerShell/bash quoting
+nor CRLF line endings can corrupt it — both bit us while building this.
+
+Measured inside WSL: 30 GB RAM visible, repo reachable at
+`/mnt/c/Users/jverc/audio-agentic-pipeline`. Note `/mnt/c` I/O is slower than
+the WSL-native filesystem; for the Phase 5 J2 benchmark on 29.5M rows, stage
+the parquet inside the distro rather than reading across the mount.
