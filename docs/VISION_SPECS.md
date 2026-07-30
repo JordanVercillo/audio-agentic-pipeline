@@ -1597,17 +1597,25 @@ gated on the owner's dataset download.
   ≥2026.07.04 + `--sleep-requests` on search + flat-search shape contract test
   (F10) · JDK 17 + `hadoop.dll` + local `parity_check.py` green (F12, owner
   installs, ~10 min).
-- **P4.6.2 — request-path projections (Opus):** `/analytics` + `/artist/{id}`
-  → `feature_columns()` (F4); extend the SQL-shape guard to the `/analytics`
-  population load; move the `/analytics` GET-write (F14) behind the promotion
-  machinery.
+- **P4.6.2 — request-path projections (Opus): ✅ SHIPPED 2026-07-29 (S1,
+  commits 893346b/f28d3b9)** — `/analytics` + `/artist/{id}` on
+  `feature_columns()` (measured 280 ms/6.5 MB → 54 ms/0.6 MB, 5.1× / 10.3×,
+  0 value mismatches, /artist similar-list byte-identical live);
+  `test_analytics_population_never_reads_the_heavy_json_columns` extends the
+  SQL-shape guard to both routes. **F14 (the `/analytics` GET-write) MOVED to
+  P4.6.3** — its specced fix *is* the promotion machinery, so it cannot land
+  before it; doing it here would either strand visitors' tracks unassigned
+  until S2 or fragment S2's slice.
 - **P4.6.3 — model freshness (split: Fable signed D-62, Opus builds):** the
   D-62 columns, train-always wiring, promotion gate, identity remap, the 5
   cluster audit flags + tripwire tests (incl.
   `test_promotion_remap_preserves_cluster_identity`,
   `test_growth_retrain_is_not_blocked_by_lower_silhouette`); THEN the ratified
   retrain on today's corpus with the identity-diff report — the F1 fix, last
-  so it can never silently regress again.
+  so it can never silently regress again. **+ F14 (moved from P4.6.2):**
+  retire the `/analytics` online-assign GET-write once promotion guarantees
+  coverage — a read surface must not persist assignments, and after the
+  retrain the loop is near-dead anyway.
 - **P4.6.4 — post-drain scalability (Opus):** debounce (`max(N new, T min)` +
   always on drain-idle), drop the duplicate `refresh_duplicate_flags`, batch
   `persist_perceptual`, `silhouette_score(sample_size=5000, random_state=42)`
