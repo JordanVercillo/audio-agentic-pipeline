@@ -123,3 +123,63 @@ for the cost of a few GB-months of storage and on-demand query bytes.
   designed here, not built, because the batch cadence matches the data.
 - **Not multi-tenant at rest.** Single-user by default; the P8 pilot is
   session-ephemeral (see `SPEC.md`).
+
+## Running Spark LOCALLY on this Windows box (measured 2026-07-29/30)
+
+The parity job has only ever been proven on Linux CI. Making it run here
+surfaced two distinct problems — recorded because the first is a trap that
+silently wins, and the second is a hang that looks like slowness.
+
+**1. The Anaconda shadow (journal #62).** Three env vars aimed Spark at a
+different installation entirely:
+
+| Var | Inherited value | Why it breaks us |
+|---|---|---|
+| `SPARK_HOME` | `C:\spark\spark-3.5.6-bin-hadoop3` | Spark 3.5.6 jars vs our pinned pyspark 4.1.2 |
+| `PYSPARK_PYTHON` | `anaconda3\python.exe` | Spark WORKERS launch Anaconda's interpreter — pyspark 3.5.6, none of our deps |
+| `PYSPARK_DRIVER_PYTHON` | `anaconda3\python.exe` | same, driver side |
+
+`uv run` fixes the driver's imports and nothing else, so this survives it.
+The working invocation pins all of them explicitly:
+
+```powershell
+$env:JAVA_HOME = "C:\Program Files\Eclipse Adoptium\jdk-17.0.20.8-hotspot"  # 4.x needs 17+
+Remove-Item Env:SPARK_HOME                      # pyspark 4.1.2 bundles its own jars
+$env:PYSPARK_PYTHON = ".\.venv\Scripts\python.exe"
+$env:PYSPARK_DRIVER_PYTHON = $env:PYSPARK_PYTHON
+```
+
+With JDK 17 + that env, **Spark 4.1.2 starts and runs in-memory work fine**
+(verified: SparkSession up in 11 s, count + agg + a real shuffle, 20.5 s total).
+
+**2. `hadoop.dll` — why local FILE access fails, and why the failure looks
+like a hang.** Any read from the local filesystem reaches Hadoop's Windows
+native IO:
+
+```
+java.lang.UnsatisfiedLinkError: 'boolean
+  org.apache.hadoop.io.nativeio.NativeIO$Windows.access0(java.lang.String, int)'
+  at org.apache.hadoop.fs.Globber.glob(...)
+```
+
+`C:\hadoop\bin` has `winutils.exe` but no `hadoop.dll`, and `access0` lives in
+the DLL. `FileUtil.canRead` catches `IOException` but **not** `UnsatisfiedLinkError`
+— an `Error` — so the globber's ForkJoinPool worker dies and the driver waits
+on a future that never completes. It presents as a job that runs forever with
+no output, not as a crash. *(That is what a 10-minute "slow" parity run
+actually was.)* Note the earlier `WARN NativeCodeLoader: Unable to load
+native-hadoop library` is benign and unrelated — in-memory work proceeds.
+
+**The decision (owner, 2026-07-29): WSL2, not a third-party DLL.** Apache
+publishes no official Windows Hadoop binaries; every `hadoop.dll` source is a
+community GitHub repo shipping an unsigned binary that would be loaded into
+the JVM — an unacceptable supply-chain addition for a public repo whose
+security posture is part of its story. WSL2 gives real Linux Spark (no
+winutils path at all) and full 16-core performance for the Phase 5 J2
+benchmark. Status: `Microsoft-Windows-Subsystem-Linux` + `VirtualMachinePlatform`
+enabled (DISM 3010) — **reboot required**, then a distro + JDK + the project
+env inside WSL.
+
+Until then: **Spark parity remains CI-proven (Linux) only**, and that
+limitation is honest — a green CI badge was standing in for a local
+capability this machine did not have.

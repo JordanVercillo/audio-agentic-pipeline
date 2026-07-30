@@ -2931,3 +2931,29 @@ narrative goes to `notes/engineering_journal.md`, plans to
   parity proof (stream the output; pin the env INSIDE the repo so it can't
   be inherited — the #62 fix), then S2 (P4.6.3 freshness + THE RETRAIN).
   NEW SESSION: run `/resume`.**
+- **2026-07-30 (session 67 — the local-Spark diagnosis; Opus + orchestrator;
+  docs/SCALING.md §"Running Spark LOCALLY on this Windows box"):** ran the
+  hang down to its cause. **Spark 4.1.2 + the new JDK 17 WORKS** for
+  in-memory work (SparkSession 11 s; count + agg + a real shuffle; 20.5 s) —
+  once the journal-#62 env is pinned (`JAVA_HOME`=Temurin 17, `SPARK_HOME`
+  **unset**, both `PYSPARK_*_PYTHON`=`.venv` python). **But every local FILE
+  read dies on `UnsatisfiedLinkError: NativeIO$Windows.access0`** —
+  `winutils.exe` is present, `hadoop.dll` is NOT, and `access0` lives in the
+  DLL. `FileUtil.canRead` catches IOException but not `Error`, so the
+  globber's pool thread dies and the driver waits on a future forever: **the
+  "10-minute slow run" was a deadlock, not slowness.** Searched the whole
+  machine — no `hadoop.dll` anywhere; Apache ships no official Windows
+  Hadoop binaries. **OWNER DECISION (2026-07-29): WSL2, NOT a third-party
+  DLL** (every source is a community repo's unsigned binary loaded into the
+  JVM — rejected for a public repo whose security posture is part of the
+  portfolio). Done so far: `Microsoft-Windows-Subsystem-Linux` Disabled→
+  **Enabled** + `VirtualMachinePlatform` Enabled via elevated DISM (exit
+  3010). **⚠️ A REBOOT IS REQUIRED before WSL works** (`wsl --install` still
+  reports REGDB_E_CLASSNOTREG until then). Also verified: JDK 11 untouched,
+  JDK 17 = Temurin 17.0.20+8.
+  **Left off: WSL features enabled, reboot pending. ➡️ NEXT (after Jordan
+  reboots + `start_app.bat`): `wsl --install -d Ubuntu` → JDK+uv+deps inside
+  WSL → run `spark/parity_check.py` there → THEN pin the env inside the repo
+  so it can never be inherited again (#62 fix). S2 (P4.6.3 freshness + THE
+  RETRAIN) is NOT blocked by any of this and is the higher-value next build.
+  NEW SESSION: run `/resume`.**
