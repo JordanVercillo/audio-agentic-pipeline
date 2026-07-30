@@ -21,7 +21,7 @@ from __future__ import annotations
 import pytest
 from sqlalchemy import event
 
-from .cache import FeatureCache
+from .cache import _SIMILARITY_COLS, FeatureCache
 
 _BASE = {"tempo_bpm": 120.0, "rms_mean": 0.2, "spectral_centroid_mean": 2000.0,
          "spectral_rolloff_mean": 4000.0, "zcr_mean": 0.05, "harmonic_ratio": 0.5,
@@ -83,6 +83,29 @@ def test_analyzed_ids_reads_ids_only(corpus):
     assert len(stmts) == 1
     for heavy in _HEAVY:
         assert heavy not in stmts[0]
+
+
+def test_analytics_population_never_reads_the_heavy_json_columns(corpus):
+    """/analytics and /artist z-score a NAMED subset of the feature dict against
+    the corpus. Both called `all_features()` until Vision F P4.6.2 — measured
+    1,092 ms / 21 MB vs 54 ms / 1.4 MB projected, per request, growing linearly
+    with the corpus. The projection is the fix; this is the tripwire that keeps
+    it (the same fault the /library guard above catches, on the two routes that
+    guard never covered)."""
+    from ..webapp.analytics import _SIGNATURE_DIMS
+
+    for cols in ([c for c, *_ in _SIGNATURE_DIMS], _SIMILARITY_COLS):
+        stmts = _sql_log(corpus)
+        got = corpus.feature_columns(cols)
+        assert got, "no rows projected — the fixture or the projection broke"
+        for s in stmts:
+            for heavy in _HEAVY[1:]:
+                assert heavy not in s, f"population read {heavy}:\n{s}"
+        # `features` IS touched (the columns live inside it) but only via a
+        # per-column extract — never as the whole-dict column.
+        assert not any("track_features.features " in s or
+                       s.rstrip().endswith("track_features.features")
+                       for s in stmts), "the whole 82-col dict was selected"
 
 
 def test_similar_never_reads_the_display_json_columns(corpus):

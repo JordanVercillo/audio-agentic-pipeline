@@ -39,12 +39,13 @@ from ..ingestion.fetchers import (
     iter_playlist_track_pages,
 )
 from ..store import clusters as cl
-from ..store.cache import FeatureCache
+from ..store.cache import _SIMILARITY_COLS, FeatureCache
 from ..store.dedup import canonicalize_ids, canonicalize_range_ids
 from . import auth_web, config
 from . import library as library_view_mod
 from . import playlists as playlists_mod
 from .analytics import (
+    _SIGNATURE_DIMS,
     acoustic_signature,
     average_loudness_arc,
     cluster_color,
@@ -772,7 +773,14 @@ def create_app() -> FastAPI:
         # Signature works even before any model is trained (population stats only).
         # O3b: twins sit out of the population (one recording, one vote).
         twins = cache.twin_ids()
-        population = [f for tid, f in cache.all_features().items() if tid not in twins]
+        # PROJECTION, not the 82-col contract: the signature reads exactly the
+        # 8 _SIGNATURE_DIMS columns, and `all_features()` dragged the whole dict
+        # plus the display arrays across the wire for them (measured 2026-07-29:
+        # 1,092 ms / 21 MB vs 54 ms / 1.4 MB on the live corpus). Guarded by
+        # test_analytics_population_never_reads_the_heavy_json_columns.
+        population = [f for tid, f in
+                      cache.feature_columns([c for c, *_ in _SIGNATURE_DIMS]).items()
+                      if tid not in twins]
         ctx["signature"] = acoustic_signature(list(cached.values()), population)
 
         # Taste vs popularity (slice P) — fetched context, absent-safe: renders
@@ -1094,8 +1102,12 @@ def create_app() -> FastAPI:
         # "similar in your library" — acoustic centroids, links where ids known
         # (O3b: twin-free features so a double-release can't tilt a centroid)
         _tw = cache.twin_ids()
+        # PROJECTION: nearest_artists z-scores the _SIMILARITY_COLS subset, so
+        # the 82-col dict + display arrays never need to leave the DB (the
+        # /analytics fix, applied to the second request path that had it).
         sim = nearest_artists(name,
-                              {t: f for t, f in cache.all_features().items()
+                              {t: f for t, f in
+                               cache.feature_columns(_SIMILARITY_COLS).items()
                                if t not in _tw}, metas)
         name_to_id = {(a.get("artist_name") or "").lower(): a["artist_id"]
                       for a in cache.all_artist_meta().values()}

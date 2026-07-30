@@ -121,6 +121,25 @@ MATCHER_VERSION = "heuristic-v1"
 # matches sat as far down as position 6.
 _SEARCH_DEPTH = 10
 
+# Vision F F10 — the search path was the ONE un-throttled request path here.
+# yt-dlp's own knob for "seconds between requests DURING data extraction"; the
+# download path already sleeps, this one never did, and searches are the larger
+# request count (one flat search per track, two on the credit/primary-artist
+# union). YouTube blocks on aggregate requests/min from an IP (research brief
+# 2026-07-29), so the un-metered path is the one that matters. Cheap today —
+# extract_flat usually means a single request per search — and a real ceiling
+# the day extraction fans out. D-64 governs the ACQUISITION rate; this bounds
+# the extraction-internal one.
+_SEARCH_SLEEP_S = 1.0
+
+# The flat-search entry fields this module consumes. Named here (not just
+# read inline) because yt-dlp's flat-playlist extraction is an actively
+# churning upstream area — 2026.07.04 alone shipped "Fix flat playlist
+# metadata extraction" and "Fix pagination". `test_flat_search_contract`
+# asserts our parser still honours exactly this shape.
+FLAT_SEARCH_CONTRACT = ("url", "webpage_url", "title", "duration", "id",
+                        "channel", "uploader")
+
 
 def _can_encode_mp3(exe: str) -> bool:
     """Does THIS ffmpeg build actually have the MP3 encoder? Asking the binary
@@ -212,6 +231,22 @@ def score_candidate(title: str, duration_s: Optional[float],
         else:
             score += _DURATION_FAR_PENALTY
     return score
+
+
+def search_ydl_opts(search_term: str) -> dict:
+    """The yt-dlp options for a flat candidate search — one place, so the
+    throttle can't be dropped from one call site and survive in another.
+
+    `sleep_requests` is the Vision F F10 fix: this path issued unmetered
+    requests while the download path slept."""
+    return {
+        "extract_flat": True,
+        "default_search": search_term.split(":")[0],
+        "quiet": True,
+        "no_warnings": True,
+        "skip_download": True,
+        "sleep_requests": _SEARCH_SLEEP_S,
+    }
 
 
 def score_all_candidates(entries: list,
@@ -387,13 +422,7 @@ def resolve_youtube_candidates(
 
     logger.debug("YouTube search query: %r", query)
 
-    ydl_opts: dict = {
-        "extract_flat": True,
-        "default_search": search_term.split(":")[0],
-        "quiet": True,
-        "no_warnings": True,
-        "skip_download": True,
-    }
+    ydl_opts: dict = search_ydl_opts(search_term)
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:

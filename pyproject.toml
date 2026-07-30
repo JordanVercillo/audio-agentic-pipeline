@@ -27,7 +27,7 @@ dependencies = [
     "spotipy>=2.23.0",
     "python-dotenv>=1.0.0",
     # ── Audio acquisition (YouTube → MP3); CVE floor pinned ──
-    "yt-dlp>=2026.2.21",
+    "yt-dlp>=2026.7.4",
     # ── Vector search + dimensionality reduction + clustering ──
     "faiss-cpu>=1.7.0",
     "umap-learn>=0.5.0",

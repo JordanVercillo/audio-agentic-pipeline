@@ -718,3 +718,91 @@ class TestDownloadAudioForTracks:
             second = download_audio_for_tracks(sample_tracks_df, config=config)
 
         assert (second["download_status"] == "skipped").all()
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#  VISION F P4.6.1 — THE FLAT-SEARCH CONTRACT (F10)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# yt-dlp's flat-playlist extraction is an actively churning upstream area
+# (2026.07.04 alone: "Fix flat playlist metadata extraction", "Fix pagination"),
+# and this repo has twice been burned by acquisition-path SILENCE — a matcher
+# that degrades without failing (journals #48, #52). These lock our side of the
+# contract.
+#
+# HONEST LIMIT, stated so nobody over-trusts them: these are offline tests
+# against a synthetic payload. They CANNOT detect that yt-dlp renamed a field
+# upstream — only a live search can. What they do catch is the regression we
+# control: our parser silently ceasing to read a field it depends on, the
+# throttle being dropped, or a provenance field going None. The upstream half
+# is covered by the pinned floor (yt-dlp>=2026.7.4) plus this documented shape.
+
+
+def _flat_entry(i: int = 0) -> dict:
+    """One entry exactly as `extract_flat` search results are shaped."""
+    return {
+        "id": f"vid{i}",
+        "url": f"https://www.youtube.com/watch?v=vid{i}",
+        "title": f"Artist - Song {i} (Official Audio)",
+        "duration": 210.0 + i,
+        "channel": "Artist Official",
+        "uploader": "Artist Official",
+    }
+
+
+def test_flat_search_contract_fields_are_all_consumed():
+    """Every field named in FLAT_SEARCH_CONTRACT is one the scorer actually
+    reads — a field that stops being consumed is dead weight in the contract
+    and a sign the parser changed shape."""
+    from src.ingestion.audio_downloader import (
+        FLAT_SEARCH_CONTRACT,
+        score_all_candidates,
+    )
+
+    rec = score_all_candidates([_flat_entry(0)], target_duration_s=210.0)[0]
+    # The Epic-Q provenance fields must all survive the parse, non-None.
+    assert rec["youtube_video_id"] == "vid0"
+    assert rec["youtube_duration_s"] == 210.0
+    assert rec["channel"] == "Artist Official"
+    assert rec["url"].endswith("vid0")
+    assert rec["title"].startswith("Artist - Song 0")
+    assert rec["duration_delta_s"] == 0.0
+    # url/webpage_url and channel/uploader are documented fallback pairs.
+    assert set(FLAT_SEARCH_CONTRACT) == {
+        "url", "webpage_url", "title", "duration", "id", "channel", "uploader"}
+
+
+def test_flat_search_contract_survives_the_fallback_shape():
+    """`webpage_url` instead of `url`, `uploader` instead of `channel` — both
+    documented fallbacks; an entry using them must still yield a full record."""
+    from src.ingestion.audio_downloader import score_all_candidates
+
+    entry = _flat_entry(1)
+    entry["webpage_url"] = entry.pop("url")
+    entry.pop("channel")
+    rec = score_all_candidates([entry], target_duration_s=211.0)[0]
+    assert rec["url"].endswith("vid1")
+    assert rec["channel"] == "Artist Official"   # via uploader
+
+
+def test_flat_search_entry_missing_url_is_dropped_not_crashed():
+    """A reshaped entry with no usable URL is skipped, never raised on — the
+    failure mode of an upstream change must be 'no candidate', not a 500."""
+    from src.ingestion.audio_downloader import score_all_candidates
+
+    entry = _flat_entry(2)
+    entry.pop("url")
+    assert score_all_candidates([entry, _flat_entry(3)], 210.0) != []
+    assert score_all_candidates([entry], 210.0) == []
+
+
+def test_search_options_keep_the_throttle_and_flat_extraction():
+    """F10: the search path was the one un-throttled request path. yt-dlp blocks
+    on aggregate requests per IP, so a dropped `sleep_requests` is a real
+    availability regression that nothing else would catch."""
+    from src.ingestion.audio_downloader import _SEARCH_SLEEP_S, search_ydl_opts
+
+    opts = search_ydl_opts("ytsearch10:artist song")
+    assert opts["sleep_requests"] == _SEARCH_SLEEP_S >= 1.0
+    assert opts["extract_flat"] is True
+    assert opts["default_search"] == "ytsearch10"
+    assert opts["skip_download"] is True
