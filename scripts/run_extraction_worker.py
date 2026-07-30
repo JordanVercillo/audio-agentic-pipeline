@@ -30,6 +30,7 @@ _ROOT = Path(__file__).resolve().parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
+from src.store import clusters as cl  # noqa: E402
 from src.store.cache import FeatureCache  # noqa: E402
 from src.store.extractor import another_worker_alive, drain  # noqa: E402
 from src.store.perceptual import PERCEPTUAL_VERSION, rebuild_marts  # noqa: E402
@@ -138,6 +139,42 @@ if __name__ == "__main__":
                                   f"scripts/quarantine_broken_extractions.py")
                     except Exception as exc:  # noqa: BLE001 — a report, never fatal
                         print(f"broken-extraction check failed: {exc}")
+                    try:
+                        # D-62: the model plane closes itself too. Session 50
+                        # hand-fixed cluster coverage 39%->99.7% and it was back
+                        # to 36.7% seven days later, because the fix was a
+                        # command rather than a trigger. Training is cheap and
+                        # additive, so it happens here automatically; PROMOTION
+                        # is the identity event and stays deliberate — an
+                        # identity-stable retrain (same k, matched centroids,
+                        # unchanged words) self-promotes, anything else prints
+                        # the diff and waits for a human.
+                        f = cl.freshness(cache, "song")
+                        if f["stale"]:
+                            print(f"cluster model stale ({'; '.join(f['reasons'])}) "
+                                  f"— retraining")
+                            res = cl.train_song_clusters(cache)
+                            if res and not res.get("promoted"):
+                                served = cl.latest_model(cache, "song")
+                                with cache._Session() as _s:
+                                    from src.store.models import ClusterModel
+                                    cand = _s.get(ClusterModel, res["model_id"])
+                                    imap = (cl.match_identity(served, cand)
+                                            if served is not None else None)
+                                if imap:
+                                    cl.promote_model(cache, res["model_id"],
+                                                     identity_map=imap)
+                                    print(f"  model {res['model_id']} promoted "
+                                          f"(identity-stable, remapped)")
+                                else:
+                                    print(f"  ⚠ model {res['model_id']} is trained but "
+                                          f"NOT identity-stable — it changes what "
+                                          f"visitors see. Review:\n"
+                                          f"    uv run python scripts/"
+                                          f"promote_cluster_model.py --model "
+                                          f"{res['model_id']}")
+                    except Exception as exc:  # noqa: BLE001 — derived, never fatal
+                        print(f"cluster freshness check failed: {exc}")
             except Exception as exc:  # noqa: BLE001 — one bad poll must not kill the worker
                 print(f"worker poll error (continuing next interval): {exc}")
             if not args.loop:
