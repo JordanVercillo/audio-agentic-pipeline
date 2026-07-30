@@ -157,8 +157,11 @@
     <h2 class="section">The acoustic map</h2>
     <div class="map-card">
       {{ cluster_map|safe }}
-      <p class="cap">Every cached song, positioned by its 77-dim acoustic features
-        (2-D projection). Bright dots are yours — hover one for its name.</p>
+      <p class="cap">{{ map_counts.plotted }} of {{ map_counts.analyzed }} analyzed
+        songs, positioned by their 77-dim acoustic features (2-D projection).
+        Bright dots are yours — hover one for its name.{% if map_counts.plotted <
+        map_counts.analyzed %} The rest are duplicate recordings or tracks whose
+        source isn't verified yet, which sit out of the model.{% endif %}</p>
     </div>
     {% endif %}
   {% else %}

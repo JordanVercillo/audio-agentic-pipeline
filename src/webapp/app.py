@@ -802,9 +802,16 @@ def create_app() -> FastAPI:
         if model is not None:
             ctx["trained"] = True
             assigned = cl.track_assignments(cache, model.id)
-            for tid, feats in cached.items():  # online-assign cache hits the model missed
+            # F14: a GET must not WRITE. This used to call the persisting
+            # `assign_track`, so rendering /analytics wrote cluster rows — and
+            # before D-62's coverage fix it wrote them from a model fitted on
+            # 37% of the corpus. The pure version keeps the visitor's own
+            # tracks on the map (they may post-date the last training run)
+            # without persisting anything; the worker's post-drain retrain is
+            # what makes an assignment durable.
+            for tid, feats in cached.items():
                 if tid not in assigned:
-                    cid = cl.assign_track(cache, model, tid, feats)
+                    cid = cl.nearest_cluster(model, feats)
                     if cid is not None:
                         assigned[tid] = {"cluster_id": cid, "map_x": None, "map_y": None}
 
@@ -835,6 +842,21 @@ def create_app() -> FastAPI:
                          "artist": (meta.get(p["id"]) or {}).get("artist_names", "")}
                         for p in population_pts if p["id"] in cached]
             ctx["cluster_map"] = scatter_svg(population_pts, user_pts)
+            # journal #27 / #60: a caption that RESTATES a computed value is a
+            # second copy of it. "Every cached song" was wrong by 64% while the
+            # model covered 37% of the corpus, and no test could see it because
+            # the sentence was a literal. Derived, it cannot drift again.
+            # Count what is DRAWN, not what is in the list: the F14 in-memory
+            # assignments carry cluster_id but no map coordinates, so they ride
+            # in `population_pts` and never reach the SVG. Counting the list
+            # over-stated the map by exactly those 4 tracks on the live corpus —
+            # the same restates-a-computed-value bug in miniature, caught by
+            # comparing the caption to the rendered <circle> count.
+            ctx["map_counts"] = {
+                "plotted": sum(1 for p in population_pts
+                               if p["x"] is not None and p["y"] is not None),
+                "analyzed": len(cache.analyzed_ids()),
+                "yours": len(user_pts)}
 
         artist_model = cl.latest_model(cache, "artist")
         if artist_model is not None:
@@ -955,6 +977,12 @@ def create_app() -> FastAPI:
                                       y_label=str(catalog.set_index("column").loc[y, "friendly"])),
             "columns": [{"column": c["column"], "friendly": c["friendly"]}
                         for c in catalog.to_dict("records")],
+            # Derived, never asserted: the gray "not yet clustered" dots were
+            # 62% of this chart while the model was stale, and the caption
+            # claimed nothing about it (journal #60).
+            "scatter_counts": {
+                "total": len(points),
+                "clustered": sum(1 for p in points if p.get("cluster_id") is not None)},
         }
 
     def _recommend_context(session: dict[str, Any],

@@ -1924,3 +1924,82 @@ def test_ask_logs_a_chat_turn(client, monkeypatch, tmp_path):
     assert row["source"] in ("llm", "fallback") and row["parsed_answer"]
     assert row["rendered_context"] and "Muse" in row["rendered_context"]  # the real grounding
     assert row["chat_session_id"] and len(row["chat_session_id"]) == 32   # uuid4 hex, not the auth sid
+
+
+def test_map_caption_is_derived_from_the_points_actually_plotted(client, monkeypatch, tmp_path):
+    """journal #27/#60: a caption that RESTATES a computed value is a second
+    copy of it. "Every cached song" sat on /analytics while the model plotted
+    37% of the corpus — wrong by 64%, and unfalsifiable because it was a
+    literal. This asserts the sentence re-derives through the live numbers.
+    """
+    from ..store.cache import FeatureCache
+    from ..store.clusters import train_song_clusters
+    from ..store.test_clusters import _blob_a, _blob_b
+
+    tc = FeatureCache(url=f"sqlite:///{tmp_path / 'cap.db'}")
+    meta = []
+    for i in range(6):
+        tc.upsert(f"a{i}", _blob_a(i))
+        tc.upsert(f"b{i}", _blob_b(i))
+        meta.append({"spotify_track_id": f"a{i}", "track_name": f"S{i}",
+                     "artist_names": "A"})
+        meta.append({"spotify_track_id": f"b{i}", "track_name": f"F{i}",
+                     "artist_names": "B"})
+    tc.remember_meta(meta)
+    assert train_song_clusters(tc, coords="pca") is not None
+    monkeypatch.setattr("src.webapp.app._feature_cache", lambda: tc)
+
+    taste = {"range_ids": {"short_term": ["b0", "a0"]},
+             "artists": [], "drift": {"score": 0.1, "label": "Minimal Drift"}}
+    client.cookies.set(config.SESSION_COOKIE, _seed_session(taste=taste))
+    r = client.get("/analytics")
+    assert r.status_code == 200
+
+    n_analyzed = len(tc.analyzed_ids())
+    assert f"of {n_analyzed} analyzed" in r.text
+    assert "Every cached song, positioned" not in r.text
+    # The number must equal the dots ACTUALLY drawn. Counting the point list
+    # instead over-stated the live map by the in-memory (coordinate-less)
+    # assignments — a caption drifting from its own chart again.
+    import re
+    m = re.search(r"(\d+) of \d+ analyzed\s+songs", r.text)
+    assert m, "map caption not found"
+    svg = r.text[r.text.index("cluster-map"):]
+    svg = svg[:svg.index("</svg>")]
+    assert int(m.group(1)) == svg.count("<circle"),         "caption count != rendered circles"
+
+
+def test_analytics_get_does_not_write_cluster_assignments(client, monkeypatch, tmp_path):
+    """F14: a read surface must not persist. /analytics used to call the
+    PERSISTING assign_track inside a GET — writing rows from whatever model
+    happened to be serving, which before D-62 was one fitted on 37%."""
+    from ..store.cache import FeatureCache
+    from ..store.clusters import latest_model, track_assignments, train_song_clusters
+    from ..store.test_clusters import _blob_a, _blob_b
+
+    tc = FeatureCache(url=f"sqlite:///{tmp_path / 'nowrite.db'}")
+    meta = []
+    for i in range(6):
+        tc.upsert(f"a{i}", _blob_a(i))
+        tc.upsert(f"b{i}", _blob_b(i))
+        meta.append({"spotify_track_id": f"a{i}", "track_name": f"S{i}", "artist_names": "A"})
+        meta.append({"spotify_track_id": f"b{i}", "track_name": f"F{i}", "artist_names": "B"})
+    tc.remember_meta(meta)
+    assert train_song_clusters(tc, coords="pca") is not None
+    model = latest_model(tc, "song")
+    monkeypatch.setattr("src.webapp.app._feature_cache", lambda: tc)
+
+    # A track the model never saw: rendering must SHOW it without STORING it.
+    tc.upsert("newtrack", _blob_b(99))
+    tc.remember_meta([{"spotify_track_id": "newtrack", "track_name": "New",
+                       "artist_names": "B"}])
+    before = set(track_assignments(tc, model.id))
+    assert "newtrack" not in before
+
+    taste = {"range_ids": {"short_term": ["newtrack", "a0"]},
+             "artists": [], "drift": {"score": 0.1, "label": "Minimal Drift"}}
+    client.cookies.set(config.SESSION_COOKIE, _seed_session(taste=taste))
+    assert client.get("/analytics").status_code == 200
+
+    after = set(track_assignments(tc, model.id))
+    assert after == before, "GET /analytics persisted cluster assignments"

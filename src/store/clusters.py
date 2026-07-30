@@ -324,23 +324,27 @@ def newest_model(cache: FeatureCache, kind: str) -> Optional[ClusterModel]:
 IDENTITY_COSINE_MIN = 0.90
 
 
-def _centroids_in_common_space(old: ClusterModel, new: ClusterModel) -> Optional[np.ndarray]:
-    """Old centroids expressed in the NEW model's scaled space, or None.
+def _comparable_centroids(old: ClusterModel, new: ClusterModel) -> Optional[np.ndarray]:
+    """The old model's centroids, comparable to the new model's, or None.
 
-    Centroids are stored scaled, and each model scales against its own
-    population — so the raw coordinates are not comparable between fits. We
-    un-scale with the old model's stats and re-scale with the new model's, which
-    puts both sets in one space. Returns None when the feature contract itself
-    changed, because then no comparison is meaningful (that is
-    FEATURE_CONTRACT_DRIFT, a different finding).
+    Compared DIRECTLY, deliberately. The first cut un-scaled with the old
+    model's stats and re-scaled with the new model's, which looks principled
+    and is wrong: `_scale` standardizes AND L2-normalizes each row, and a
+    centroid is the mean of normalized vectors — the normalization is not
+    invertible from the centroid, so `* std + mean` does not recover raw units.
+    Measured on the live models 11 vs 13, that route produced cosines of
+    -0.73/+0.71 (noise) for a pair whose direct cosines are -0.97/+0.97 — it
+    would have refused a textbook clean permutation.
+
+    Direct comparison is valid because both sets already live in a
+    standardized, L2-normalized space over the SAME columns; per-population
+    scaling differences shift that space only slightly, and the signal is
+    unambiguous (matched pairs ~+0.97, mismatched ~-0.97). Returns None when
+    the feature contract itself changed, since then nothing is comparable.
     """
     if list(old.feature_cols) != list(new.feature_cols):
         return None
-    o_mean, o_std = np.array(old.scaler_mean), np.array(old.scaler_std)
-    n_mean, n_std = np.array(new.scaler_mean), np.array(new.scaler_std)
-    n_std = np.where(n_std == 0, 1.0, n_std)
-    raw = np.array(old.centroids) * o_std + o_mean          # -> raw units
-    return (raw - n_mean) / n_std                            # -> new scaled space
+    return np.array(old.centroids)
 
 
 def match_identity(old: ClusterModel, new: ClusterModel) -> Optional[dict[str, int]]:
@@ -352,7 +356,7 @@ def match_identity(old: ClusterModel, new: ClusterModel) -> Optional[dict[str, i
     """
     if old.k != new.k:
         return None
-    old_pts = _centroids_in_common_space(old, new)
+    old_pts = _comparable_centroids(old, new)
     if old_pts is None:
         return None
     new_pts = np.array(new.centroids)
@@ -491,16 +495,29 @@ def _current_feature_cols(cache: FeatureCache) -> list[str]:
     return select_feature_cols([feats[i] for i in feats])
 
 
-def assign_track(cache: FeatureCache, model: ClusterModel, track_id: str,
-                 features: dict) -> Optional[int]:
-    """Nearest-centroid assignment for a track the model hasn't seen; persisted."""
+def nearest_cluster(model: ClusterModel, features: dict) -> Optional[int]:
+    """Which bucket this track falls in — PURE, writes nothing (F14).
+
+    Split out of `assign_track` so a READ surface can show a complete map
+    without persisting. `/analytics` used to call the persisting version inside
+    a GET, so rendering a page wrote cluster rows — and, before the coverage
+    fix, wrote them from a model fitted on 37% of the corpus.
+    """
     try:
         vec = np.array([float(features[c]) for c in model.feature_cols])
     except (KeyError, TypeError, ValueError):
         return None  # missing features → unassignable until next training run
     x = _apply_scale(vec, np.array(model.scaler_mean), np.array(model.scaler_std))
     dists = [float(np.linalg.norm(x - np.array(c))) for c in model.centroids]
-    cluster_id = int(np.argmin(dists))
+    return int(np.argmin(dists))
+
+
+def assign_track(cache: FeatureCache, model: ClusterModel, track_id: str,
+                 features: dict) -> Optional[int]:
+    """Nearest-centroid assignment, PERSISTED — for write paths (worker, scripts)."""
+    cluster_id = nearest_cluster(model, features)
+    if cluster_id is None:
+        return None
     with cache._Session() as s:
         s.merge(TrackCluster(spotify_track_id=track_id, model_id=model.id,
                              cluster_id=cluster_id, map_x=None, map_y=None))

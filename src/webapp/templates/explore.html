@@ -84,9 +84,11 @@
   {% if scatter %}
   <div class="map-card">
     {{ scatter|safe }}
-    <p class="cap">Every cached song; colors are the sound clusters from your
-      analytics page, gray = not yet clustered. Your tracks are ringed — hover
-      for names.</p>
+    <p class="cap">{{ scatter_counts.total }} songs; colors are the sound
+      clusters from your analytics page{% if scatter_counts.clustered <
+      scatter_counts.total %}, gray = the {{ scatter_counts.total -
+      scatter_counts.clustered }} not yet clustered{% endif %}. Your tracks are
+      ringed — hover for names.</p>
   </div>
   {% endif %}
 

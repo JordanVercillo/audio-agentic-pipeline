@@ -233,3 +233,29 @@ def test_descriptions_missing_is_reported(cache):
                          {"0": {"text": "x", "source": "template"},
                           "1": {"text": "y", "source": "template"}})
     assert cl.freshness(cache, "song")["descriptions_missing"] is False
+
+
+def test_training_does_not_destroy_the_serving_models_assignments(cache):
+    """The composite-key fix. `spotify_track_id` alone was the primary key, so
+    every training run's merge OVERWROTE the serving model's rows — measured
+    live, training took the served model from 700 assignments to 4.
+
+    That is not a cosmetic bug: it makes D-62's premise false, because training
+    alone would silently gut the coverage of whatever is being served.
+    """
+    first = cl.train_song_clusters(cache)
+    cl.promote_model(cache, first["model_id"])
+    before = len(cl.track_assignments(cache, first["model_id"]))
+    assert before > 0
+
+    _grow(cache, 20, 20)
+    second = cl.train_song_clusters(cache)
+    assert second["model_id"] != first["model_id"]
+
+    after = len(cl.track_assignments(cache, first["model_id"]))
+    assert after == before, (
+        f"training a new model destroyed the serving model's assignments "
+        f"({before} -> {after})")
+    assert len(cl.track_assignments(cache, second["model_id"])) >= before
+    # And the served model's coverage must be untouched by a mere retrain.
+    assert cl.latest_model(cache, "song").id == first["model_id"]

@@ -156,8 +156,16 @@ class TrackCluster(Base):
 
     __tablename__ = "track_clusters"
 
+    # COMPOSITE key (D-62 fix, 2026-07-30). `spotify_track_id` alone was the PK,
+    # so a track could hold exactly ONE assignment across all models and each
+    # training run's `merge` OVERWROTE the serving model's rows. Measured live:
+    # training model 13 took model 11 from 700 assignments to 4, and every
+    # earlier model shows the same residue (10 / 36 / 2 rows). That silently
+    # gutted the served coverage — and it makes D-62's whole premise ("train
+    # freely, promote deliberately") impossible, because training alone would
+    # degrade what visitors see.
     spotify_track_id = Column(String, primary_key=True)
-    model_id = Column(Integer, nullable=False)
+    model_id = Column(Integer, primary_key=True, nullable=False)
     cluster_id = Column(Integer, nullable=False)
     map_x = Column(Float)   # 2-D embedding (UMAP/PCA) — nullable for online assigns
     map_y = Column(Float)

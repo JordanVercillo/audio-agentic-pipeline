@@ -99,6 +99,7 @@ class FeatureCache:
                 cur.close()
         Base.metadata.create_all(self.engine)
         self._migrate_added_columns()
+        self._migrate_track_cluster_key()
         self._backfill_promoted_at()
         self._Session = sessionmaker(self.engine, expire_on_commit=False)
         # The similarity plane (see `_similarity_plane`): a per-PROCESS memo of
@@ -147,6 +148,48 @@ class FeatureCache:
                         conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {name} {typ}"))
                 except OperationalError:
                     pass  # duplicate column (added concurrently) — self-heals
+
+    def _migrate_track_cluster_key(self) -> None:
+        """D-62 fix: give track_clusters a COMPOSITE (track, model) primary key.
+
+        It was keyed on spotify_track_id alone, so each training run's `merge`
+        overwrote the serving model's assignments — measured live, training a
+        new model took the served one from 700 rows to 4. That makes "train
+        freely, promote deliberately" impossible, because training alone
+        silently degrades what visitors see.
+
+        SQLite cannot ALTER a primary key, so this is the standard rebuild.
+        Data-preserving and idempotent: it runs only when the current PK is the
+        single column, and the pre-existing rows (including the residue of past
+        overwrites) are copied as-is.
+        """
+        try:
+            inspector = sa_inspect(self.engine)
+            if not inspector.has_table("track_clusters"):
+                return
+            pk = inspector.get_pk_constraint("track_clusters").get("constrained_columns") or []
+            if set(pk) == {"spotify_track_id", "model_id"}:
+                return  # already migrated
+            with self.engine.begin() as conn:
+                conn.execute(text("""
+                    CREATE TABLE IF NOT EXISTS track_clusters_pkfix (
+                        spotify_track_id VARCHAR NOT NULL,
+                        model_id INTEGER NOT NULL,
+                        cluster_id INTEGER NOT NULL,
+                        map_x FLOAT,
+                        map_y FLOAT,
+                        PRIMARY KEY (spotify_track_id, model_id))"""))
+                conn.execute(text(
+                    "INSERT OR IGNORE INTO track_clusters_pkfix "
+                    "(spotify_track_id, model_id, cluster_id, map_x, map_y) "
+                    "SELECT spotify_track_id, model_id, cluster_id, map_x, map_y "
+                    "FROM track_clusters"))
+                conn.execute(text("DROP TABLE track_clusters"))
+                conn.execute(text(
+                    "ALTER TABLE track_clusters_pkfix RENAME TO track_clusters"))
+            logger.info("track_clusters migrated to a composite (track, model) key")
+        except OperationalError:
+            pass  # concurrent migration or a fresh DB — create_all already correct
 
     def _backfill_promoted_at(self) -> None:
         """One-time D-62 migration: bless the model that was ALREADY serving.
