@@ -2876,3 +2876,19 @@ narrative goes to `notes/engineering_journal.md`, plans to
   Remaining Fable-design debt: F3 (the concurrent-pipeline invariants,
   P4.6.5 stage ③) — optional, skippable by design. NEXT unchanged = Vision
   F S1 on Opus. NEW SESSION: run `/resume`.**
+- **2026-07-29 (session 65 — ratification + F2/F3: the design debt is
+  CLEARED):** owner ratified **D-68…D-73** (marked in VISION_SPECS). **F2**
+  → `docs/CORPUS_MIGRATION_PLAYBOOK.md` (the 8-invariant template for any
+  corpus-scale mutating batch, distilled from the D-52/quarantine
+  disciplines — journal #43/#45/#46/#48/#49 made mechanical). **F3** →
+  `docs/PIPELINE_CONCURRENCY_SPEC.md` (P4.6.5 stage ③ as ten named
+  invariants I1–I10 each bound to an executable failure drill, a mandatory
+  pre-build data-platform red-team gate, and a first-class DON'T-BUILD
+  exit — declining is a recorded outcome, the risk-free 2× stands).
+  **Every design the project needs Fable for is now banked in specs Opus
+  can execute:** Vision F S1–S6, Phase 5 P5-S1…S7, the migration playbook,
+  and the optional stage-③ pipeline. **Left off: all specs pushed, tree
+  synced. ➡️ NEXT = Vision F S1 (Opus): yt-dlp pin + search throttle +
+  shape test · feature_columns() on /analytics + /artist · the GET-write
+  fix · owner installs JDK 17 → parity_check green. NEW SESSION: run
+  `/resume`.**

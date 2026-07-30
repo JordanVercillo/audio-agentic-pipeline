@@ -1612,8 +1612,11 @@ gated on the owner's dataset download.
   always on drain-idle), drop the duplicate `refresh_duplicate_flags`, batch
   `persist_perceptual`, `silhouette_score(sample_size=5000, random_state=42)`
   (kills the only O(N²) step).
-- **P4.6.5 — throughput (split; the dsp-expert report in session-63's log
-  carries the full design):** ① the risk-free half first (Opus): DSP thread
+- **P4.6.5 — throughput (split; stage ③'s full invariant spec is
+  [`docs/PIPELINE_CONCURRENCY_SPEC.md`](PIPELINE_CONCURRENCY_SPEC.md) — F3,
+  2026-07-29, incl. the mandatory pre-build red-team gate and the
+  don't-build exit; corpus-scale mutations follow
+  [`docs/CORPUS_MIGRATION_PLAYBOOK.md`](CORPUS_MIGRATION_PLAYBOOK.md) — F2):** ① the risk-free half first (Opus): DSP thread
   pool for the LOCAL-audio paths + shared-STFT refactor with the
   77-vector equality test + D-67's version plumbing + `MIXED_FEATURE_VERSION`
   flag; ② instrumentation (`extraction_timings` ops table, stage hooks incl.
@@ -1680,7 +1683,7 @@ F2 memo. Bridge-key rule unchanged: `spotify_track_id` is the only
 cross-layer key; MBID is a nullable join attribute (never unique — ~8% of
 ISRCs map 2 corpus tracks to one recording), never a second identity.
 
-### F1 decisions (D-68…D-73 — proposed 2026-07-29, session 64; owner ratification pending)
+### F1 decisions (D-68…D-73 — ✅ ALL RATIFIED by the owner, 2026-07-29, session 65)
 
 - **D-68 — the claim discipline:** the harness measures CONCORDANCE between
   two uncalibrated estimators (MetaBrainz's own shutdown post disclaims AB's
