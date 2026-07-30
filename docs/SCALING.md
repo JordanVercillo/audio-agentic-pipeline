@@ -235,3 +235,61 @@ so one non-ASCII character is a parse error that aborts the file before its
 first line — which looks exactly like a declined UAC prompt. **Elevated
 helper scripts here must be ASCII-only**, and worth validating with
 `[Parser]::ParseFile` before blaming elevation.
+
+### Cross-repo review + hardening (2026-07-30)
+
+A handoff from the sibling **vercilloanalytics** repo reviewed this setup after
+`8f2d76b` broke its Spark (journal #63 — the env vars outlived the directories
+in already-running processes). Baseline first: **parity passed before any
+change here**, so nothing in this repo was broken. What the review changed:
+
+**Runs as `jordan`, not `root`.** The WSL default user is now `jordan`
+(`/etc/wsl.conf`, because `jupyter lab` refuses to run as root). Our runner
+passed `--user root`, which still worked but put the project's Spark in root's
+home with root's toolchain, rc files and venv — a second toolchain, which is
+the exact trap journal #62 already cost us once. Now `-WslUser jordan`.
+
+**Versions come from ONE place.** The pyspark version was hardcoded in
+`spark_wsl.ps1` while `pyproject.toml` declared a *floor* (`>=3.5.0`) — three
+encodings, none authoritative. Setup now reads the version from `uv.lock` and
+the Python minor from `.venv/pyvenv.cfg`, so WSL cannot drift from Windows.
+Measured before: **Windows 3.12.13 vs WSL 3.14.4**, both pyspark 4.1.2. After:
+**3.12.13 / 4.1.2 on both.** That matters because "works in WSL, not Windows"
+is only a finding if the interpreters match.
+
+**Dependencies come from the lock, not a list.** The hand-picked install list
+was a third encoding and it failed on its own: it resolved `numba` 0.53.1 /
+`llvmlite` 0.36.0, which refuse to build on 3.12. Setup now runs
+`uv sync --frozen`. **`UV_PROJECT_ENVIRONMENT` is load-bearing** — without it,
+`uv` inside a `/mnt/c` checkout targets `./.venv` (the *Windows* venv), sees a
+foreign platform and rebuilds it as Linux, breaking every Windows `uv run`.
+Setup now asserts `.venv/pyvenv.cfg` still names a Windows interpreter and
+fails loudly if not; verified before/after that it does.
+
+**`.gitattributes` added** (`*.sh eol=lf`, `*.ps1 eol=crlf`). The base64 hop is
+deliberately KEPT — it defends against PowerShell/bash *quoting*, not just line
+endings, and quoting broke this script twice. Different problems, both real.
+
+**Capability matrix, confirmed against our own code.** `feature_transform.py`
+and `temporal_aggregate.py` both call `.write.mode("overwrite").parquet(...)`;
+local writes need `winutils.exe`, which this machine no longer has. **So the
+Spark path here is WSL-only by necessity, not preference.** No streaming path
+exists in this repo, so the streaming row of the matrix does not apply to us.
+
+**New: `spark/known_answer_check.py`.** Parity compares Spark to pandas, so a
+fault present on both sides could still agree. This compares Spark to
+hand-computed constants and deliberately crosses the driver→worker Python
+boundary with a UDF — the first thing that breaks when `PYSPARK_PYTHON` points
+somewhere wrong (journal #62's failure, made detectable). It also round-trips
+a local parquet write, which is the Windows-vs-Linux capability line.
+
+Three PowerShell traps hit while doing this, all now commented in the script:
+variables are **case-insensitive** (a local `$setup` silently overwrote the
+`[switch]$Setup` parameter), native-command **stderr becomes a terminating
+error** under `$ErrorActionPreference='Stop'` (uv's installer logs progress to
+stderr), and `uv venv` refuses an existing directory without `--clear`, which
+made "idempotent setup" false until fixed.
+
+Verified after all changes: `-Setup` idempotent · known-answer PASSED
+(groupBy + UDF + UDF-over-shuffle + parquet round-trip) · parity PASSED ·
+Windows venv still 3.12.13/4.1.2 · 844 tests · ruff clean.

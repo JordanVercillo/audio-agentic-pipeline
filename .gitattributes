@@ -1,0 +1,18 @@
+# Line-ending contract. Without this, core.autocrlf=true checks out committed
+# .sh files with CRLF and bash dies on `$'\r'` — a failure that reads as a
+# script bug, not a checkout bug. (Cross-repo handoff, 2026-07-30.)
+#
+# NOTE: scripts/spark_wsl.ps1 ALSO base64-encodes bash across the shell
+# boundary. That is deliberately kept — it defends against PowerShell/bash
+# QUOTING as well as line endings, and quoting bit us twice while building it.
+# This file makes committed shell scripts safe; the base64 hop makes inline
+# scripts safe. Different problems.
+
+*.sh    text eol=lf
+*.ps1   text eol=crlf
+*.ipynb text eol=lf
+*.py    text eol=lf
+*.md    text
+*.parquet binary
+*.mp3     binary
+*.png     binary

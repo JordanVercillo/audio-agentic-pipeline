@@ -12,7 +12,11 @@ version = "0.5.0"                       # through SPEC Phase 5 (agent access lay
 description = "Spotify top tracks + local DSP feature extraction → medallion warehouse → taste analytics, with an MCP agent access layer."
 authors = [{ name = "Jordan Vercillo" }]
 readme = "README.md"
-requires-python = ">=3.11"             # developed/verified on conda base 3.13
+# Verified on CPython 3.12.13 on BOTH hosts (Windows .venv and the WSL Spark
+# venv) plus 3.12 in CI. The two hosts are deliberately kept on the same minor
+# so "works in WSL, not Windows" is a finding rather than a version artifact
+# (they were 3.12 vs 3.14 until 2026-07-30).
+requires-python = ">=3.11"
 license = { text = "MIT" }
 
 dependencies = [

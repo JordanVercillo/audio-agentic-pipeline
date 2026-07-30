@@ -1680,3 +1680,41 @@ in for a local capability we did not have.
 > "is it present?" but "which one answers, and who decided?" On a machine with
 > two toolchains, inherited environment variables are someone else's
 > configuration silently becoming yours.*
+
+## 63 — A machine-level fix in one repo silently broke another (2026-07-30)
+
+Commit `8f2d76b` deleted `C:\spark` and `C:\hadoop` and cleared their
+environment variables. I verified that carefully: `SPARK_HOME`,
+`PYSPARK_PYTHON`, `PYSPARK_DRIVER_PYTHON` and `HADOOP_HOME` all read
+`(not set)` in **both** User and Machine scope, no spark/hadoop entries left on
+either PATH, WSL parity still passing, 844 tests green. The verification was
+correct and it was not sufficient.
+
+A sibling repo, **vercilloanalytics**, broke on every Spark session with
+`FileNotFoundError: [WinError 2]` out of `launch_gateway` — an error naming
+neither the variable nor the path. The cause: **an already-running process
+keeps the environment block it was started with.** I cleared the persistent
+store; every shell, editor and kernel launched before that kept serving the
+dead values to its children. Its `spark-guide.md` carried `status: approved`
+with a machine-validation command the whole time it was failing, because
+nobody re-ran the validator after my commit.
+
+**The realization:** two distinct gaps, and the second is the general one.
+First, `[Environment]::GetEnvironmentVariable(...)` reads the *registry*, not
+the environment of live processes — "verified removed" needed the words "in
+the persistent store; existing processes keep stale values until restarted."
+Second and larger: **a machine-level change made inside one repo is invisible
+to that repo's tests.** Our suite, both audits and the parity check were all
+green while another project on the same disk could not start Spark. Nothing in
+our definition of done had any reach into that blast radius.
+
+A corollary worth keeping: a config variable that outlives the directory it
+points at is strictly *worse* than an unset one. Unset, pyspark falls back to
+its bundled Spark and works; set-and-dead, it follows the pointer off a cliff.
+That is why `spark_wsl.ps1` now `unset`s `SPARK_HOME`/`HADOOP_HOME` rather
+than trusting them to be absent.
+
+> *Scope your verification to the blast radius, not to the repo. When a change
+> touches machine state, "my tests pass" is evidence about the wrong system —
+> name what else on the machine consumes it, and say explicitly that live
+> processes keep stale environment until they restart.*
