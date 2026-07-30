@@ -2892,3 +2892,42 @@ narrative goes to `notes/engineering_journal.md`, plans to
   shape test · feature_columns() on /analytics + /artist · the GET-write
   fix · owner installs JDK 17 → parity_check green. NEW SESSION: run
   `/resume`.**
+- **2026-07-29 (session 66 — VISION F S1 SHIPPED; Opus + orchestrator;
+  commits 893346b→4be49c9, CI green on 4be49c9, 844 tests, ruff clean,
+  deployed, smoke 14/14):** **P4.6.1+P4.6.2 done.** ① yt-dlp floor
+  2026.2.21→**2026.7.4** (CVE-2026-55404) + `uv.lock` regenerated (CI
+  installs `--frozen`); `search_ydl_opts()` is now the ONE search-option
+  builder and carries **`sleep_requests`** — that path issued unmetered
+  requests while downloads slept (F10); `FLAT_SEARCH_CONTRACT` + 4 tests
+  lock our side of yt-dlp's churning flat-extraction, **with their honest
+  limit written in the file** (offline tests can't see an upstream rename).
+  ② **The projections:** `/analytics` (8 `_SIGNATURE_DIMS` cols) and
+  `/artist/{id}` (13 `_SIMILARITY_COLS`) off `all_features()` —
+  **measured live 1,946-track corpus: 280 ms/6.5 MB → 54 ms/0.6 MB (5.1× /
+  10.3×), 0 value mismatches, identical key sets**, and Muse's
+  "similar in your library" rendered **byte-identical through the public
+  edge** vs the pre-change capture; new
+  `test_analytics_population_never_reads_the_heavy_json_columns` guards
+  both. ③ **F14 MOVED to P4.6.3** (its fix IS the promotion machinery —
+  recorded, not half-built). Housekeeping: `git add -A` swept the
+  projection into 893346b whose message describes only the yt-dlp work;
+  f28d3b9's message is the truth. **JDK 17 INSTALLED** (Temurin 17.0.20+8,
+  winget hash-verified, alongside the untouched JDK 11).
+  ⚠️ **UNFINISHED — `spark/parity_check.py` is NOT yet proven locally:**
+  the run was killed at 10 min with no visible output (my
+  `Select-Object -Last 30` buffered it — re-run streaming, not buffered).
+  **AND the reason it matters (journal #62): the Anaconda Spark shadow.**
+  `SPARK_HOME=C:\spark\spark-3.5.6-bin-hadoop3` + `PYSPARK_PYTHON` and
+  `PYSPARK_DRIVER_PYTHON` both `anaconda3\python.exe` — so Spark WORKERS
+  would launch Anaconda's interpreter (pyspark 3.5.6, none of our deps)
+  even under `uv run`; `spark-submit` on PATH is 3.5.6 too. Journal #47
+  recurring on a second tool. The proven-working invocation is: `JAVA_HOME`
+  = the Temurin **17** dir, **`SPARK_HOME` UNSET** (pyspark 4.1.2 bundles
+  its own jars — confirmed present in `.venv`), `PYSPARK_PYTHON` =
+  `PYSPARK_DRIVER_PYTHON` = `.venv\Scripts\python.exe`, `HADOOP_HOME`
+  stays `C:\hadoop` (winutils.exe present; **`hadoop.dll` still absent —
+  deliberately NOT downloaded until proven necessary**).
+  **Left off: S1 code shipped + deployed + CI green. ➡️ NEXT = finish the
+  parity proof (stream the output; pin the env INSIDE the repo so it can't
+  be inherited — the #62 fix), then S2 (P4.6.3 freshness + THE RETRAIN).
+  NEW SESSION: run `/resume`.**

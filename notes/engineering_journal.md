@@ -1652,3 +1652,31 @@ top of them.
 > load-bearing ones before designing against them — and profile the actual
 > corpus your estimators produced, not the estimator's promise: a
 > distribution with 20 distinct values is a grid, not a measurement.*
+
+## 62 — The second Anaconda shadow, and this one was pointed at Spark (2026-07-29)
+
+Installing JDK 17 for the Spark parity check, Jordan asked "don't I have an
+older Spark in my anaconda base?" He did — and it was worse than a stale
+package sitting harmlessly on disk. Three environment variables were actively
+aiming Spark at the Anaconda world: `SPARK_HOME=C:\spark\spark-3.5.6-bin-hadoop3`
+(against our pinned pyspark 4.1.2), and both `PYSPARK_PYTHON` and
+`PYSPARK_DRIVER_PYTHON` set to `anaconda3\python.exe`. So even under `uv run`,
+where the driver correctly imports our 4.1.2, every Spark worker would have
+launched Anaconda's interpreter — a different Spark, and none of this project's
+dependencies. `spark-submit` on PATH was 3.5.6 too.
+
+**The realization:** this is journal #47 (the Anaconda ffmpeg that silently
+killed every repair) recurring on a different tool, which upgrades it from an
+anecdote to a property of this machine: **there is a second, older toolchain
+installed here, it is on PATH, and it wins by default.** The generalized fix
+isn't "unset SPARK_HOME" — it's that any external binary or runtime this
+project shells out to must be resolved and PINNED by the project, never
+inherited from the ambient environment. `uv` gives us that for Python packages
+and nothing else. Note also what nearly hid it: our Spark parity job has only
+ever run on Linux CI, where no Anaconda exists — a green CI badge was standing
+in for a local capability we did not have.
+
+> *When a project depends on a tool it doesn't install, the question is never
+> "is it present?" but "which one answers, and who decided?" On a machine with
+> two toolchains, inherited environment variables are someone else's
+> configuration silently becoming yours.*
