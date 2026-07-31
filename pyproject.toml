@@ -56,6 +56,10 @@ dependencies = [
 dev = [
     "httpx>=0.28.1",
     "pytest>=8.0",
+    # Coverage was absent until the 2026-07-30 director review: 905 tests with
+    # no measurement of what they actually exercise. A test COUNT is not a
+    # quality signal — see docs/QUALITY_BAR.md (Q6).
+    "pytest-cov>=5.0",
     "ruff>=0.6",
 ]
 

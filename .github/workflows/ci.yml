@@ -40,8 +40,17 @@ jobs:
       - name: Lint (ruff)
         run: uv run ruff check
 
-      - name: Test (pytest — synthetic data)
-        run: uv run pytest
+      # Coverage runs HERE, not locally: on Windows the coverage tracer clashes
+      # with numpy's C extensions ("cannot load module more than once per
+      # process"), and this runner already installs libsndfile. Reported, not
+      # yet gated — a threshold picked before the baseline is known would be
+      # theatre. See docs/QUALITY_BAR.md (Q6).
+      - name: Test (pytest — synthetic data) + coverage
+        run: uv run pytest --cov=src --cov-report=term-missing:skip-covered --cov-report=xml
+
+      - name: Coverage summary
+        if: always()
+        run: uv run python scripts/coverage_summary.py
 
   # SPEC P7: prove the PySpark jobs produce the same results as the pandas
   # transforms. Runs natively on Linux (no winutils needed) — the acceptance
