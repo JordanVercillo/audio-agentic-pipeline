@@ -188,7 +188,8 @@ def test_artists_guest_renders_readonly(client, monkeypatch, tmp_path):
     assert r.status_code == 200
     assert "Muse" in r.text and "rock" in r.text          # card + genre chip (stored copy)
     assert 'class="artist-cmp"' in r.text                 # the comparison chart
-    assert "Genres known for" in r.text and "2 of 2</b>" in r.text  # coverage honesty
+    # coverage honesty — one count, not the same number printed twice
+    assert "Genres known for" in r.text and "<b>2</b> of the 2" in r.text
     assert "Demo view" in r.text and "Analyze these" not in r.text  # read-only
 
 
@@ -649,6 +650,11 @@ def test_artists_heading_and_genre_caption_count_the_same_population(client):
     assert "of  artists" not in body, "total_cards is unsupplied again"
     assert "artists on this page" not in body, (
         "the genre caption claims a page but counts every match")
+    # `strip.total` IS `shown` (the strip is built over every matching row), so
+    # printing both rendered "87 of 87 of the 87 artists…".
+    import re
+    assert not re.search(r"of \d+</b> of the \d+", body), (
+        "the genre caption prints the same count twice")
 
 
 def test_artist_page_never_claims_a_track_credited_to_another_artist_id():
