@@ -281,6 +281,65 @@ def _write_atomic(df: pd.DataFrame, path: Path) -> None:
             time.sleep(0.1)
 
 
+def build_raw_feature_marts(cache: FeatureCache, marts_dir: Path) -> dict[str, Any]:
+    """The two marts behind `/song/{id}/features` (D-66).
+
+    raw_feature_dictionary — one row per CONCRETE column, expanded from the DSP
+      layer's family-level doc. The webapp never restates what a column means;
+      it reads this, so retuning an estimator cannot leave the page describing
+      the old behaviour (journal #27).
+    raw_feature_stats — per-column distribution over the SAME population every
+      other surface uses (`excluded_from_aggregates`), so a percentile shown on
+      /song agrees with `tempo_pct` on track_card instead of quietly answering
+      with a different denominator.
+    """
+    from ..analysis.clustering import VECTOR_77_COLUMNS
+    from ..dsp.feature_doc import RAW_FEATURE_PROMOTED, documented_columns
+
+    feats = cache.all_features()
+    excluded = cache.excluded_from_aggregates()
+    rows = [f for tid, f in feats.items() if tid not in excluded and f]
+    if not rows:
+        return {"raw_feature_dictionary": 0, "raw_feature_stats": 0}
+
+    numeric_cols = sorted({k for r in rows for k, v in r.items()
+                           if isinstance(v, (int, float))})
+    docs = documented_columns(numeric_cols)
+    in_vector = set(VECTOR_77_COLUMNS)
+    dict_df = pd.DataFrame([{
+        "column": c,
+        "group": (docs.get(c) or {}).get("group", ""),
+        "unit": (docs.get(c) or {}).get("unit", ""),
+        "direction": (docs.get(c) or {}).get("direction", ""),
+        "description": (docs.get(c) or {}).get("desc", ""),
+        "caveat": (docs.get(c) or {}).get("caveat", ""),
+        # Which of these actually drive similarity — the honest answer to
+        # "so which ones matter?"
+        "in_vector_77": c in in_vector,
+    } for c in numeric_cols])
+
+    stat_rows = []
+    for c in numeric_cols:
+        vals = np.array([float(r[c]) for r in rows
+                         if isinstance(r.get(c), (int, float))], dtype=float)
+        if vals.size == 0:
+            continue
+        stat_rows.append({
+            "column": c, "n": int(vals.size),
+            "mean": float(vals.mean()), "std": float(vals.std()),
+            "min": float(vals.min()), "p25": float(np.percentile(vals, 25)),
+            "p50": float(np.percentile(vals, 50)),
+            "p75": float(np.percentile(vals, 75)), "max": float(vals.max()),
+        })
+    stats_df = pd.DataFrame(stat_rows)
+
+    _write_atomic(dict_df, Path(marts_dir) / "raw_feature_dictionary.parquet")
+    _write_atomic(stats_df, Path(marts_dir) / "raw_feature_stats.parquet")
+    return {"raw_feature_dictionary": len(dict_df),
+            "raw_feature_stats": len(stats_df),
+            "promoted_outside_dict": list(RAW_FEATURE_PROMOTED)}
+
+
 def rebuild_marts(cache: FeatureCache, marts_dir: Path) -> dict[str, Any]:
     """Recompute perceptual-v1 and rewrite all three marts (idempotent).
 
@@ -315,7 +374,8 @@ def rebuild_marts(cache: FeatureCache, marts_dir: Path) -> dict[str, Any]:
     _write_atomic(stats, marts_dir / "feature_stats.parquet")
     # D-49: the semantic layer rides the same hook + the frame we just computed
     # (no recompute) — the chat's analyst views stay as fresh as /explore.
+    raw = build_raw_feature_marts(cache, marts_dir)
     from .semantic import build_semantic_marts
     semantic = build_semantic_marts(cache, df, marts_dir)
     return {"n_tracks": n, "perceptual": df, "catalog": catalog, "stats": stats,
-            "semantic": semantic}
+            "semantic": semantic, "raw": raw}

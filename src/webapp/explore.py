@@ -47,6 +47,18 @@ def load_catalog() -> Optional[pd.DataFrame]:
     return _read_parquet_at(str(path), path.stat().st_mtime_ns) if path.exists() else None
 
 
+def load_raw_feature_dictionary() -> Optional[pd.DataFrame]:
+    """The D-66 raw dictionary mart (mtime-keyed like the others, so a worker
+    rebuild busts the cache with no restart)."""
+    path = _MARTS / "raw_feature_dictionary.parquet"
+    return _read_parquet_at(str(path), path.stat().st_mtime_ns) if path.exists() else None
+
+
+def load_raw_feature_stats() -> Optional[pd.DataFrame]:
+    path = _MARTS / "raw_feature_stats.parquet"
+    return _read_parquet_at(str(path), path.stat().st_mtime_ns) if path.exists() else None
+
+
 def load_stats() -> Optional[pd.DataFrame]:
     path = _MARTS / "feature_stats.parquet"
     if not path.exists():

@@ -239,6 +239,17 @@ MATRIX: list[Row] = [
         USER: Expect(200, forbid=("repair_link_form", "repair_upload_form")),
         OWNER: Expect(200, require=("repair_link_form", "repair_upload_form"))}),
 
+    # D-66: the all-features drill-down is corpus data, so it is PUBLIC on the
+    # same terms as /song — and inherits the same D-57 withhold (an unverified
+    # source shows nothing here either; 83 numbers presented as fact would be a
+    # bigger version of the trust the withhold protects).
+    Row("/song/{track_id}/features", "GET", f"/song/{TRACK}/features",
+        "D-66 public transparency", {
+        ANON: Expect(200, effects=NONE),
+        GUEST: Expect(200, effects=NONE),
+        USER: Expect(200),
+        OWNER: Expect(200)}),
+
     # V2: we HOST an uploaded file, so serving it publicly is a licensing
     # exposure. A YouTube-sourced track is verifiable via its public link.
     Row("/audio/{track_id}", "GET", f"/audio/{TRACK}", "V2 owner-only playback", {
@@ -293,7 +304,7 @@ def test_matrix_covers_every_registered_route():
     assert covered == live, (
         f"NEW route(s) missing from the matrix: {sorted(live - covered)}; "
         f"STALE row(s): {sorted(covered - live)}")
-    assert len(live) == 28, "route count changed — update docs/DEDUP_QA_SPEC.md too"
+    assert len(live) == 29, "route count changed — update docs/DEDUP_QA_SPEC.md too"
 
 
 def test_non_apiroute_surface_stays_an_allowlist():

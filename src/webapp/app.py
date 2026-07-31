@@ -30,6 +30,7 @@ from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
+from ..dsp.feature_doc import RAW_FEATURE_PROMOTED
 from ..ingestion.fetchers import (
     fetch_artist_top_tracks,
     fetch_top_artists,
@@ -67,11 +68,14 @@ from .explore import (
     catalog_groups,
     histogram_svg,
     load_catalog,
+    load_raw_feature_dictionary,
+    load_raw_feature_stats,
     load_stats,
     percentile_of,
     scatter_xy_svg,
     window_strip,
 )
+from .features_view import build_feature_detail
 from .featurestore import FeatureStore
 from .prompt_contract import PROMPT_VERSION
 from .rag import TasteRAG
@@ -1610,6 +1614,42 @@ def create_app() -> FastAPI:
                 for sid, _dist in cache.similar(track_id, k=6)
             ]
         return templates.TemplateResponse(request, "song.html", ctx)
+
+    @app.get("/song/{track_id}/features", response_class=HTMLResponse)
+    def song_features(request: Request, track_id: str):
+        """D-66: ALL 83 stored features for one track, not just the highlights.
+
+        Same posture as /song — PUBLIC (corpus data, D-18), base62-guarded, and
+        subject to the SAME D-57 withhold: a track whose source isn't recorded
+        shows nothing here either. Presenting 83 numbers as fact would be a
+        bigger version of exactly the trust the withhold exists to protect.
+
+        A POINT LOOKUP, deliberately: the 82-col dict is read for ONE track
+        (`cache.get([id])`), while every corpus-wide number comes from the
+        marts. Nothing here iterates the corpus (the journal-#56 rule).
+        """
+        session = request.state.session
+        if not _TRACK_ID_RE.fullmatch(track_id or ""):
+            return RedirectResponse("/library", status_code=303)
+        cache = _feature_cache()
+        features = cache.get([track_id]).get(track_id)
+        meta = cache.get_meta(track_id) or {}
+        provenance = cache.provenance_for(track_id)
+        ctx: dict[str, Any] = {
+            **_viewer_flags(session), "track_id": track_id,
+            "name": meta.get("track_name") or track_id,
+            "artist": meta.get("artist_names") or "",
+            "analyzed": features is not None,
+            "source_validated": provenance is not None,
+            "detail": None, "promoted": list(RAW_FEATURE_PROMOTED),
+        }
+        if features is not None and ctx["source_validated"]:
+            dictionary = load_raw_feature_dictionary()
+            stats = load_raw_feature_stats()
+            if dictionary is not None and stats is not None:
+                ctx["detail"] = build_feature_detail(
+                    features, dictionary.to_dict("records"), stats.to_dict("records"))
+        return templates.TemplateResponse(request, "song_features.html", ctx)
 
     @app.get("/audio/{track_id}")
     def owner_audio(request: Request, track_id: str):

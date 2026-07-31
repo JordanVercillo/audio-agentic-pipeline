@@ -140,7 +140,7 @@ Five layers; the first two exist today, the rest are the build.
 1. **Regression** — `pytest src/` green + `ruff` clean. *(exists)*
 2. **Data invariants** — `qa_audit.py` (9 checks) + warehouse audit (19 flags).
    *(exists)*
-3. **Route matrix** *(new)* — all **28 routes × 4 personas** (anon · guest ·
+3. **Route matrix** *(new)* — all **29 routes × 4 personas** (anon · guest ·
    viewer · owner), asserting the intended status **and** one content invariant
    each. Today's route tests are per-feature and scattered, so gate coverage is
    not provable — this is the class that produced bug A7 (owner repair tools

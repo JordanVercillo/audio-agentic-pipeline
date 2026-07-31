@@ -83,7 +83,7 @@ upload audio. Each repair refreshes the derived planes and returns the track to
 every aggregate.
 
 ### ✅ B8 — CLOSED. Gate coverage is provable (QA-2, 2026-07-24).
-`src/webapp/test_route_matrix.py` — 28 routes x 4 personas, coverage enforced by
+`src/webapp/test_route_matrix.py` — 29 routes x 4 personas, coverage enforced by
 set equality, plus a **side-effects column** (a repair route returns the same 303
 to everyone; only "did the engine run" separates blocked from executed). Closed
 17 blind cells, including `POST /song/{id}/repair-upload`, which had no test of

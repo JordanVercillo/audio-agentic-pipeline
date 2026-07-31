@@ -51,7 +51,7 @@ main { max-width: 980px; margin: 0 auto; padding: 2rem 1.5rem 3rem; }
 /* secondary action — offered beside a retry so a throttled visitor still has
    somewhere useful to go (the whole public catalog needs no Spotify call) */
 .btn-quiet { background: transparent; border: 1px solid var(--line);
-  color: var(--fg); margin-left: .5rem; }
+  color: var(--ink); margin-left: .5rem; }
 .assurances { list-style: none; padding: 0; margin: 1.5rem 0 0; display: grid; gap: .5rem; }
 .assurances li { color: var(--muted); }
 .assurances strong { color: var(--ink); }
@@ -441,7 +441,7 @@ a.prov-glyph:hover { text-decoration: underline; }
 .pager { display: flex; flex-wrap: wrap; gap: .35rem; margin: 1rem 0 .4rem; }
 .pager .page { min-width: 2.75rem; min-height: 2.75rem; padding: .6rem; text-align: center;
   border: 1px solid var(--line); border-radius: 6px; font-size: .9rem;
-  text-decoration: none; color: var(--fg); }
+  text-decoration: none; color: var(--ink); }
 .pager .page:hover { border-color: var(--spotify); }
 .pager .page.is-current { background: var(--spotify); border-color: var(--spotify);
   color: #08120c; font-weight: 600; }
@@ -481,3 +481,17 @@ a.prov-glyph:hover { text-decoration: underline; }
 .chat .msg.bot { background: var(--panel); }
 .chat .msg .src { color: var(--muted); font-size: .72rem; margin: .4rem 0 0; }
 .chat .ask { margin-top: 1rem; }
+
+/* D-66 /song/{id}/features — the all-features drill-down. */
+.feat-table code { font-size: .82rem; }
+.feat-table .num { white-space: nowrap; text-align: right; font-variant-numeric: tabular-nums; }
+.feat-table td { vertical-align: top; }
+.pct-bar {
+  display: inline-block; width: 54px; height: 6px; border-radius: 3px;
+  background: var(--line); margin-right: .4rem; vertical-align: middle;
+  position: relative; overflow: hidden;
+}
+.pct-bar::after {
+  content: ""; position: absolute; inset: 0 auto 0 0;
+  width: var(--pct, 0%); background: var(--spotify); border-radius: 3px;
+}

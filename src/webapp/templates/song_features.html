@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+{% block title %}All features — {{ name }}{% endblock %}
+{% block content %}
+
+<p class="crumb"><a href="/song/{{ track_id }}">&larr; back to {{ name }}</a></p>
+<h1>{{ name }}</h1>
+<p class="sub">{{ artist }}</p>
+
+{% if not analyzed %}
+  <div class="insight empty">
+    <div class="insight-badge">Not analyzed yet</div>
+    <p>This track has no local DSP features. Once the extraction worker
+       processes it, every measurement lands here.</p>
+  </div>
+{% elif not source_validated %}
+  {# D-57, applied consistently: if the highlights are withheld because the
+     source isn't verified, showing 83 numbers instead would be worse. #}
+  <div class="insight empty">
+    <div class="insight-badge">Features withheld — source not verified</div>
+    <p>We don't have a recorded source for this track's audio, so its
+       measurements aren't shown. They'd have come from an unverified match,
+       and presenting 83 numbers as fact invites trust the data hasn't earned.
+       Repairing the source reveals all of them.</p>
+  </div>
+{% elif not detail %}
+  <div class="insight empty">
+    <div class="insight-badge">Feature dictionary not built</div>
+    <p>Run <code>scripts/build_feature_marts.py</code> to generate it.</p>
+  </div>
+{% else %}
+
+  <p class="lede">Every one of the <strong>{{ detail.n_features }}</strong>
+    numbers measured from this recording&rsquo;s audio &mdash; not just the
+    highlights on the song page. <strong>{{ detail.n_in_vector }}</strong> of
+    them form the frozen 77-dimension vector that drives &ldquo;songs like
+    this&rdquo;; the rest are stored for transparency.</p>
+
+  <details class="explain">
+    <summary>How to read these numbers</summary>
+    <p><strong>Percentile</strong> places this track against the
+      {{ detail.population_n }} recordings in the corpus that have a verified
+      source &mdash; the same population every other page uses, so a rank here
+      agrees with the ones elsewhere.</p>
+    <p>Some columns have <strong>no percentile on purpose</strong>: a musical
+      key is a category, not a quantity, and MFCC/chroma coefficients carry no
+      meaning on their own &mdash; only their overall shape does.</p>
+    <p>These are <strong>measurements, not opinions</strong>: they come from
+      analysing the audio we linked on the song page, with no genre labels or
+      editorial input.</p>
+  </details>
+
+  {% for g in detail.groups %}
+    <h2 class="section">{{ g.name }} <span class="muted">&middot; {{ g.n }}</span></h2>
+    {% if g.shape_note %}<p class="cap">{{ g.shape_note }}</p>{% endif %}
+
+    {% if g.collapsed %}<details class="explain"><summary>Show
+      {{ g.n }} coefficients</summary>{% endif %}
+    <div class="lib-wrap">
+      <table class="catalog feat-table">
+        <thead><tr>
+          <th>Feature</th><th>Value</th><th>vs corpus</th><th>Meaning</th>
+        </tr></thead>
+        <tbody>
+        {% for r in g.rows %}
+          <tr>
+            <td><code>{{ r.column }}</code>
+              {% if r.in_vector_77 %}<span class="tier tier-measured"
+                 title="part of the frozen 77-dim similarity vector">77</span>{% endif %}
+            </td>
+            <td class="num">{{ '%.4g'|format(r.value) }}{% if r.unit %}
+              <span class="muted">{{ r.unit }}</span>{% endif %}</td>
+            <td>
+              {% if r.percentile is not none %}
+                <span class="pct-bar" aria-hidden="true"
+                      style="--pct:{{ r.percentile }}%"></span>
+                <span class="muted">{{ r.percentile }}<sup>th</sup></span>
+              {% elif r.categorical %}
+                <span class="muted">category &mdash; no rank</span>
+              {% else %}
+                <span class="muted">&mdash;</span>
+              {% endif %}
+            </td>
+            <td>{{ r.description }}
+              {% if r.caveat and not g.shape_note %}
+                <span class="muted">{{ r.caveat }}</span>{% endif %}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% if g.collapsed %}</details>{% endif %}
+  {% endfor %}
+
+  <h2 class="section">Measured, but stored separately</h2>
+  <p class="cap">These are measured from the same audio and shown on the song
+    page, but they are time series or single values that sit
+    <em>outside</em> the {{ detail.n_features }}-column feature set above &mdash;
+    so &ldquo;all the features&rdquo; stays an honest claim if you count:
+    {% for p in promoted %}<code>{{ p }}</code>{% if not loop.last %}, {% endif %}{% endfor %}.</p>
+
+  <p class="cap"><a href="/song/{{ track_id }}">&larr; back to the song page</a>
+    for the spectrogram, loudness curve and detected sections.</p>
+{% endif %}
+
+{% endblock %}
