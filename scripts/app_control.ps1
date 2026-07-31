@@ -1,7 +1,7 @@
 <#
 app_control.ps1 - start / stop / status the local app processes (SELF_HOSTING section 4).
 
-    powershell -ExecutionPolicy Bypass -File scripts\app_control.ps1 -Action <start|stop|status|restart>
+    powershell -ExecutionPolicy Bypass -File scripts\app_control.ps1 -Action <start|stop|status|restart|deploy>
 
 The double-clickable start_app.bat / stop_app.bat / status_app.bat at the repo
 root wrap this. It manages the two processes the app needs at runtime:
@@ -21,12 +21,20 @@ logs\webapp.log / logs\worker.log (gitignored, rotated at 5 MB on start).
 space-anchored relative form) - a bare filename substring could catch another
 checkout's processes or an editor with the filename in its argv.
 
+'deploy' is the seamless one: pull, sync deps if the lock moved, restart, verify.
+run_webapp.py runs uvicorn with reload=False (correct for a served process), so
+a running app NEVER picks up a code change on its own. On 2026-07-31 that meant
+a full day of fixes sitting in the repo while the live site served the morning's
+code, and nothing on the status line said so. Now 'start' stamps the commit it
+launched into logs\running_commit.txt and 'status' compares it to HEAD, so
+"is the site up to date" is answerable at a glance instead of by inference.
+
 ASCII-only on purpose: Windows PowerShell 5.1 reads a BOM-less file as ANSI, so
 non-ASCII punctuation would corrupt the parse.
 #>
 
 param(
-    [ValidateSet('start', 'stop', 'status', 'restart')]
+    [ValidateSet('start', 'stop', 'status', 'restart', 'deploy')]
     [string]$Action = 'status'
 )
 
@@ -75,6 +83,32 @@ function Get-TunnelStatus {
     catch { return 'not installed' }
 }
 
+$stampFile = Join-Path $logs 'running_commit.txt'
+
+function Get-HeadCommit {
+    # Short sha of what is CHECKED OUT right now, or '' if git is unavailable.
+    try {
+        $sha = (& git -C $repo rev-parse --short HEAD 2>$null)
+        if ($LASTEXITCODE -ne 0) { return '' }
+        return "$sha".Trim()
+    } catch { return '' }
+}
+
+function Get-RunningCommit {
+    # Short sha the CURRENT processes were launched from, or '' if unknown
+    # (app started before this stamping existed, or by some other route).
+    if (-not (Test-Path $stampFile)) { return '' }
+    try { return (Get-Content $stampFile -First 1).Trim() } catch { return '' }
+}
+
+function Test-WorkingTreeDirty {
+    try {
+        $out = (& git -C $repo status --porcelain 2>$null)
+        if ($LASTEXITCODE -ne 0) { return $false }
+        return [bool]("$out".Trim())
+    } catch { return $false }
+}
+
 function Start-App {
     if (-not (Test-Path $py)) {
         throw "venv python not found at $py - run 'uv sync' first."
@@ -95,11 +129,13 @@ function Start-App {
     }
 
     Write-Host "Starting Vercillo Analytics..." -ForegroundColor Cyan
+    $skipped = $false
     foreach ($s in $services) {
         $existing = Get-ServiceProcs $s
         if ($existing) {
             Write-Host ("  {0,-7} already running (PID {1}) - left as is" -f `
                 $s.Name, ($existing.ProcessId -join ', ')) -ForegroundColor Yellow
+            $skipped = $true
             continue
         }
         $logPath = Join-Path $logs $s.Log
@@ -108,6 +144,16 @@ function Start-App {
         Start-Process -FilePath $env:ComSpec -ArgumentList $inner `
             -WorkingDirectory $repo -WindowStyle Hidden
         Write-Host ("  {0,-7} launched" -f $s.Name) -ForegroundColor Green
+    }
+
+    # Stamp what these processes loaded - but ONLY if every one of them was
+    # actually launched just now. A 'start' that left a running webapp alone
+    # would otherwise stamp HEAD onto a process still serving older code, which
+    # is precisely the false all-clear this stamp exists to prevent. Leaving the
+    # old stamp makes 'status' say STALE, which is the conservative answer.
+    $head = Get-HeadCommit
+    if ($head -and -not $skipped) {
+        Set-Content -Path $stampFile -Value $head -Encoding ascii
     }
 
     # Nudge the tunnel service only if it is down (needs elevation - report if so).
@@ -192,8 +238,89 @@ function Show-Status {
     } else {
         Write-Host "  Health  :8000/healthz no response" -ForegroundColor Red
     }
+
+    # Is the RUNNING app the code in the repo? uvicorn runs with reload=False,
+    # so this can drift silently for as long as the app stays up.
+    $head = Get-HeadCommit
+    $running = Get-RunningCommit
+    $anyUp = @($services | ForEach-Object { Get-ServiceProcs $_ }) | Where-Object { $_ }
+    if (-not $head) {
+        Write-Host "  Code    (git unavailable - cannot compare)" -ForegroundColor DarkGray
+    } elseif (-not $anyUp) {
+        Write-Host ("  Code    repo at {0} (nothing running)" -f $head) -ForegroundColor DarkGray
+    } elseif (-not $running) {
+        Write-Host ("  Code    UNKNOWN - started outside deploy; repo is at {0}" -f $head) -ForegroundColor Yellow
+        Write-Host "          restart to be sure:  deploy_app.bat" -ForegroundColor Yellow
+    } elseif ($running -eq $head) {
+        Write-Host ("  Code    up to date ({0})" -f $head) -ForegroundColor Green
+    } else {
+        Write-Host ("  Code    STALE - serving {0}, repo is at {1}" -f $running, $head) -ForegroundColor Red
+        Write-Host "          the app does NOT hot-reload; run:  deploy_app.bat" -ForegroundColor Red
+    }
     Write-Host "----------------------------------------" -ForegroundColor Cyan
     Write-Host "Deep check any time: uv run .claude\skills\app-verify\verify_app.py" -ForegroundColor DarkGray
+}
+
+function Deploy-App {
+    <#
+      One click from "I committed a fix" to "the public site serves it":
+      pull, sync deps if the lock moved, restart, verify.
+
+      Deliberately NOT folded into 'start': pulling is a network action with an
+      opinion about which code should run, and 'start' must stay the dumb,
+      idempotent, offline-safe verb it is today.
+    #>
+    Write-Host "Deploying Vercillo Analytics..." -ForegroundColor Cyan
+    $before = Get-HeadCommit
+
+    if (Test-WorkingTreeDirty) {
+        # Uncommitted work is a normal state here, and a pull would either fail
+        # or quietly rebase around it. Deploy what is checked out and say so.
+        Write-Host "  Pull    SKIPPED - working tree has uncommitted changes" -ForegroundColor Yellow
+        Write-Host "          deploying what is checked out locally" -ForegroundColor Yellow
+    } else {
+        Write-Host "  Pull    git pull --ff-only ..." -ForegroundColor Gray
+        try {
+            & git -C $repo pull --ff-only 2>&1 | ForEach-Object { Write-Host "          $_" -ForegroundColor DarkGray }
+            if ($LASTEXITCODE -ne 0) { throw "git pull exited $LASTEXITCODE" }
+        } catch {
+            # Offline, or the branch diverged. Local commits are still worth
+            # deploying, so this warns instead of aborting.
+            Write-Host "  Pull    FAILED ($_)" -ForegroundColor Yellow
+            Write-Host "          continuing with the local checkout" -ForegroundColor Yellow
+        }
+    }
+
+    $after = Get-HeadCommit
+    if ($before -and $after -and ($before -ne $after)) {
+        Write-Host ("  Pull    {0} -> {1}" -f $before, $after) -ForegroundColor Green
+        # Dependencies can move with the code; a restart into a stale venv fails
+        # in ways that look like application bugs.
+        $changed = (& git -C $repo diff --name-only "$before..$after" 2>$null)
+        if ("$changed" -match 'uv\.lock|pyproject\.toml') {
+            Write-Host "  Deps    lockfile moved - uv sync ..." -ForegroundColor Gray
+            try {
+                & uv sync 2>&1 | Select-Object -Last 3 | ForEach-Object { Write-Host "          $_" -ForegroundColor DarkGray }
+            } catch {
+                Write-Host "  Deps    uv sync failed: $_" -ForegroundColor Red
+                Write-Host "          fix this before the restart, or the app starts into a stale venv." -ForegroundColor Red
+                return
+            }
+        }
+    }
+
+    # Skip the downtime when there is genuinely nothing to deploy.
+    $running = Get-RunningCommit
+    $anyUp = @($services | ForEach-Object { Get-ServiceProcs $_ }) | Where-Object { $_ }
+    if ($anyUp -and $running -and $after -and ($running -eq $after) -and (Test-Health)) {
+        Write-Host "`nAlready serving $after and healthy - no restart needed." -ForegroundColor Green
+        Show-Status
+        return
+    }
+
+    Stop-App
+    Start-Sleep -Seconds 2
+    Start-App
 }
 
 switch ($Action) {
@@ -201,4 +328,5 @@ switch ($Action) {
     'stop'    { Stop-App }
     'restart' { Stop-App; Start-Sleep -Seconds 2; Start-App }
     'status'  { Show-Status }
+    'deploy'  { Deploy-App }
 }
