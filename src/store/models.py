@@ -76,6 +76,21 @@ class TrackMeta(Base):
     # primary key, NOT a foreign key, and NOTHING joins on it. The bridge key
     # stays spotify_track_id; dedup never mints or merges an id.
     duplicate_of = Column(String)
+    # ── D-70 (Vision F P4.6.6) ──────────────────────────────────────────────
+    # `fetchers._track_to_record` has ALWAYS built these four; remember_meta
+    # threw them away, so the SERVING CACHE never had them at all (measured
+    # 2026-07-30: isrc 0 of 2,357 meta rows). The 109 ISRCs that do exist live
+    # only in the old Parquet staging snapshots, which ingested ~150 top-tracks
+    # rows and never the playlist imports.
+    # `isrc` is the bridge into MusicBrainz -> the AcousticBrainz CC0 dump, so
+    # it GATES Phase 5's headline coverage number; album_release_date also
+    # explains the misses (the dump is frozen at 2022) and unlocks Epic R's
+    # album chronology. All fetched CONTEXT, all preserve-if-absent, and none
+    # of them costs an extra API call - they ride responses we already make.
+    isrc = Column(String)
+    album_id = Column(String)
+    album_type = Column(String)
+    album_release_date = Column(String)   # Spotify's own string: YYYY[-MM[-DD]]
     # Display context, captured from the top-tracks fetch that already carries
     # them (P3.1/D-36) — art for the library/guest-dashboard, the primary
     # artist's Spotify id to harden the name-keyed artist join. Nullable,

@@ -123,7 +123,12 @@ class FeatureCache:
                                      "duration_ms": "INTEGER",
                                      "duplicate_of": "VARCHAR",
                                      "album_image_url": "VARCHAR",
-                                     "primary_artist_id": "VARCHAR"},
+                                     "primary_artist_id": "VARCHAR",
+                                     # D-70: captured from responses we already make
+                                     "isrc": "VARCHAR",
+                                     "album_id": "VARCHAR",
+                                     "album_type": "VARCHAR",
+                                     "album_release_date": "VARCHAR"},
                       # K2c: chat_log predates the tool loop on live DBs
                       "chat_log": {"depth": "INTEGER"},
                       # K3: models trained before label_dims existed read NULL
@@ -372,6 +377,21 @@ class FeatureCache:
         return {m.spotify_track_id: {
             "track_name": m.track_name, "artist_names": m.artist_names,
         } for m in rows}
+
+    def all_track_identity(self) -> dict[str, dict]:
+        """{track_id: {isrc, album_id, album_type, album_release_date, album_name}} (D-70).
+
+        Kept OUT of the hot-path `all_meta` 2-field dict, same as
+        `all_durations_ms`. Two consumers: Phase 5's ISRC->MBID bridge (the
+        gate on its coverage number) and Epic R's album chronology.
+        """
+        with self._Session() as s:
+            rows = s.execute(select(
+                TrackMeta.spotify_track_id, TrackMeta.isrc, TrackMeta.album_id,
+                TrackMeta.album_type, TrackMeta.album_release_date,
+                TrackMeta.album_name)).all()
+        return {r[0]: {"isrc": r[1], "album_id": r[2], "album_type": r[3],
+                       "album_release_date": r[4], "album_name": r[5]} for r in rows}
 
     def all_durations_ms(self) -> dict[str, Optional[int]]:
         """{track_id: duration_ms} in bulk — the match's duration target (O2).
@@ -789,7 +809,10 @@ class FeatureCache:
                         artist_names=it.get("artist_names") or it.get("artist"),
                         album_name=it.get("album_name"), popularity=pop,
                         duration_ms=dur, album_image_url=art,
-                        primary_artist_id=paid))
+                        primary_artist_id=paid,
+                        isrc=it.get("isrc"), album_id=it.get("album_id"),
+                        album_type=it.get("album_type"),
+                        album_release_date=it.get("album_release_date")))
                     continue
                 row.track_name = it.get("track_name") or it.get("name") or row.track_name
                 row.artist_names = (it.get("artist_names") or it.get("artist")
@@ -803,6 +826,12 @@ class FeatureCache:
                     row.album_image_url = art        # display context (P3.1), same posture
                 if paid:
                     row.primary_artist_id = paid     # hardens the artist join (P3.1)
+                # D-70, same preserve-if-absent posture: a fetch that omits a
+                # field must never NULL what an earlier one stored.
+                for _f in ("isrc", "album_id", "album_type", "album_release_date"):
+                    _v = it.get(_f)
+                    if _v:
+                        setattr(row, _f, _v)
             s.commit()
 
     def all_popularity(self) -> dict[str, int]:

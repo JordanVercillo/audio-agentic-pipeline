@@ -514,6 +514,47 @@ def check_plane_agreement(modeled_dir: Path, marts_dir: Path):
     return warns, flags
 
 
+def check_gold_schema():
+    """GOLD_SCHEMA_SHRINK — has a promised gold column stopped being written?
+
+    The D-60 exporter narrowed `dim_tracks` from 10 columns to 6 (album_name,
+    album_release_date, isrc and more), and nothing noticed for weeks because
+    nothing happened to read them — the failure was reserved for the first
+    person to write `SELECT album_release_date FROM dim_tracks` against the
+    documented star schema. Row counts and join coverage were all green
+    throughout: no existing check looks at the shape of what we PROMISE.
+
+    A FLOOR, not an equality check: adding columns is fine and common, so only
+    disappearance is a finding. Absent manifest or absent tables = silent.
+    """
+    flags = {"GOLD_SCHEMA_SHRINK": False}
+    warnings: list[str] = []
+    report: dict = {}
+    manifest = REPO / "docs" / "gold_schema_manifest.json"
+    if not manifest.exists():
+        return report, warnings, flags
+    try:
+        spec = json.loads(manifest.read_text(encoding="utf-8"))
+        for section in ("owned_by_exporter", "frozen_plane"):
+            for name, promised in (spec.get(section) or {}).items():
+                path = WAREHOUSE / "modeled" / f"{name}.parquet"
+                if not path.exists():
+                    continue
+                actual = set(pd.read_parquet(path).columns)
+                missing = sorted(set(promised) - actual)
+                report[name] = {"promised": len(promised), "actual": len(actual),
+                                "missing": missing}
+                if missing:
+                    warnings.append(
+                        f"gold/{name}: {len(missing)} promised column(s) no longer "
+                        f"written ({', '.join(missing[:5])}"
+                        f"{' …' if len(missing) > 5 else ''}) — GOLD_SCHEMA_SHRINK")
+                    flags["GOLD_SCHEMA_SHRINK"] = True
+    except Exception as exc:  # noqa: BLE001 — the audit must never be what breaks
+        warnings.append(f"gold schema check skipped: {type(exc).__name__}: {exc}")
+    return report, warnings, flags
+
+
 def check_cluster_freshness():
     """D-62: is the SERVING cluster model still describing today's corpus?
 
@@ -770,6 +811,10 @@ def main() -> int:
     cf_report, cf_warnings, cf_flags = check_cluster_freshness()
     warnings.extend(cf_warnings)
 
+    # --- gold schema contract (P4.6.6) -------------------------------------
+    gs_report, gs_warnings, gs_flags = check_gold_schema()
+    warnings.extend(gs_warnings)
+
     flags = {
         "NO_WAREHOUSE": False,
         "MISSING_LAYER": missing_layer,
@@ -785,10 +830,12 @@ def main() -> int:
         **dis_flags,
         **pa_flags,
         **cf_flags,
+        **gs_flags,
     }
     print(json.dumps({"layers": layers, "audio": audio, "marts": marts_report,
                       "duplicates": dup_report, "disagreements": dis_report,
                       "cluster_freshness": cf_report,
+                      "gold_schema": gs_report,
                       "errors": errors,
                       "warnings": warnings, "flags": flags}, indent=2))
     return 0

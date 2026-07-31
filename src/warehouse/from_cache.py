@@ -54,11 +54,21 @@ def build_dim_tracks(cache: Any) -> pd.DataFrame:
     construction, so the metadata dedup check finds zero clusters."""
     ids = set(canonical_ids(cache))
     durs = cache.all_durations_ms()
+    # P4.6.6: the D-60 exporter narrowed dim_tracks to 6 columns, silently
+    # dropping album_name / album_release_date / isrc that the old
+    # `modeled.py` build carried. Nothing consumed them, so nothing failed —
+    # but the documented star schema promised them, and the first
+    # `SELECT album_release_date FROM dim_tracks` (an MCP query, a notebook)
+    # would have been a KeyError. D-70 now captures the identity fields, so
+    # the dimension can carry them honestly instead of being quietly thinner
+    # than its own contract.
+    ident = cache.all_track_identity()
     rows = []
     for r in cache.library_rows():                 # carries name/artist/primary_artist_id
         if r["id"] not in ids:
             continue
         artist = r.get("artist") or ""
+        idt = ident.get(r["id"]) or {}
         rows.append({
             "spotify_track_id": r["id"],
             "track_name": r.get("name"),
@@ -66,6 +76,11 @@ def build_dim_tracks(cache: Any) -> pd.DataFrame:
             "primary_artist_name": artist.split(",")[0].strip(),
             "primary_artist_id": r.get("primary_artist_id"),
             "duration_ms": durs.get(r["id"]),
+            "album_name": idt.get("album_name"),
+            "album_id": idt.get("album_id"),
+            "album_type": idt.get("album_type"),
+            "album_release_date": idt.get("album_release_date"),
+            "isrc": idt.get("isrc"),
         })
     return pd.DataFrame(sorted(rows, key=lambda x: x["spotify_track_id"]))
 
