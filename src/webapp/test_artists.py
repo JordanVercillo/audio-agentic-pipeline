@@ -165,9 +165,20 @@ _TASTE = {"range_ids": {"short_term": ["m1", "q1"], "long_term": ["m2"]},
                       {"name": "Quiet Band", "genres": ""}]}
 
 
-def test_artists_anon_redirects(client):
+def test_artists_is_public_and_shows_the_corpus_not_a_taste(client, monkeypatch, tmp_path):
+    """R1: was viewer-gated and built from session["taste"]["artists"], so it
+    showed ~15 artists and anon saw none. It is now the CORPUS index, which is
+    what makes it publishable — it carries nothing personal."""
+    monkeypatch.setattr("src.webapp.app._feature_cache", lambda: _seed_cache(tmp_path))
     r = client.get("/artists", follow_redirects=False)
-    assert r.status_code == 303 and r.headers["location"] == "/"
+    assert r.status_code == 200
+    assert "Your artists" not in r.text or 'tab=mine' not in r.text  # no personal tab for anon
+
+
+def test_artists_mine_tab_falls_back_to_all_for_anon(client, monkeypatch, tmp_path):
+    monkeypatch.setattr("src.webapp.app._feature_cache", lambda: _seed_cache(tmp_path))
+    r = client.get("/artists?tab=mine", follow_redirects=False)
+    assert r.status_code == 200
 
 
 def test_artists_guest_renders_readonly(client, monkeypatch, tmp_path):
@@ -294,3 +305,110 @@ def test_fetch_artist_top_tracks_absent_safe():
     assert len(df) == 10                                      # hard-capped at 10
     assert list(df["rank"]) == list(range(1, 11))
     assert df.iloc[0]["primary_artist_id"] == "ar1"
+
+
+# ── R1 (P4.7.2): the corpus-scale index ──────────────────────────────────────
+def test_corpus_index_groups_by_id_and_counts_the_name_fallback():
+    """Grouping on primary_artist_id is not a second identity system — it's
+    Spotify's own id, already stored and already the /artist/{id} route key.
+    Tracks without one fall back to the NAME and are COUNTED, because two
+    different artists sharing a name would otherwise merge invisibly."""
+    from .artists import corpus_artist_index
+
+    metas = {
+        "t1": {"artist_names": "Muse", "track_name": "A"},
+        "t2": {"artist_names": "Muse", "track_name": "B"},
+        "t3": {"artist_names": "Nameless", "track_name": "C"},   # no id anywhere
+    }
+    lib = [{"id": "t1", "primary_artist_id": "MUSEID"},
+           {"id": "t2", "primary_artist_id": "MUSEID"},
+           {"id": "t3"}]
+    idx = corpus_artist_index(metas, {}, {}, lib)
+
+    assert idx["n_artists"] == 2
+    muse = [c for c in idx["cards"] if c["name"] == "Muse"][0]
+    assert muse["artist_id"] == "MUSEID" and muse["n_tracks"] == 2
+    assert muse["keyed_by"] == "id"
+    nameless = [c for c in idx["cards"] if c["name"] == "Nameless"][0]
+    assert nameless["artist_id"] is None and nameless["keyed_by"] == "name"
+    # the fallback is REPORTED, never silent
+    assert idx["n_name_keyed"] == 1 and idx["n_tracks_name_matched"] == 1
+    assert idx["n_linkable"] == 1
+
+
+def test_corpus_index_is_not_bounded_by_a_taste_snapshot():
+    """The bug R1 fixes: the page could only show artists in session taste."""
+    from .artists import corpus_artist_index
+
+    metas = {f"t{i}": {"artist_names": f"Artist {i}"} for i in range(40)}
+    lib = [{"id": f"t{i}", "primary_artist_id": f"A{i}"} for i in range(40)]
+    idx = corpus_artist_index(metas, {}, {}, lib)
+    assert idx["n_artists"] == 40
+
+
+def test_artists_search_and_pagination_cover_the_whole_index():
+    from .artists import artists_view, corpus_artist_index
+    from .library import page_slice
+
+    metas = {f"t{i}": {"artist_names": f"Band {i:03d}"} for i in range(120)}
+    lib = [{"id": f"t{i}", "primary_artist_id": f"A{i}"} for i in range(120)]
+    idx = corpus_artist_index(metas, {}, {}, lib)
+
+    v = artists_view(idx, q="Band 0")           # Band 000-099 -> 100 matches
+    assert v["shown"] == 100 and v["total"] == 120
+    # per is an ALLOWLIST (50/100/250) — an arbitrary size falls back, which is
+    # the ?per=100000 guard, so pagination is exercised with a real size.
+    page = page_slice(v, page=2, per=50)
+    assert page["pages"] == 2 and len(page["page_rows"]) == 50
+    assert page["from_index"] == 51 and page["to_index"] == 100
+    # the lede counts the whole matching set, never the visible slice
+    assert v["shown"] == 100
+
+
+def test_song_page_links_to_its_artist(client, monkeypatch, tmp_path):
+    """F5: there was no path from a song to its artist anywhere in the app."""
+    cache = _seed_cache(tmp_path)
+    cache.remember_meta([{"spotify_track_id": "s1", "track_name": "Song",
+                          "artist_names": "Muse", "primary_artist_id": "MUSEID"}])
+    monkeypatch.setattr("src.webapp.app._feature_cache", lambda: cache)
+    r = client.get("/song/s1")
+    assert r.status_code == 200
+    assert '/artist/MUSEID' in r.text
+
+
+def test_a_name_only_group_folds_into_its_id_group():
+    """Found by searching the LIVE index: "Muse" rendered as TWO cards because
+    some of its tracks carry no primary_artist_id. Avoiding a silent merge is
+    right; showing the same artist twice is not."""
+    from .artists import corpus_artist_index
+
+    metas = {"t1": {"artist_names": "Muse"}, "t2": {"artist_names": "Muse"},
+             "t3": {"artist_names": "Muse"}}
+    lib = [{"id": "t1", "primary_artist_id": "MUSEID"},
+           {"id": "t2", "primary_artist_id": "MUSEID"},
+           {"id": "t3"}]                                  # no id on this one
+    idx = corpus_artist_index(metas, {}, {}, lib)
+
+    assert idx["n_artists"] == 1
+    card = idx["cards"][0]
+    assert card["artist_id"] == "MUSEID" and card["n_tracks"] == 3
+    # folded, but COUNTED — the page can say how much rests on a name match
+    assert card["n_name_matched"] == 1
+    assert idx["n_tracks_folded_by_name"] == 1
+
+
+def test_an_ambiguous_name_is_left_split_on_purpose():
+    """Two DIFFERENT artists sharing a name is exactly the case a silent merge
+    would fuse — so that one stays split even though it looks untidy."""
+    from .artists import corpus_artist_index
+
+    metas = {"t1": {"artist_names": "Nova"}, "t2": {"artist_names": "Nova"},
+             "t3": {"artist_names": "Nova"}}
+    lib = [{"id": "t1", "primary_artist_id": "NOVA_A"},
+           {"id": "t2", "primary_artist_id": "NOVA_B"},   # same name, other id
+           {"id": "t3"}]                                  # ambiguous → no fold
+    idx = corpus_artist_index(metas, {}, {}, lib)
+
+    assert idx["n_artists"] == 3, "an ambiguous name was silently merged"
+    assert idx["n_tracks_folded_by_name"] == 0
+    assert idx["n_name_keyed"] == 1

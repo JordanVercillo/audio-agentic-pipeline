@@ -2,10 +2,36 @@
 {% block title %}Artists — Vercillo Analytics{% endblock %}
 {% block content %}
 <section class="dash">
-  <h1>Your artists</h1>
-  <p class="lede">Your top artists with their <b>stored</b> Spotify metadata and the
-    acoustic character of the tracks we've actually analyzed — hover a card for its
-    numbers, click a name for the deep-dive.</p>
+  <h1>Artists</h1>
+  <p class="lede">Every artist in the corpus — <b>{{ total }}</b> of them — with their
+    <b>stored</b> Spotify metadata and the acoustic character of the tracks we've
+    actually analyzed. Search below; click a name for the deep-dive.</p>
+
+  <div class="tabs">
+    <a class="tab{{ ' is-active' if tab == 'all' else '' }}"
+       href="/artists">All artists <b>{{ total }}</b></a>
+    {% if viewer %}
+    <a class="tab{{ ' is-active' if tab == 'mine' else '' }}"
+       href="/artists?tab=mine">Your artists <b>{{ my_count }}</b></a>
+    {% endif %}
+  </div>
+
+  <form method="get" action="/artists" class="lib-form">
+    {% if tab != 'all' %}<input type="hidden" name="tab" value="{{ tab }}">{% endif %}
+    {% if genre %}<input type="hidden" name="genre" value="{{ genre }}">{% endif %}
+    <input type="search" name="q" value="{{ q }}" placeholder="search artist"
+           aria-label="search artists">
+    <button type="submit">Search</button>
+    {% if q %}<a class="chip chip-clear" href="/artists{{ '?tab=mine' if tab == 'mine' else '' }}">× clear</a>{% endif %}
+  </form>
+
+  <p class="cap">Showing {{ from_index }}–{{ to_index }} of <b>{{ shown }}</b>
+    {%- if q or genre %} matching{% endif %} · {{ n_linkable }} of {{ total }} have a
+    Spotify id we can open a page for{% if n_name_keyed %}, {{ n_name_keyed }} are
+    grouped by name alone (no id on any of their tracks){% endif %}.
+    {% if n_folded %}{{ n_folded }} track(s) joined an artist by name rather than
+    id; where a name matches two different artists we leave them separate rather
+    than guess.{% endif %}</p>
 
   {% if strip.genres %}
   <div class="genre-strip">
@@ -15,13 +41,14 @@
     {% endfor %}
     {% if genre %}<a class="chip chip-clear" href="/artists">× clear filter</a>{% endif %}
   </div>
-  <p class="cap">Genres known for <b>{{ strip.covered }} of {{ strip.total }}</b> of your
-    artists — Spotify's genre arrays are sparse and now deprecated (stored copy shown);
-    unlabeled artists carry their acoustic cluster label on Analytics instead.</p>
+  <p class="cap">Genres known for <b>{{ strip.covered }} of {{ strip.total }}</b> of the
+    artists on this page — Spotify's genre arrays are sparse and now deprecated (stored
+    copy shown); unlabeled artists carry their acoustic cluster label on Analytics
+    instead.</p>
   {% endif %}
 
   {% if chart %}
-  <h2 class="section">Compared by {{ friendly|lower }}</h2>
+  <h2 class="section">Compared by {{ friendly|lower }} <span class="muted">· this page</span></h2>
   <form method="get" action="/artists" class="cmp-form">
     {% if genre %}<input type="hidden" name="genre" value="{{ genre }}">{% endif %}
     <select name="f" onchange="this.form.submit()">
@@ -47,7 +74,7 @@
         {% if c.artist_id %}<a class="tname" href="/artist/{{ c.artist_id }}">{{ c.name }}</a>
         {% else %}<span class="tname" title="no Spotify id stored yet — log in refreshes this">{{ c.name }}</span>{% endif %}
         <span class="tartist">{{ c.genres or "no genres on record" }}</span>
-        <span class="cap">{{ c.n_analyzed }} of {{ c.n_tracks }} in your library analyzed{% if c.popularity is not none %} · popularity {{ c.popularity }}{% endif %}</span>
+        <span class="cap">{{ c.n_analyzed }} of {{ c.n_tracks }} analyzed{% if c.popularity is not none %} · popularity {{ c.popularity }}{% endif %}</span>
       </span>
       <div class="feat-pop" role="tooltip">
         {% if c.popularity is not none %}<span><b>{{ c.popularity }}</b> popularity</span>{% endif %}
@@ -59,5 +86,14 @@
     </div>
     {% endfor %}
   </div>
+
+  {% if pager %}
+  <nav class="pager" aria-label="artist pages">
+    {% for l in pager %}{% if l.url %}<a class="page{{ ' is-current' if l.current else '' }}" href="{{ l.url }}"{% if l.current %} aria-current="page"{% endif %}>{{ l.label }}</a>{% else %}<span class="page gap">…</span>{% endif %}{% endfor %}
+  </nav>
+  <p class="cap">Page {{ page }} of {{ pages }} — search and the genre filter cover
+    all {{ shown }} matching artists, not just this page.
+    {% if not is_all %}<a href="{{ all_url }}">Show all {{ shown }} on one page →</a>{% endif %}</p>
+  {% endif %}
 </section>
 {% endblock %}

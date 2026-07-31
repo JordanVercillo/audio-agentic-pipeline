@@ -211,11 +211,16 @@ def pager_query(params: dict, **overrides) -> str:
 
 
 def page_links(params: dict, nav: dict[str, Any],
-               window: int = 2) -> list[dict[str, Any]]:
+               window: int = 2, base: str = "/library") -> list[dict[str, Any]]:
     """Pager entries: first, last, ±`window` around current, '…' for the gaps.
 
     The LAST page is always present. A pager that cannot reach the tail hides
-    tracks as effectively as an infinite scroll does."""
+    tracks as effectively as an infinite scroll does.
+
+    `base` exists because R1 reuses this pager on /artists: the URL was
+    hardcoded, and the alternative to parameterising it was a second pager
+    with the same tail-reachability bug waiting to be reintroduced.
+    """
     pages, cur = nav["pages"], nav["page"]
     if pages <= 1:
         return []
@@ -227,7 +232,7 @@ def page_links(params: dict, nav: dict[str, Any],
         if prev and p != prev + 1:
             out.append({"label": "…", "url": None, "current": False})
         out.append({"label": str(p),
-                    "url": f"/library?{pager_query(params, page=p)}",
+                    "url": f"{base}?{pager_query(params, page=p)}",
                     "current": p == cur})
         prev = p
     return out

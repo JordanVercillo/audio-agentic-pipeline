@@ -42,6 +42,7 @@ from ..ingestion.fetchers import (
 from ..store import clusters as cl
 from ..store.cache import _SIMILARITY_COLS, FeatureCache
 from ..store.dedup import canonicalize_ids, canonicalize_range_ids
+from . import artists as artists_view_mod
 from . import auth_web, config
 from . import library as library_view_mod
 from . import playlists as playlists_mod
@@ -59,7 +60,7 @@ from .archetype import archetype_taxonomy, derive_archetype
 from .artists import (
     artist_rollup,
     comparison_svg,
-    filter_by_genre,
+    corpus_artist_index,
     genre_strip,
     nearest_artists,
     your_top_by_artist,
@@ -1085,30 +1086,62 @@ def create_app() -> FastAPI:
     _TRACK_ID_RE = re.compile(r"[0-9A-Za-z]{1,64}")   # base62; rejects path-traversal on public /song
 
     @app.get("/artists", response_class=HTMLResponse)
-    def artists_view(request: Request, genre: str = "", f: str = "energy"):
+    def artists_view(request: Request):
+        """R1 (P4.7.2): the CORPUS artist index — PUBLIC, paginated, searchable.
+
+        Was viewer-gated and built from `session["taste"]["artists"]`, so it
+        showed ~15 artists while the corpus knew ~915 and an anonymous visitor
+        reached none of them. Building from the corpus is also what makes the
+        surface taste-free and therefore publishable (D-18) — the same
+        population-only move that made /library public, with no builder
+        refactor needed.
+
+        The 'Your artists' tab overlays a viewer's own top artists on top.
+        """
         session = request.state.session
-        if not _is_viewer(session):
-            return RedirectResponse("/", status_code=303)
-        taste = session.get("taste") or {}
-        t_artists = taste.get("artists") or []
-        if not t_artists:
-            return RedirectResponse(
-                "/dashboard" if auth_web.is_authenticated(session) else "/", status_code=303)
+        params = dict(request.query_params)
+        flags = _viewer_flags(session)
         cache = _feature_cache()
-        cards = artist_rollup(t_artists, cache.all_meta(),
-                              cache.all_perceptual(), cache.all_artist_meta())
-        strip = genre_strip(cards)
-        filtered = filter_by_genre(cards, genre)
+        index = corpus_artist_index(cache.all_meta(), cache.all_perceptual(),
+                                    cache.all_artist_meta(), cache.library_rows())
+        tab = params.get("tab") if params.get("tab") in ("all", "mine") else "all"
+        if tab == "mine" and not flags["viewer"]:
+            tab = "all"                        # anon can't land on a personal tab
+        taste = session.get("taste") or {}
+        my_names = {(a.get("name") or "") for a in (taste.get("artists") or [])}
+        my_count = len(my_names) if flags["viewer"] else 0
+
+        v = artists_view_mod.artists_view(
+            index, q=(params.get("q") or "").strip(),
+            genre=params.get("genre") or "",
+            mine_names=my_names if tab == "mine" else None)
+        # Filtering ran over the whole index above; this only slices it.
+        page = library_view_mod.page_slice(v, page=params.get("page"),
+                                           per=params.get("per"))
+        # The chart compares what is ON SCREEN — over 915 artists it would be
+        # unreadable, and over a filtered set it answers the question asked.
         catalog = load_catalog()
         features = (catalog[["column", "friendly"]].to_dict("records")
                     if catalog is not None else
-                    [{"column": c, "friendly": c.title()} for c in ("energy", "tempo", "danceability")])
-        chosen = f if any(r["column"] == f for r in features) else "energy"
+                    [{"column": c, "friendly": c.title()}
+                     for c in ("energy", "tempo", "danceability")])
+        chosen = params.get("f") if any(
+            r["column"] == params.get("f") for r in features) else "energy"
         friendly = next((r["friendly"] for r in features if r["column"] == chosen), chosen)
         return templates.TemplateResponse(request, "artists.html", {
-            **_viewer_flags(session), "cards": filtered, "total_cards": len(cards),
-            "strip": strip, "genre": (genre or "").strip().lower(),
-            "chart": comparison_svg(filtered, chosen, friendly),
+            **flags, "tab": tab, "cards": page["page_rows"],
+            "shown": v["shown"], "total": v["total"], "my_count": my_count,
+            "n_linkable": v["n_linkable"], "n_with_genres": v["n_with_genres"],
+            "n_name_keyed": v["n_name_keyed"], "n_folded": v["n_folded"],
+            "q": v["q"], "genre": v["genre"],
+            "strip": genre_strip(v["rows"]),
+            "page": page["page"], "pages": page["pages"], "per": page["per"],
+            "is_all": page["is_all"], "from_index": page["from_index"],
+            "to_index": page["to_index"], "page_sizes": page["page_sizes"],
+            "pager": library_view_mod.page_links(params, page, base="/artists"),
+            "all_url": "/artists?" + library_view_mod.pager_query(
+                params, per="all", page=None),
+            "chart": comparison_svg(page["page_rows"], chosen, friendly),
             "features": features, "chosen": chosen, "friendly": friendly})
 
     @app.get("/artist/{artist_id}", response_class=HTMLResponse)
@@ -1568,6 +1601,9 @@ def create_app() -> FastAPI:
             **_viewer_flags(session), "track_id": track_id,
             "name": meta.get("track_name") or track_id,
             "artist": meta.get("artist_names") or "",
+            # F5: there was NO path from a song to its artist anywhere in the
+            # app. The id is already stored on the meta row (97% coverage).
+            "primary_artist_id": meta.get("primary_artist_id"),
             "analyzed": features is not None,
             # Q2/D-51: where this track's audio came from. None until the Q3
             # backfill (the honest ∅ tier). youtube_title/channel are UNTRUSTED
@@ -1639,6 +1675,9 @@ def create_app() -> FastAPI:
             **_viewer_flags(session), "track_id": track_id,
             "name": meta.get("track_name") or track_id,
             "artist": meta.get("artist_names") or "",
+            # F5: there was NO path from a song to its artist anywhere in the
+            # app. The id is already stored on the meta row (97% coverage).
+            "primary_artist_id": meta.get("primary_artist_id"),
             "analyzed": features is not None,
             "source_validated": provenance is not None,
             "detail": None, "promoted": list(RAW_FEATURE_PROMOTED),

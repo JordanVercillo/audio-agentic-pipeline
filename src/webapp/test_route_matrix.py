@@ -174,8 +174,12 @@ MATRIX: list[Row] = [
         USER: Expect(200, effects=frozenset({LLM})),
         OWNER: Expect(200, effects=frozenset({LLM}))}),
 
-    Row("/artists", "GET", "/artists", "viewer-gated", {
-        ANON: _gate("/"),
+    # R1 (P4.7.2): PUBLIC — the index is built from the CORPUS, not from a
+    # visitor's taste, so it carries nothing personal (the same population-only
+    # move that made /library public, D-18). The "Your artists" TAB is still
+    # viewer-only and falls back to "all" for anon.
+    Row("/artists", "GET", "/artists", "D-18 public corpus index", {
+        ANON: Expect(200, effects=NONE),
         GUEST: Expect(200, effects=NONE),
         USER: Expect(200),
         OWNER: Expect(200)}),

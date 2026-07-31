@@ -5,7 +5,7 @@
   {% if authed %}<a class="back" href="/dashboard">← Back to your dashboard</a>
   {% else %}<a class="back" href="/library">← Back to Library</a>{% endif %}
   <h1>{{ name }}</h1>
-  <p class="muted artist-line">{{ artist }}</p>
+  <p class="muted artist-line">{% if primary_artist_id %}<a href="/artist/{{ primary_artist_id }}">{{ artist }}</a>{% else %}{{ artist }}{% endif %}</p>
   {% if canonical %}
   <p class="cap dup">↔ This release is the same recording as
     <a href="/song/{{ canonical.id }}">{{ canonical.name }}</a> — the features and

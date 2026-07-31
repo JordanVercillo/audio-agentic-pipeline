@@ -216,3 +216,142 @@ def nearest_artists(artist_name: str, features: dict[str, dict],
                        "n_tracks": len(by_artist[name])})
     ranked.sort(key=lambda r: r["distance"])
     return ranked[:k]
+
+
+# ── R1: the CORPUS-scale artist index (Vision F P4.7.2) ──────────────────────
+def corpus_artist_index(metas: dict[str, dict], perceptual: dict[str, dict],
+                        artist_meta: dict[str, dict],
+                        library_rows: Optional[list[dict]] = None,
+                        ) -> dict[str, Any]:
+    """Every artist the CORPUS knows, not just the visitor's top ~15.
+
+    `/artists` built its cards from `session["taste"]["artists"]`, so the page
+    could only ever show about fifteen while `artist_rollup.parquet` carried
+    ~892 — and an anonymous visitor reached none of them. This builds the index
+    from the corpus itself, which is also what makes the surface public
+    (taste-free, D-18) instead of a private snapshot.
+
+    Grouped by `primary_artist_id` — Spotify's own id, stored on 97% of tracks
+    and already the `/artist/{id}` route key. That is NOT a second identity
+    system (ground rule 1): `spotify_track_id` remains the only cross-layer
+    bridge key, and this id is an attribute we group on.
+
+    Tracks with no id fall back to their primary-artist NAME and are COUNTED,
+    never silently folded in: two different artists sharing a name would
+    otherwise merge invisibly, which is the failure mode a silent fallback
+    always hides.
+    """
+    by_id = {a.get("artist_id"): a for a in artist_meta.values() if a.get("artist_id")}
+    by_name = {(a.get("artist_name") or "").lower(): a for a in artist_meta.values()}
+    art_by_id = {r["id"]: r.get("primary_artist_id")
+                 for r in (library_rows or []) if r.get("primary_artist_id")}
+
+    groups: dict[str, dict[str, Any]] = {}
+    n_name_fallback = 0
+    for tid, m in metas.items():
+        name = primary_artist(m.get("artist_names"))
+        if not name:
+            continue
+        aid = art_by_id.get(tid)
+        if aid:
+            key, keyed_by = aid, "id"
+        else:
+            key, keyed_by = f"name:{name.lower()}", "name"
+            n_name_fallback += 1
+        g = groups.setdefault(key, {"name": name, "artist_id": aid if aid else None,
+                                    "keyed_by": keyed_by, "tids": []})
+        g["tids"].append(tid)
+        if aid and not g["artist_id"]:
+            g["artist_id"], g["keyed_by"] = aid, "id"
+
+    # Fold a name-keyed group into an id-keyed one when the name matches
+    # EXACTLY ONE of them. Without this the same artist appears twice — some of
+    # Muse's tracks carry no primary_artist_id, so "Muse" rendered as two cards
+    # (caught by searching the live index). An AMBIGUOUS name (matching two
+    # different ids) is left split on purpose: that is the case where merging
+    # would fuse two different artists, which is the whole reason the fallback
+    # is counted rather than silent.
+    by_name_key: dict[str, list[str]] = {}
+    for key, g in groups.items():
+        if g["keyed_by"] == "id":
+            by_name_key.setdefault(g["name"].lower(), []).append(key)
+    n_folded_tracks = 0
+    for key in [k for k, g in groups.items() if g["keyed_by"] == "name"]:
+        g = groups[key]
+        targets = by_name_key.get(g["name"].lower(), [])
+        if len(targets) == 1:
+            groups[targets[0]]["tids"].extend(g["tids"])
+            groups[targets[0]]["n_name_matched"] = (
+                groups[targets[0]].get("n_name_matched", 0) + len(g["tids"]))
+            n_folded_tracks += len(g["tids"])
+            del groups[key]
+
+    cards: list[dict[str, Any]] = []
+    for g in groups.values():
+        aid = g["artist_id"]
+        am = by_id.get(aid) or by_name.get(g["name"].lower(), {})
+        analyzed = [t for t in g["tids"] if t in perceptual]
+        feats = {c: _mean([float(perceptual[t][c]) for t in analyzed
+                           if isinstance(perceptual[t].get(c), (int, float))])
+                 for c in _CARD_FEATURES}
+        cards.append({
+            "name": g["name"],
+            "artist_id": aid,
+            "genres": am.get("genres") or "",
+            "popularity": am.get("popularity"),
+            "followers": am.get("followers"),
+            "image": am.get("image_url"),
+            "n_tracks": len(g["tids"]),
+            "n_analyzed": len(analyzed),
+            "feat": feats,
+            "keyed_by": g["keyed_by"],
+            # how many of this artist's tracks were matched by NAME, not id
+            "n_name_matched": g.get("n_name_matched", 0),
+        })
+    cards.sort(key=lambda c: (-c["n_analyzed"], c["name"].lower()))
+    return {
+        "cards": cards,
+        "n_artists": len(cards),
+        # Stated, not hidden: how much of the index rests on a name match, and
+        # how many artists we cannot link to a page at all.
+        "n_name_keyed": sum(1 for c in cards if c["keyed_by"] == "name"),
+        "n_tracks_name_matched": n_name_fallback,
+        "n_tracks_folded_by_name": n_folded_tracks,
+        "n_linkable": sum(1 for c in cards if c["artist_id"]),
+        "n_with_genres": sum(1 for c in cards if c["genres"]),
+    }
+
+
+def search_artists(cards: list[dict], q: Optional[str]) -> list[dict]:
+    """Substring match on the artist name (case-insensitive). Empty q = all."""
+    term = (q or "").strip().lower()
+    if not term:
+        return list(cards)
+    return [c for c in cards if term in c["name"].lower()]
+
+
+def artists_view(index: dict[str, Any], *, q: str = "", genre: str = "",
+                 mine_names: Optional[set[str]] = None) -> dict[str, Any]:
+    """Filter the corpus index for one page render.
+
+    Filtering happens over the WHOLE index here; `page_slice` only ever slices
+    THIS output, so a page-local sort is unrepresentable — the /library
+    discipline, reused rather than reinvented.
+    """
+    cards = index["cards"]
+    if mine_names is not None:
+        lower = {n.lower() for n in mine_names}
+        cards = [c for c in cards if c["name"].lower() in lower]
+    cards = filter_by_genre(cards, genre)
+    cards = search_artists(cards, q)
+    return {
+        "rows": cards,
+        "shown": len(cards),
+        "total": index["n_artists"],
+        "n_linkable": index["n_linkable"],
+        "n_with_genres": index["n_with_genres"],
+        "n_name_keyed": index["n_name_keyed"],
+        "n_folded": index["n_tracks_folded_by_name"],
+        "q": q,
+        "genre": (genre or "").strip().lower(),
+    }

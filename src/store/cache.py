@@ -851,7 +851,10 @@ class FeatureCache:
             return {"spotify_track_id": m.spotify_track_id, "track_name": m.track_name,
                     "artist_names": m.artist_names, "album_name": m.album_name,
                     "popularity": m.popularity,
-                    "duration_ms": m.duration_ms}  # O2: the match's duration target
+                    "duration_ms": m.duration_ms,   # O2: the match's duration target
+                    # R1/F5: lets /song link to the artist page without a
+                    # second lookup (stored on 97% of rows).
+                    "primary_artist_id": m.primary_artist_id}
 
     # ── artist metadata (P3.1 / D-36) ────────────────────────────────────────
     def remember_artists(self, items: list[dict]) -> None:

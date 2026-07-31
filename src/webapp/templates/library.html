@@ -75,7 +75,7 @@
         {% if r.n_versions %}<span class="cap dup" title="{{ r.alt_names|join(' · ') }}">{{ r.n_versions }} releases of this recording</span>{% endif %}
         {% if r.same_as %}<span class="cap dup">↔ same recording as {{ r.same_as }}</span>{% endif %}
         {% if ns_filtered and r.id in ns_reasons %}<span class="cap dup">⚠ {{ ns_reasons[r.id] }}</span>{% endif %}</td>
-      <td class="tartist">{{ r.artist }}</td>
+      <td class="tartist">{% if r.primary_artist_id %}<a href="/artist/{{ r.primary_artist_id }}">{{ r.artist }}</a>{% else %}{{ r.artist }}{% endif %}</td>
       <td class="num">{{ r.popularity if r.popularity is not none else '—' }}</td>
       {# no verified source → no numbers (owner call): a BPM we can't trace to
          a recording is presented as nothing, not as fact. #}
