@@ -323,7 +323,7 @@ def test_corpus_index_groups_by_id_and_counts_the_name_fallback():
     lib = [{"id": "t1", "primary_artist_id": "MUSEID"},
            {"id": "t2", "primary_artist_id": "MUSEID"},
            {"id": "t3"}]
-    idx = corpus_artist_index(metas, {}, {}, lib)
+    idx = corpus_artist_index(metas, {}, {"MUSEID": {"artist_id": "MUSEID"}}, lib)
 
     assert idx["n_artists"] == 2
     muse = [c for c in idx["cards"] if c["name"] == "Muse"][0]
@@ -387,7 +387,7 @@ def test_a_name_only_group_folds_into_its_id_group():
     lib = [{"id": "t1", "primary_artist_id": "MUSEID"},
            {"id": "t2", "primary_artist_id": "MUSEID"},
            {"id": "t3"}]                                  # no id on this one
-    idx = corpus_artist_index(metas, {}, {}, lib)
+    idx = corpus_artist_index(metas, {}, {"MUSEID": {"artist_id": "MUSEID"}}, lib)
 
     assert idx["n_artists"] == 1
     card = idx["cards"][0]
@@ -507,3 +507,43 @@ def test_artist_signature_refuses_on_too_few_tracks():
     pop = [{c: float(i) for c in cols} for i in range(30)]
     two = {"a": {c: 1.0 for c in cols}, "b": {c: 2.0 for c in cols}}
     assert artist_signature(["a", "b"], two, pop) is None
+
+
+def test_a_card_only_links_when_the_artist_page_can_actually_resolve_it():
+    """The director review's blocker: `n_linkable` was computed from the TRACK's
+    primary_artist_id while /artist/{id} resolves through artist_meta — so 826
+    of 891 links on the new PUBLIC page bounced, under a caption asserting they
+    worked. Two components, two rules, one claim (journal #27)."""
+    from .artists import corpus_artist_index
+
+    metas = {"t1": {"artist_names": "Known"}, "t2": {"artist_names": "Unknown"}}
+    lib = [{"id": "t1", "primary_artist_id": "KNOWN"},
+           {"id": "t2", "primary_artist_id": "MISSING"}]   # no artist_meta row
+    artist_meta = {"KNOWN": {"artist_id": "KNOWN", "artist_name": "Known"}}
+    idx = corpus_artist_index(metas, {}, artist_meta, lib)
+
+    known = [c for c in idx["cards"] if c["name"] == "Known"][0]
+    unknown = [c for c in idx["cards"] if c["name"] == "Unknown"][0]
+    assert known["artist_id"] == "KNOWN"
+    assert unknown["artist_id"] is None, "a card linked to a page that 303s"
+    assert idx["n_linkable"] == 1, "the count must equal the links that resolve"
+
+
+def test_every_link_the_artists_page_renders_resolves(client, monkeypatch, tmp_path):
+    """The regression class a unit test cannot see: unit tests pass
+    artist_meta={} and so never exercise the link/route disagreement."""
+    cache = _seed_cache(tmp_path)
+    cache.remember_meta([{"spotify_track_id": "x1", "track_name": "S",
+                          "artist_names": "Linked", "primary_artist_id": "AID1aaaaaaaaaaaaaaaaaa"}])
+    cache.remember_artists([{"artist_id": "AID1aaaaaaaaaaaaaaaaaa", "artist_name": "Linked",
+                             "genres": "rock"}])
+    cache.remember_meta([{"spotify_track_id": "x2", "track_name": "S2",
+                          "artist_names": "Orphan", "primary_artist_id": "AID9zzzzzzzzzzzzzzzzzz"}])
+    monkeypatch.setattr("src.webapp.app._feature_cache", lambda: cache)
+
+    r = client.get("/artists")
+    assert r.status_code == 200
+    import re
+    for aid in set(re.findall(r'href="/artist/([0-9A-Za-z]+)"', r.text)):
+        resp = client.get(f"/artist/{aid}", follow_redirects=False)
+        assert resp.status_code == 200, f"/artists linked to {aid}, which 303s"

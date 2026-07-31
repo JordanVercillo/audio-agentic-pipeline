@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, Column, DateTime, Float, Integer, String
+from sqlalchemy import Boolean, Column, DateTime, Float, Index, Integer, String
 from sqlalchemy.orm import declarative_base
 from sqlalchemy.types import JSON
 
@@ -184,6 +184,10 @@ class TrackCluster(Base):
     cluster_id = Column(Integer, nullable=False)
     map_x = Column(Float)   # 2-D embedding (UMAP/PCA) — nullable for online assigns
     map_y = Column(Float)
+    # `track_assignments(model_id)` sits under /analytics, the cluster_profile
+    # mart and the freshness flag. With the composite key this table no longer
+    # self-truncates on retrain, so an unindexed model_id scan grows forever.
+    __table_args__ = (Index("ix_track_clusters_model_id", "model_id"),)
 
 
 class WorkerHeartbeat(Base):

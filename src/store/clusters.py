@@ -397,6 +397,14 @@ def promote_model(cache: FeatureCache, model_id: int, *,
     on it) so that cluster 0 keeps meaning the same SOUND across the promotion.
     Without it, `cluster_color(0)` and the archetype's home bucket silently
     point at a different bucket after every retrain.
+
+    EVERY per-cluster-id structure must move together. The first version of
+    this function remapped the dict-KEYED ones and left `centroids`, which is a
+    LIST INDEXED BY cluster id — so `nearest_cluster` kept answering in the new
+    fit's space while the stored rows and labels had moved to the old one.
+    Measured on live model 13: **1,894 of 1,894 stored assignments disagreed
+    with the model's own nearest-centroid rule.** If you add another
+    id-indexed field, add it here.
     """
     with cache._Session() as s:
         model = s.get(ClusterModel, model_id)
@@ -404,15 +412,35 @@ def promote_model(cache: FeatureCache, model_id: int, *,
             raise ValueError(f"no cluster model with id {model_id}")
 
         if identity_map:
+            # One-shot. Re-applying a map (a rollback promotes an
+            # already-remapped model, and the CLI recomputes a fresh map
+            # against the CURRENT servant) inverts k=2 back and rotates k>=3
+            # into nonsense.
+            if model.identity_map:
+                raise ValueError(
+                    f"model {model_id} was already remapped {model.identity_map}; "
+                    "promote it without an identity_map")
             inv = {int(new): int(old) for new, old in identity_map.items()}
             for row in s.execute(select(TrackCluster).where(
                     TrackCluster.model_id == model_id)).scalars().all():
                 row.cluster_id = inv.get(int(row.cluster_id), int(row.cluster_id))
+            # Artist models carry their assignments here instead (the CLI can
+            # promote --kind artist with a map, so this path is reachable).
+            for prof in s.execute(select(ArtistProfile).where(
+                    ArtistProfile.model_id == model_id)).scalars().all():
+                if prof.cluster_id is not None:
+                    prof.cluster_id = inv.get(int(prof.cluster_id), int(prof.cluster_id))
             for attr in ("labels", "label_dims", "descriptions"):
                 cur = getattr(model, attr, None)
                 if cur:
                     setattr(model, attr, {str(inv.get(int(k), int(k))): v
                                           for k, v in cur.items()})
+            # THE ONE THAT WAS MISSING: centroids are indexed, not keyed.
+            cents = list(model.centroids)
+            remapped = list(cents)
+            for i, vec in enumerate(cents):
+                remapped[inv.get(i, i)] = vec
+            model.centroids = remapped
             model.identity_map = {str(k): v for k, v in identity_map.items()}
 
         model.promoted_at = utcnow()

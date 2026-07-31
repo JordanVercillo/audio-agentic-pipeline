@@ -242,7 +242,12 @@ def corpus_artist_index(metas: dict[str, dict], perceptual: dict[str, dict],
     otherwise merge invisibly, which is the failure mode a silent fallback
     always hides.
     """
+    # A link is only real if /artist/{id} can RESOLVE it, and that route needs
+    # a row in artist_meta — not merely an id on the track. Deciding
+    # "linkable" from the track row made 826 of 891 links on the new public
+    # page bounce to /artists while the caption asserted they worked.
     by_id = {a.get("artist_id"): a for a in artist_meta.values() if a.get("artist_id")}
+    resolvable = set(by_id)
     by_name = {(a.get("artist_name") or "").lower(): a for a in artist_meta.values()}
     art_by_id = {r["id"]: r.get("primary_artist_id")
                  for r in (library_rows or []) if r.get("primary_artist_id")}
@@ -297,7 +302,9 @@ def corpus_artist_index(metas: dict[str, dict], perceptual: dict[str, dict],
                  for c in _CARD_FEATURES}
         cards.append({
             "name": g["name"],
-            "artist_id": aid,
+            # None unless the artist page can actually open — the template
+            # already renders a non-linked card honestly.
+            "artist_id": aid if aid in resolvable else None,
             "genres": am.get("genres") or "",
             "popularity": am.get("popularity"),
             "followers": am.get("followers"),
@@ -318,6 +325,7 @@ def corpus_artist_index(metas: dict[str, dict], perceptual: dict[str, dict],
         "n_name_keyed": sum(1 for c in cards if c["keyed_by"] == "name"),
         "n_tracks_name_matched": n_name_fallback,
         "n_tracks_folded_by_name": n_folded_tracks,
+        # true by construction now, not by a parallel rule
         "n_linkable": sum(1 for c in cards if c["artist_id"]),
         "n_with_genres": sum(1 for c in cards if c["genres"]),
     }

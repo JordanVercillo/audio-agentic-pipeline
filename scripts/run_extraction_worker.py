@@ -177,7 +177,21 @@ if __name__ == "__main__":
                         # unchanged words) self-promotes, anything else prints
                         # the diff and waits for a human.
                         f = cl.freshness(cache, "song")
-                        if f["stale"]:
+                        # A non-identity-stable retrain is NOT promoted, so the
+                        # SERVED model stays stale, so freshness stays true —
+                        # and the worker would retrain every single poll
+                        # forever, writing ~1 model + ~N cluster rows each time
+                        # (~3 min of CPU at the current corpus). If a candidate
+                        # already exists for essentially this corpus, waiting
+                        # for the human is the whole point.
+                        _cand = cl.newest_model(cache, "song")
+                        _pending = (_cand is not None and _cand.promoted_at is None
+                                    and (_cand.n_trained or 0) >= 0.95 * f["n_population"])
+                        if _pending:
+                            print(f"cluster model {_cand.id} is trained and awaiting "
+                                  f"review — not retraining (uv run python "
+                                  f"scripts/promote_cluster_model.py --model {_cand.id})")
+                        if f["stale"] and not _pending:
                             print(f"cluster model stale ({'; '.join(f['reasons'])}) "
                                   f"— retraining")
                             res = cl.train_song_clusters(cache)

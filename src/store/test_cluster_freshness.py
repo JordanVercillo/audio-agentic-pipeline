@@ -15,7 +15,7 @@ import pytest
 
 from . import clusters as cl
 from .cache import FeatureCache
-from .models import ClusterModel
+from .models import ClusterModel, TrackCluster
 
 _COLS = ["tempo_bpm", "rms_mean", "spectral_centroid_mean", "zcr_mean",
          "harmonic_ratio", "onset_strength_mean"]
@@ -259,3 +259,76 @@ def test_training_does_not_destroy_the_serving_models_assignments(cache):
     assert len(cl.track_assignments(cache, second["model_id"])) >= before
     # And the served model's coverage must be untouched by a mere retrain.
     assert cl.latest_model(cache, "song").id == first["model_id"]
+
+
+def test_promotion_keeps_centroids_and_labels_in_ONE_id_space(cache):
+    """The half `test_promotion_remap_preserves_cluster_identity` didn't check.
+
+    `centroids` is a LIST INDEXED BY cluster id; labels/label_dims/descriptions
+    are dicts KEYED by it. The first promote_model remapped the keyed ones and
+    left the indexed one, so `nearest_cluster` answered in the new fit's space
+    while every stored row had moved to the old one. Measured on live model 13
+    before the fix: 1,894 of 1,894 assignments disagreed with the model's own
+    rule — and the suite, the audit and the browser all read green.
+    """
+    cl.train_song_clusters(cache)
+    old = cl.newest_model(cache, "song")
+    cl.promote_model(cache, old.id)
+
+    perm = list(reversed(range(old.k)))
+    with cache._Session() as s:
+        swapped = ClusterModel(
+            kind="song", k=old.k, silhouette=old.silhouette,
+            feature_cols=list(old.feature_cols),
+            scaler_mean=list(old.scaler_mean), scaler_std=list(old.scaler_std),
+            centroids=[old.centroids[perm[i]] for i in range(old.k)],
+            labels={str(i): old.labels[str(perm[i])] for i in range(old.k)},
+            n_trained=old.n_trained)
+        s.add(swapped)
+        s.commit()
+        new_id = swapped.id
+        # give the new model its own assignments, as a real training run would
+        for tid, a in cl.track_assignments(cache, old.id).items():
+            s.merge(TrackCluster(spotify_track_id=tid, model_id=new_id,
+                                 cluster_id=perm[int(a["cluster_id"])]))
+        s.commit()
+
+    mapping = cl.match_identity(old, cl.newest_model(cache, "song"))
+    assert mapping, "the permuted refit should be identity-stable"
+    cl.promote_model(cache, new_id, identity_map=mapping)
+
+    served = cl.latest_model(cache, "song")
+    feats = cache.feature_columns(list(served.feature_cols))
+    disagree = [
+        tid for tid, a in cl.track_assignments(cache, new_id).items()
+        if (nc := cl.nearest_cluster(served, feats[tid])) is not None
+        and nc != a["cluster_id"]]
+    assert not disagree, (
+        f"{len(disagree)} stored assignment(s) disagree with the promoted "
+        f"model's own nearest-centroid rule — centroids and ids are in "
+        f"different spaces")
+
+
+def test_promoting_an_already_remapped_model_is_refused(cache):
+    """Rollback re-promotes a model that already carries a map, and the CLI
+    computes a FRESH map against the current servant — applying it on top
+    inverts k=2 straight back."""
+    cl.train_song_clusters(cache)
+    old = cl.newest_model(cache, "song")
+    cl.promote_model(cache, old.id)
+    perm = list(reversed(range(old.k)))
+    with cache._Session() as s:
+        m2 = ClusterModel(
+            kind="song", k=old.k, silhouette=old.silhouette,
+            feature_cols=list(old.feature_cols),
+            scaler_mean=list(old.scaler_mean), scaler_std=list(old.scaler_std),
+            centroids=[old.centroids[perm[i]] for i in range(old.k)],
+            labels={str(i): old.labels[str(perm[i])] for i in range(old.k)},
+            n_trained=old.n_trained)
+        s.add(m2)
+        s.commit()
+        mid = m2.id
+    mapping = cl.match_identity(old, cl.newest_model(cache, "song"))
+    cl.promote_model(cache, mid, identity_map=mapping)
+    with pytest.raises(ValueError, match="already remapped"):
+        cl.promote_model(cache, mid, identity_map=mapping)
