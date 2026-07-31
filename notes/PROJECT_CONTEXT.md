@@ -1040,24 +1040,30 @@
   D-67-gated), `all_features()` on 2 request paths, 15 of 892 artists
   browsable. Harness: `ui-ux-expert` agent registered; full spec + the
   S1–S6 Opus plan in `docs/VISION_SPECS.md` §Vision F.
-  **✅ VISION F S1–S3 SHIPPED (2026-07-29/30) — the whole PLATFORM half; see
-  the session log.** S1: yt-dlp CVE floor + search throttle + flat-search
-  contract; `/analytics` + `/artist/{id}` projections (280 ms/6.5 MB →
-  54 ms/0.6 MB). S2: **the F1 fix — cluster coverage 36.7% → 100%** + the D-62
-  train/promote split, 4 audit flags, two pre-existing bugs killed (journal
-  #64/#65). S3: the post-drain chain 1.39× and debounced (headroom ~11k →
-  ~15.3k), **ISRC 0% → 100%** (D-70, journal #66), `GOLD_SCHEMA_SHRINK` +
-  `dim_tracks` restored to 11 columns. Spark runs and PASSES parity locally on
-  WSL2 (`scripts/spark_wsl.ps1`); the Windows Spark/Hadoop install was removed
-  by owner decision. **PHASE 5 IS UNBLOCKED** — D-70 was its hard prerequisite.
-  **➡️ NEXT ACTION — Vision F S4 (P4.7.0 + P4.7.1), the first user-facing
-  slice:** lift `_BANDS` / `_SIGNATURE_DIMS` / the archetype thresholds into
-  ONE `src/webapp/scales.py` with caption-parity tests — **before Epic R
-  doubles their consumers** — then `RAW_FEATURE_DOC` in the DSP layer + the
-  `raw_feature_dictionary`/`raw_feature_stats` marts + **`GET
-  /song/{id}/features`** (all 83 numeric features grouped, D-66) with the
-  set-equality tripwire so an 84th feature can never ship undocumented. Owner
-  track unchanged: needs-source repairs at leisure; the DMARC reject-flip.
+  🏁 **VISION F IS COMPLETE — 6/6 (2026-07-29/30), the part-two roadmap
+  shipped end to end.** S1 yt-dlp CVE floor + search throttle + request-path
+  projections (280 ms/6.5 MB → 54 ms/0.6 MB) · S2 **the F1 fix — cluster
+  coverage 36.7% → 100%** + the D-62 train/promote split + 4 audit flags (two
+  pre-existing bugs killed, journal #64/#65) · S3 the post-drain chain 1.39×
+  and debounced, **ISRC 0% → 100%** (D-70, journal #66), `GOLD_SCHEMA_SHRINK`
+  · S4 `scales.py` (one feature-name registry — caught a live "Energy" vs
+  "Loudness" collision) + **`GET /song/{id}/features`, all 83** (D-66) · S5
+  **Epic R: `/artists` 15 → 902 public**, the discography + within-artist
+  drift, artist character + spread (journal #67) · S6 `/recommend`
+  166 KB → 18 KB and `/explore` 153 KB → 72 KB, both now BOUNDED in corpus
+  size. Spark runs and PASSES parity locally on WSL2
+  (`scripts/spark_wsl.ps1`); the Windows Spark/Hadoop install was removed by
+  owner decision. **PHASE 5 IS UNBLOCKED** — D-70 was its hard prerequisite.
+  **➡️ NEXT ACTION — close Vision F, then start Phase 5.** ① Re-verify the
+  **D-63 exit bar** (both audits green incl. the new flags · a promoted model
+  ≥95% coverage with live descriptions · transparency shipped · Epic R shipped
+  · every UI change carrying evidence) and mark Vision F closed in
+  `docs/VISION_SPECS.md`. ② Then **P5-S1** per
+  [`docs/PHASE5_AB_SPEC.md`](../docs/PHASE5_AB_SPEC.md): the MusicBrainz client
+  + the ISRC→MBID bridge — the only piece left before the coverage number can
+  be measured, since D-70 already put the ISRC side at 100% and 80.7% of the
+  corpus predates the dump's 2022 freeze. Owner track unchanged: needs-source
+  repairs at leisure; the DMARC reject-flip.
 - ✅ **SECURITY + ROBUSTNESS REVIEW (2026-07-09, commits 26891b1←): whole-app
   audit via 2 review subagents + a strategic pass; 7 real fixes, all tested,
   deployed, 286 green.** **Security surface came back STRONG** — auth, session
@@ -3067,12 +3073,62 @@ narrative goes to `notes/engineering_journal.md`, plans to
   `scripts/backfill_track_identity.py`, `docs/gold_schema_manifest.json`,
   `src/store/test_cache.py`; new readers `all_track_identity()`,
   `upsert_perceptual_many()`.
-  **Left off: S3 COMPLETE + live. Vision F is 3/6 (S1–S3 = the whole platform
-  half); what remains is user-facing surface. PHASE 5 IS UNBLOCKED — D-70 was
-  its hard prerequisite and the ISRC bridge is at 100%, so P5-S1's only
-  remaining piece is the MusicBrainz client.
-  ➡️ NEXT = Vision F S4 (P4.7.0 + P4.7.1): lift `_BANDS`/`_SIGNATURE_DIMS`/
-  archetype thresholds into ONE `scales.py` with caption-parity tests (do this
-  BEFORE Epic R doubles their consumers), then `RAW_FEATURE_DOC` + the two raw
-  marts + **`GET /song/{id}/features`** (all 83 numeric features, D-66) with
-  the set-equality doc tripwire. NEW SESSION: run `/resume`.**
+  **Left off: S3 COMPLETE + live. PHASE 5 IS UNBLOCKED — D-70 was its hard
+  prerequisite and the ISRC bridge is at 100%, so P5-S1's only remaining piece
+  is the MusicBrainz client.
+  NEW SESSION: run `/resume`.**
+- **2026-07-30 (session 71 — 🏁 VISION F COMPLETE: S4 + S5/Epic R + S6; Opus +
+  orchestrator; commits 96bbf78→6d256ae, CI GREEN on all five, 905 tests, ruff
+  clean, both audits ALL-FALSE, smoke 14/14, deployed + browser-validated):**
+  **S4a (P4.7.0) `src/webapp/scales.py`** — ONE registry for feature NAMES.
+  The three word-sets legitimately differ (cluster noun vs comparative vs
+  absolute band) so they are NOT merged; what is merged is which columns are
+  interpretable and what each is CALLED — and that caught a live bug:
+  `rms_mean` was "Loudness" in the signature and **"Energy"** in the absolute
+  profile while the perceptual catalog carries a SEPARATE derived `energy` AND
+  its own `loudness_db`. One word, two numbers, two pages. Character words are
+  IMPORTED from clustering (a retyped word = a rename = a D-62 identity
+  change). 6 parity tests incl. "every band word must be REACHABLE".
+  **S4b (P4.7.1 / D-66) `GET /song/{id}/features`** — the owner's original ask:
+  all **83** features, grouped, with corpus context. Descriptions live in
+  `src/dsp/feature_doc.py` BESIDE the extractor and travel as
+  `raw_feature_dictionary.parquet`; percentiles use the SAME
+  `excluded_from_aggregates` population as every other surface; a pitch class
+  gets NO rank and MFCC/chroma get none either (the SHAPE is the fingerprint);
+  the promoted columns outside the 82-col dict are NAMED so "all the features"
+  survives a visitor who counts. Inherits the D-57 withhold (verified live).
+  8 extractor tripwires + 7 builder tests. **S5 = EPIC R.** **R1** `/artists`
+  **15 → 902**, PUBLIC + paginated + searchable (corpus-built, which is what
+  makes it publishable); reused `/library`'s pager (its base URL was hardcoded
+  — parameterised, not duplicated); **F5 closed: artist names LINK from
+  /library + /song** (there was NO path from a song to its artist). Journal
+  #67: searching the live index showed **"Muse" as TWO cards** — my
+  counted-name-fallback prevented a silent merge and produced a visible split;
+  now an unambiguous name FOLDS (counted, stated), an ambiguous one stays
+  split. **R2** the discography from D-70's fields — zero API calls, no
+  MusicBrainz (D-61); grouped by (name, type) with the EARLIEST date because
+  live data has "Absolution" 2003+2004 and "Will Of The People" as album AND
+  single; remaster-reads-as-reissue stated in the UI. **R4a** within-artist
+  drift (an artist FACT, so anon sees it; refuses under 3 dated releases —
+  two points is a line through anything): live *"Muse's energy went up 0.54,
+  0.23 on Origin of Symmetry → 0.77 on The Wow! Signal"*. **R3** acoustic
+  character + **SPREAD** — what a centroid distance structurally cannot say,
+  since it collapses a catalogue to one point: Muse = range artist (noisiness
+  1.7×), Rise Against = formula (punch 0.18×), Linkin Park consistent (0.25×).
+  Calls `acoustic_signature` + reuses its markup (what P4.7.0 was sequenced to
+  protect). **S6 (P4.7.5)** the two O(corpus) DOM offenders, measured both
+  ways: `/recommend` **166 KB → 18 KB** (1,895 unusable options → 103; other
+  songs still seedable from /song), `/explore` **153 KB → 72 KB** with
+  deterministic sampling above 700 and the visitor's own tracks never sampled
+  out — both now BOUNDED, not linear in corpus size. The caption's number is
+  DERIVED (`scatter_plotted_count`) because letting a caption compute its own
+  answer already over-counted /analytics by 4. Also fixed the never-defined
+  `var(--fg)`. New key files: `src/webapp/scales.py`, `src/dsp/feature_doc.py`,
+  `src/webapp/features_view.py`, `templates/song_features.html`; new readers
+  `artists.corpus_artist_index/artist_albums/artist_drift/artist_signature`.
+  **Left off: 🏁 VISION F IS 6/6 — every slice shipped, CI green, live.
+  ➡️ NEXT = the D-63 exit bar (re-verify the 5 criteria, mark Vision F closed),
+  then PHASE 5 P5-S1 per `docs/PHASE5_AB_SPEC.md`: the MusicBrainz client +
+  the ISRC→MBID bridge (the only piece left before the coverage number can be
+  measured; D-70 already put the ISRC side at 100%). Owner track: needs-source
+  repairs at leisure; the DMARC reject-flip. NEW SESSION: run `/resume`.**

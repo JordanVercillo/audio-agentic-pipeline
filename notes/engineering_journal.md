@@ -1798,3 +1798,28 @@ inheriting a figure from a report.
 > dropped between them until you have counted. And re-measure an inherited
 > statistic against the exact store your work depends on — "it exists" and "we
 > kept it" are different claims.*
+
+## 67 — The fix for a silent merge was a visible duplicate (2026-07-30)
+
+R1 rebuilt `/artists` from the corpus, grouping by `primary_artist_id`. Tracks
+without an id fall back to their artist NAME — and I was careful to COUNT that
+fallback rather than fold it silently, because two different artists sharing a
+name would otherwise merge invisibly. Deliberate, documented, tested. Then I
+searched the live index for "muse" and got **two Muse cards**: six of Muse's
+tracks carry no id, so they formed their own name-keyed group beside the
+id-keyed one. The guard against an invisible wrong merge had produced a very
+visible wrong split.
+
+**The realization:** I had reasoned about one direction of the failure and
+shipped the other. Both are real — a silent merge fuses two artists, a silent
+split shows one artist twice — and the honest rule needs both: fold when a name
+matches EXACTLY ONE id-keyed group (same artist, some tracks just lack the id),
+stay split when it matches two or more (the genuinely ambiguous case), and
+state the count either way. What found it was not a test I wrote; it was typing
+a query into the thing I had just built. Every unit test passed on both sides
+of the fix, because they encoded the direction I had thought about.
+
+> *A guard against one failure mode is not automatically neutral about its
+> opposite. When you add a rule to prevent A, ask what B it now produces — and
+> use the feature yourself, because the case you never thought to test is
+> exactly the case a test cannot fail on.*
