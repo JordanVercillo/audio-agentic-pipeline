@@ -333,13 +333,19 @@ def build_raw_feature_marts(cache: FeatureCache, marts_dir: Path, *,
                          if isinstance(r.get(c), (int, float))], dtype=float)
         if vals.size == 0:
             continue
-        stat_rows.append({
-            "column": c, "n": int(vals.size),
-            "mean": float(vals.mean()), "std": float(vals.std()),
-            "min": float(vals.min()), "p25": float(np.percentile(vals, 25)),
-            "p50": float(np.percentile(vals, 50)),
-            "p75": float(np.percentile(vals, 75)), "max": float(vals.max()),
-        })
+        # DECILES, not just quartiles (director review 2026-07-31). /song
+        # renders a percentile by interpolating between these anchors, and
+        # with only min/p25/p50/p75/max a straight line through a skewed
+        # column mis-ranked a track by a measured mean of 4.7 points and up to
+        # 22 — always TOWARD "ordinary", which is exactly the direction that
+        # makes an interesting track look unremarkable. Nine more numbers per
+        # column (83 rows) buys most of that back.
+        row = {"column": c, "n": int(vals.size),
+               "mean": float(vals.mean()), "std": float(vals.std()),
+               "min": float(vals.min()), "max": float(vals.max())}
+        for q in (5, 10, 20, 25, 30, 40, 50, 60, 70, 75, 80, 90, 95):
+            row[f"p{q}"] = float(np.percentile(vals, q))
+        stat_rows.append(row)
     stats_df = pd.DataFrame(stat_rows)
 
     _write_atomic(dict_df, Path(marts_dir) / "raw_feature_dictionary.parquet")

@@ -81,3 +81,73 @@ def test_groups_come_back_in_a_stable_reading_order():
 
 def test_vector_membership_is_surfaced():
     assert _detail()["n_in_vector"] == 4
+
+
+# ── the percentile's accuracy is a claim, so it gets measured ───────────────
+def _stat_from(vals, *, deciles: bool):
+    """A raw_feature_stats row built the way the mart builds one."""
+    import numpy as np
+
+    qs = (5, 10, 20, 25, 30, 40, 50, 60, 70, 75, 80, 90, 95) if deciles else (25, 50, 75)
+    row = {"column": "x", "n": len(vals),
+           "min": float(np.min(vals)), "max": float(np.max(vals))}
+    for q in qs:
+        row[f"p{q}"] = float(np.percentile(vals, q))
+    return row
+
+
+def test_percentile_error_stays_under_two_points_on_a_skewed_column():
+    """Director review 2026-07-31: with only min/p25/p50/p75/max the shipped
+    percentile was off by a measured mean of 4.7 points and up to 22 on the
+    live corpus, ALWAYS toward the middle — the direction that makes a
+    genuinely unusual track read as unremarkable. Deciles fixed it (measured
+    0.72 mean / 9.2 max). This is the tripwire on that.
+
+    Skewed on purpose: a symmetric distribution hides the failure, because
+    linear interpolation is exact for the uniform case.
+    """
+    import numpy as np
+
+    from .features_view import _percentile
+
+    rng = np.random.default_rng(7)
+    vals = np.round(rng.lognormal(0.0, 0.9, 4000), 4)     # long right tail
+    fine, coarse = _stat_from(vals, deciles=True), _stat_from(vals, deciles=False)
+
+    errs_fine, errs_coarse, pull = [], [], []
+    for v in np.quantile(vals, np.linspace(0.05, 0.95, 40)):
+        truth = 100.0 * (vals < v).mean()
+        f, c = _percentile(float(v), fine), _percentile(float(v), coarse)
+        errs_fine.append(abs(f - truth))
+        errs_coarse.append(abs(c - truth))
+        pull.append(abs(f - 50) - abs(truth - 50))
+
+    assert max(errs_fine) < 3.0, f"decile interpolation drifted: {max(errs_fine):.1f}"
+    assert np.mean(errs_fine) < np.mean(errs_coarse) / 2, (
+        "deciles must be at least twice as accurate as the quartile ladder they "
+        f"replaced: {np.mean(errs_fine):.2f} vs {np.mean(errs_coarse):.2f}")
+    assert abs(np.mean(pull)) < 1.0, (
+        f"still biased toward 'ordinary' by {np.mean(pull):+.2f} points")
+
+
+def test_percentile_still_renders_against_a_pre_decile_mart():
+    """A mart written before the decile change must degrade, not go blank."""
+    from .features_view import _percentile
+
+    old = {"column": "x", "min": 0.0, "p25": 1.0, "p50": 2.0, "p75": 3.0,
+           "max": 4.0}
+    assert _percentile(2.0, old) == 50
+    assert _percentile(-1.0, old) == 0
+    assert _percentile(99.0, old) == 100
+    assert _percentile(1.0, {"column": "x"}) is None      # no anchors at all
+
+
+def test_percentile_on_a_mass_spike_returns_the_middle_of_the_tied_range():
+    """When a value is shared by a fifth of the corpus its rank is a RANGE.
+    Interpolating across a zero-width segment used to divide by a fudge factor;
+    the midpoint is the least-wrong single number."""
+    from .features_view import _percentile
+
+    spike = {"column": "x", "min": 0.0, "p25": 1.0, "p50": 1.0, "p75": 1.0,
+             "max": 2.0}
+    assert _percentile(1.0, spike) == 50

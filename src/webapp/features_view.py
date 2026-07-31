@@ -39,26 +39,50 @@ def _is_shape_family(column: str) -> bool:
 
 
 def _percentile(value: float, stat: dict) -> Optional[int]:
-    """Rough rank of `value` within the corpus, from the stored quartiles.
+    """Rank of `value` within the corpus, interpolated over the stored anchors.
 
-    Deliberately coarse — interpolating between p25/p50/p75 is honest about
-    what five summary numbers can support. A precise-looking "83rd percentile"
-    from four anchors would be false precision.
+    The shipped version used exactly four anchors (min/p25/p50/p75/max) and the
+    director review measured what that costs: **mean error 4.7 points, max 22,
+    and systematically toward "ordinary"** — a straight line across a skewed
+    quartile pulls everything toward the middle, which is the direction that
+    makes a genuinely unusual track look unremarkable.
+
+    The fix is more anchors, not cleverer arithmetic: `raw_feature_stats` now
+    stores deciles. This reads whichever anchors a row happens to carry, so a
+    mart written before that change still renders (at the old accuracy) instead
+    of going blank.
     """
     if stat is None:
         return None
-    lo, p25, p50, p75, hi = (stat.get("min"), stat.get("p25"), stat.get("p50"),
-                             stat.get("p75"), stat.get("max"))
-    if None in (lo, p25, p50, p75, hi):
+    lo, hi = stat.get("min"), stat.get("max")
+    if lo is None or hi is None:
         return None
-    if value <= lo:
+    anchors = [(float(lo), 0.0)]
+    for q in (5, 10, 20, 25, 30, 40, 50, 60, 70, 75, 80, 90, 95):
+        v = stat.get(f"p{q}")
+        if v is not None:
+            anchors.append((float(v), float(q)))
+    anchors.append((float(hi), 100.0))
+    if len(anchors) < 3:
+        return None
+    anchors.sort(key=lambda a: (a[0], a[1]))
+
+    if value <= anchors[0][0]:
         return 0
-    if value >= hi:
+    if value >= anchors[-1][0]:
         return 100
-    for a, b, base in ((lo, p25, 0), (p25, p50, 25), (p50, p75, 50), (p75, hi, 75)):
+    # A mass spike first: when several anchors share this exact value, a fifth
+    # of the corpus sits ON it and the rank is a RANGE (25% below, 75% at or
+    # below). Bracketing would silently answer with the range's low end; the
+    # midpoint is the least-wrong single number.
+    tied = [p for a, p in anchors if a == value]
+    if len(tied) >= 2:
+        return int(round((min(tied) + max(tied)) / 2))
+    for (a, pa), (b, pb) in zip(anchors, anchors[1:]):
         if a <= value <= b:
-            span = (b - a) or 1.0
-            return int(round(base + 25 * (value - a) / span))
+            if b == a:
+                return int(round((pa + pb) / 2))
+            return int(round(pa + (pb - pa) * (value - a) / (b - a)))
     return None
 
 

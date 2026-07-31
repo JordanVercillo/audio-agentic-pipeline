@@ -428,16 +428,27 @@ def artist_albums(track_ids: list[str], identity: dict[str, dict],
     return out
 
 
-def artist_drift(albums: list[dict], column: str = "energy",
+def artist_drift(albums: list[dict], column: str = "rms_mean",
                  min_albums: int = 3) -> Optional[dict[str, Any]]:
     """How this artist's sound moved across their OWN catalogue (R4a).
 
     An artist FACT, not a taste fact — valid for an anonymous visitor, unlike
-    the listening-window drift on /analytics.
+    the listening-window drift on /analytics. Two corrections from the
+    2026-07-31 director review, both of which made that sentence false:
 
-    Returns None under `min_albums` dated, analyzed releases: two points is a
-    line through anything, and a "trend" drawn from them would be noise wearing
-    a trend's clothes (the journal-#28 degenerate-n rule).
+    **The column.** This defaulted to `energy`, which in this project is a
+    percentile RANK against the current corpus, not a measurement. Every other
+    artist's tracks moving would move this artist's "drift" without a single
+    note of their music changing — the opposite of an artist fact. The default
+    is now `rms_mean`, a measured quantity in its own units. A rank column
+    still works if a caller passes one; it just isn't the honest default.
+
+    **The direction.** It reported `last - first` while requiring three points.
+    An artist who got louder and then quiet again — the single most common
+    catalogue arc — rendered as "up", and the two middle albums the rule
+    insisted on were then ignored. `direction` now comes from a least-squares
+    slope over ALL the points, and when the endpoints and the trend disagree
+    the shape is named (`arc`) instead of being flattened to one word.
     """
     pts = [a for a in albums
            if a["year"] and a["n_analyzed"] and a["feat"].get(column) is not None]
@@ -446,15 +457,47 @@ def artist_drift(albums: list[dict], column: str = "energy",
     first, last = pts[0], pts[-1]
     delta = float(last["feat"][column]) - float(first["feat"][column])
     vals = [float(p["feat"][column]) for p in pts]
+    years = [float(p["year"]) for p in pts]
+
+    # Least-squares slope over every point, per YEAR so the number means
+    # something ("per year") rather than "per album we happen to have".
+    n = len(vals)
+    mx, my = sum(years) / n, sum(vals) / n
+    denom = sum((y - mx) ** 2 for y in years)
+    slope = (sum((y - mx) * (v - my) for y, v in zip(years, vals)) / denom
+             if denom else 0.0)
+
+    # "Flat" has to mean something. A trend is only a trend if the total move
+    # it implies is an appreciable share of the artist's own range.
+    span = (max(vals) - min(vals)) or 1.0
+    implied = slope * (years[-1] - years[0])
+    if abs(implied) < 0.2 * span:
+        direction = "flat"
+    else:
+        direction = "up" if slope > 0 else "down"
+    # The endpoints and the trend can genuinely disagree: up-then-down.
+    peak_inside = (max(vals) > max(vals[0], vals[-1])
+                   or min(vals) < min(vals[0], vals[-1]))
+    shape = "arc" if (peak_inside and abs(delta) < 0.5 * span) else "trend"
+
+    from . import scales
+
     return {
         "column": column,
+        # Derived, never restated: the page reads the same registry the rest of
+        # the app reads, so retuning a label cannot leave one surface behind
+        # (journal #27 / P4.7.0).
+        "label": scales.display_name(column),
+        "unit": scales.unit(column),
         "points": [{"year": p["year"], "name": p["name"],
                     "value": float(p["feat"][column])} for p in pts],
-        "n": len(pts),
+        "n": n,
         "from_year": first["year"], "to_year": last["year"],
         "delta": round(delta, 4),
+        "slope_per_year": round(slope, 5),
         "min": min(vals), "max": max(vals),
-        "direction": "up" if delta > 0 else ("down" if delta < 0 else "flat"),
+        "direction": direction,
+        "shape": shape,
     }
 
 

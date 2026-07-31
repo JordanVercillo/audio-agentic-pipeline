@@ -199,11 +199,22 @@ def test_scatter_samples_the_background_but_never_the_visitors_tracks():
     assert svg is not None
     drawn = svg.count("<circle")
     assert drawn <= _SCATTER_MAX + 5, f"sampling did not bound the chart ({drawn})"
-    # every one of the visitor's tracks survives
+
+    # Every one of the visitor's tracks survives the sampling. The SVG carries
+    # no ids, so this used to read `assert tid in svg or ... or True` — an
+    # assertion that cannot fail, guarding the claim that matters most on this
+    # chart (director review 2026-07-31). The visitor's marks ARE identifiable:
+    # they are the ringed r="5.5" circles, and they carry their track name.
+    rings = svg.count('r="5.5"')
+    assert rings == len(mine), (
+        f"{rings} of the visitor's {len(mine)} tracks drawn — sampling ate "
+        "the only points the chart exists to show")
     for tid in mine:
-        assert tid in svg or f'"{tid}"' in svg or True   # ids may not be emitted
-    assert scatter_plotted_count(pts, mine) == drawn or abs(
-        scatter_plotted_count(pts, mine) - drawn) <= 5
+        assert f"<title>S{tid[1:]}</title>" in svg, f"{tid} was sampled out"
+
+    # An exact contract, asserted exactly. The ±5 escape hatch that used to
+    # follow this made the equality unfalsifiable in the range it could drift.
+    assert scatter_plotted_count(pts, mine) == drawn
 
 
 def test_scatter_is_unsampled_below_the_ceiling():

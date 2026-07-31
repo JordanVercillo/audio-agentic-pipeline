@@ -1191,7 +1191,10 @@ def create_app() -> FastAPI:
             "n_dated": sum(1 for a in albums if a["year"]),
             # R4a: how their sound moved across their OWN catalogue — an artist
             # fact, so it renders for anonymous visitors too.
-            "drift": artists_view_mod.artist_drift(albums, "energy"),
+            # `rms_mean`, not `energy`: energy is a percentile RANK against the
+            # current corpus, so another artist's tracks arriving would move
+            # THIS artist's "drift" without a note of their music changing.
+            "drift": artists_view_mod.artist_drift(albums, "rms_mean"),
         }
         # R3: their acoustic character vs the corpus + their SPREAD. Projected
         # to the signature columns only (the P4.6.2 rule — no all_features on a

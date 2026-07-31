@@ -101,16 +101,20 @@
   <div class="insight">
     <div class="insight-badge">How their sound moved</div>
     <p>Across {{ drift.n }} dated releases from <b>{{ drift.from_year }}</b> to
-      <b>{{ drift.to_year }}</b>, their energy went
-      {% if drift.direction == 'up' %}<b>up {{ '%.2f'|format(drift.delta) }}</b>
-      {% elif drift.direction == 'down' %}<b>down {{ '%.2f'|format(-drift.delta) }}</b>
-      {% else %}<b>nowhere</b>{% endif %}
+      <b>{{ drift.to_year }}</b>, their {{ drift.label|lower }}
+      {% if drift.shape == 'arc' %}rose and fell again — <b>an arc</b>, not a
+        direction{% elif drift.direction == 'up' %}trended
+        <b>up</b>{% elif drift.direction == 'down' %}trended
+        <b>down</b>{% else %}stayed <b>level</b>{% endif %}
       (from {{ '%.2f'|format(drift.points[0].value) }} on
       <i>{{ drift.points[0].name }}</i> to
       {{ '%.2f'|format(drift.points[-1].value) }} on
-      <i>{{ drift.points[-1].name }}</i>).</p>
+      <i>{{ drift.points[-1].name }}</i>{% if drift.shape == 'arc' %}, peaking at
+      {{ '%.2f'|format(drift.max) }} in between{% endif %}).</p>
     <p class="cap">Measured from OUR DSP over the tracks of theirs we've
-      analyzed — not a Spotify metric, and only as complete as our corpus.</p>
+      analyzed — not a Spotify metric, and only as complete as our corpus. The
+      direction is a least-squares trend across all {{ drift.n }} releases, not
+      a line from the first to the last{% if drift.unit %} ({{ drift.unit }}){% endif %}.</p>
   </div>
   {% endif %}
 
