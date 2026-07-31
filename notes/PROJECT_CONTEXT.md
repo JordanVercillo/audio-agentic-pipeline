@@ -45,7 +45,8 @@
 - **➡️ NEXT ACTION — app is UP; owner's control is now a double-click.**
   ✅ The hardened pipeline is LIVE (verified 2026-07-09, app-verify ALL-GREEN,
   heartbeat fresh, public edge 200). **Runtime control is now click-to-run:**
-  `start_app.bat` / `stop_app.bat` / `status_app.bat` at the repo root (wrap
+  `start_app.bat` / `stop_app.bat` / `status_app.bat` / **`deploy_app.bat`**
+  (pull + sync + restart + verify, after any commit) at the repo root (wrap
   `scripts/app_control.ps1`; start is idempotent, stop matches by script name,
   logs → `logs\*.log`). Optional reboot persistence (owner's hand — the
   classifier reserves scheduled-task registration): `powershell

@@ -179,9 +179,22 @@ cloudflared service install                # then install as a Windows service (
 |---|---|
 | `start_app.bat` | Starts the webapp + worker (skips any already running), nudges the tunnel, waits for `:8000`, prints status. |
 | `stop_app.bat` | Stops the webapp + worker, then **backs up the cache** (WAL-safe, prunes to 10); leaves the tunnel service up. |
-| `status_app.bat` | Shows whether each process + the tunnel + `:8000` are up. |
+| `status_app.bat` | Shows whether each process + the tunnel + `:8000` are up — **and whether the running app is the code in the repo**. |
+| `deploy_app.bat` | **After committing a change:** pull, `uv sync` if the lock moved, restart, verify. Skips the restart when there's nothing new, so a no-op deploy costs zero downtime. |
 
-All three wrap `scripts/app_control.ps1` (`-Action start|stop|status|restart`).
+All four wrap `scripts/app_control.ps1`
+(`-Action start|stop|status|restart|deploy`).
+
+> **Why `deploy_app.bat` exists.** `run_webapp.py` runs uvicorn with
+> `reload=False` — correct for a served process, and it means **a running app
+> never picks up a code change**. On 2026-07-31 that meant a full day of fixes
+> sitting in the repo while the live site served the morning's code, with every
+> indicator green, because nothing compared the two. `start` now stamps the
+> commit it launched (`logs/running_commit.txt`) and `status` prints a `Code`
+> line: `up to date (sha)`, `STALE - serving X, repo is at Y`, or `UNKNOWN`
+> when the app was started outside `deploy`. Jinja templates *are* re-read per
+> request, which is what made the drift so easy to miss: template edits appear
+> live while route and logic changes do not.
 Each process runs detached with its output appended to `logs\*.log`
 (gitignored); the console window stays open on `pause` so you can read the
 result. `start` is idempotent — a second click won't launch a second webapp
