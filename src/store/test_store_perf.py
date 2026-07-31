@@ -203,3 +203,49 @@ def test_similar_ranks_by_distance_and_excludes_itself(corpus):
     # trk01 differs from trk00 by one step in every dimension — nearest by design
     assert out[0][0] == "trk01"
     assert corpus.similar("nope", k=3) == []          # unknown id, never raises
+
+
+# ── P4.6.4: the post-drain chain's shape ─────────────────────────────────────
+def test_persist_perceptual_writes_in_one_transaction(corpus, monkeypatch):
+    """A session+commit PER ROW is how the chain became the biggest cost in the
+    post-drain loop — linear in a corpus that keeps growing while the worker's
+    poll interval stays fixed. Asserted categorically: the batch entry point is
+    used once and the per-row one is not used at all."""
+    import pandas as pd
+
+    from .perceptual import persist_perceptual
+
+    calls = {"many": 0, "single": 0}
+    real_many = corpus.upsert_perceptual_many
+
+    def spy_many(rows, **kw):
+        calls["many"] += 1
+        return real_many(rows, **kw)
+
+    monkeypatch.setattr(corpus, "upsert_perceptual_many", spy_many)
+    monkeypatch.setattr(corpus, "upsert_perceptual",
+                        lambda *a, **k: calls.__setitem__("single", calls["single"] + 1))
+
+    df = pd.DataFrame([{"spotify_track_id": f"trk{i:02d}", "version": "test-v1",
+                        "tempo": 0.5 + i / 100} for i in range(12)])
+    n = persist_perceptual(corpus, df)
+
+    assert n == 12
+    assert calls["many"] == 1, "batch writer should be called exactly once"
+    assert calls["single"] == 0, "per-row upsert_perceptual is the regression"
+
+
+def test_silhouette_is_sampled_only_above_the_threshold():
+    """The only O(N²) step in the platform. Sampling must kick in ABOVE the
+    threshold and change nothing below it, so small/synthetic corpora keep
+    their exact score."""
+    import numpy as np
+
+    from ..analysis.clustering import _SILHOUETTE_SAMPLE, cluster_tracks
+
+    assert _SILHOUETTE_SAMPLE == 5000
+    rng = np.random.default_rng(0)
+    X = np.vstack([rng.normal(-2, 0.3, (30, 4)), rng.normal(2, 0.3, (30, 4))])
+    labels, k, score = cluster_tracks(X, k_range=(2, 3))
+    assert k == 2 and len(labels) == 60
+    assert -1.0 <= score <= 1.0

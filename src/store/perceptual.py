@@ -236,15 +236,18 @@ def compute_feature_stats(df: pd.DataFrame) -> pd.DataFrame:
 
 def persist_perceptual(cache: FeatureCache, df: pd.DataFrame) -> int:
     """Upsert the transform into the cache's track_perceptual table."""
-    n = 0
+    if df.empty:
+        return 0
     now = datetime.now(timezone.utc)
-    for _, row in df.iterrows():
-        payload = {k: (None if pd.isna(v) else v) for k, v in row.items()
-                   if k not in ("spotify_track_id", "version")}
-        cache.upsert_perceptual(row["spotify_track_id"], payload,
-                                version=row["version"], computed_at=now)
-        n += 1
-    return n
+    # ONE transaction, not one per row (P4.6.4). Was a session+commit per
+    # track — the chain's biggest cost and linear in a corpus that keeps
+    # growing while the worker's poll interval stays fixed.
+    rows = [{"spotify_track_id": row["spotify_track_id"],
+             "features": {k: (None if pd.isna(v) else v) for k, v in row.items()
+                          if k not in ("spotify_track_id", "version")}}
+            for _, row in df.iterrows()]
+    version = str(df["version"].iloc[0])
+    return cache.upsert_perceptual_many(rows, version=version, computed_at=now)
 
 
 def catalog_frame() -> pd.DataFrame:

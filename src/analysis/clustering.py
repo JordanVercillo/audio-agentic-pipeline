@@ -47,6 +47,13 @@ MODELED_DIR = _PROJECT_ROOT / "data" / "warehouse" / "modeled"
 
 _PITCH_CLASSES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
 
+# Above this population, score k-selection on a deterministic sample instead of
+# the full O(N²) pairwise matrix (P4.6.4). Note the stored `silhouette` then
+# becomes a sampled estimate — which is fine because it is REPORTED, never a
+# gate (D-62: it drops as a corpus grows, so gating on it would freeze the
+# model at its smallest population).
+_SILHOUETTE_SAMPLE = 5000
+
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 #  THE 77-DIM CONTRACT COLUMNS (mirror of to_summary_vector)
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -247,8 +254,19 @@ def cluster_tracks(
     for k in range(k_min, k_max + 1):
         km = KMeans(n_clusters=k, random_state=random_state, n_init=10)
         labels = km.fit_predict(X)
-        score = silhouette_score(X, labels)
-        logger.info("k=%d silhouette=%.4f", k, score)
+        # P4.6.4: silhouette_score is O(N²) — it builds the full pairwise
+        # distance matrix, once PER CANDIDATE k. That is the only quadratic step
+        # in the platform: ~7 s at 1.9k tracks, but ~3 min at 10k and hours at
+        # 100k, and it runs inside the post-drain chain. Sampling is exact-enough
+        # for CHOOSING k (the ranking between candidate k's is what matters, not
+        # the absolute value) and deterministic via random_state, so the same
+        # corpus still picks the same k. Below the threshold nothing changes.
+        score = silhouette_score(
+            X, labels,
+            **({"sample_size": _SILHOUETTE_SAMPLE, "random_state": random_state}
+               if n > _SILHOUETTE_SAMPLE else {}))
+        logger.info("k=%d silhouette=%.4f%s", k, score,
+                    f" (sampled {_SILHOUETTE_SAMPLE})" if n > _SILHOUETTE_SAMPLE else "")
         if score > best[0]:
             best = (score, k, labels)
 

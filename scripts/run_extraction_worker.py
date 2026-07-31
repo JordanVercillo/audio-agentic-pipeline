@@ -51,6 +51,13 @@ if __name__ == "__main__":
                         help="seconds between polls in --loop mode (default 30)")
     parser.add_argument("--takeover", action="store_true",
                         help="start even if another worker's heartbeat looks alive")
+    # P4.6.4 debounce. The rebuild ALWAYS runs the moment the queue empties, so
+    # these only govern how often it runs DURING a long drain.
+    parser.add_argument("--rebuild-after", type=int, default=50,
+                        help="rebuild derived planes after N new tracks (default 50)")
+    parser.add_argument("--rebuild-every", type=float, default=10.0,
+                        help="...or after this many minutes with work pending "
+                             "(default 10)")
     args = parser.parse_args()
 
     cache = FeatureCache()
@@ -68,6 +75,16 @@ if __name__ == "__main__":
     def beat() -> None:
         cache.beat("extraction-worker", pid=os.getpid(), interval_seconds=args.interval)
 
+    # P4.6.4 — debounce the derived-plane rebuild. The chain (marts + dedup +
+    # gold + freshness) is O(corpus): measured 5.31 s over 1,946 tracks
+    # = 2.73 ms/track, so it outgrows a 30 s poll at ~11k tracks — INSIDE the
+    # playlist-import trajectory, not at some distant scale. Worst case is
+    # steady drip-feeding: a full O(N) rebuild for the 2 tracks that finished
+    # this poll. Rebuild when enough has accumulated, or enough time has
+    # passed, and ALWAYS the moment the queue empties, so a finished import
+    # still reaches /explore immediately.
+    pending_rebuild = 0
+    last_rebuild = 0.0
     with tempfile.TemporaryDirectory(prefix="va_audio_") as audio_dir:
         while True:
             # The whole poll body is guarded: a transient DB error (e.g. a
@@ -95,7 +112,20 @@ if __name__ == "__main__":
                                on_progress=beat)
                 if result["done"] or result["failed"]:
                     print(f"extraction: {result['done']} done, {result['failed']} failed")
-                if result["done"]:
+                pending_rebuild += int(result["done"])
+                try:
+                    queue_empty = cache.queue_count() == 0
+                except Exception:  # noqa: BLE001 — unknown queue → treat as busy
+                    queue_empty = False
+                due = pending_rebuild and (
+                    queue_empty                                   # drain idle
+                    or pending_rebuild >= args.rebuild_after      # enough new work
+                    or (time.time() - last_rebuild) >= args.rebuild_every * 60)
+                if due:
+                    print(f"derived rebuild ({pending_rebuild} new track(s), "
+                          f"queue {'empty' if queue_empty else 'busy'})")
+                    pending_rebuild = 0
+                    last_rebuild = time.time()
                     # New tracks → refresh the derived layer + marts so they reach
                     # /explore immediately (percentiles recalibrate by design).
                     try:
@@ -104,13 +134,10 @@ if __name__ == "__main__":
                               f"{PERCEPTUAL_VERSION}")
                     except Exception as exc:  # noqa: BLE001 — derived layer, never fatal
                         print(f"mart refresh failed (next successful drain retries): {exc}")
-                    try:  # O1 (D-28): keep the near-duplicate display flag current
-                        dup = cache.refresh_duplicate_flags()
-                        if dup["n_duplicates"]:
-                            print(f"dedup: {dup['n_duplicates']} duplicate flag(s) "
-                                  f"across {dup['n_clusters']} cluster(s)")
-                    except Exception as exc:  # noqa: BLE001 — annotation only, never fatal
-                        print(f"dedup refresh failed (next drain retries): {exc}")
+                    # O1 (D-28) dedup flags are refreshed INSIDE rebuild_marts
+                    # (its first act, so every mart sees the current canonical
+                    # plane). This used to call refresh_duplicate_flags a second
+                    # time right here — pure duplicated work on every drain.
                     try:
                         # D-60: the GOLD catalog plane. Only the serving marts
                         # were refreshed here, so every import left dim_tracks

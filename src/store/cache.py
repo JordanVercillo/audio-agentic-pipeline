@@ -724,6 +724,30 @@ class FeatureCache:
                                     computed_at=computed_at or utcnow()))
             s.commit()
 
+    def upsert_perceptual_many(self, rows: list[dict], *, version: str,
+                               computed_at=None) -> int:
+        """Upsert MANY perceptual rows in ONE session (P4.6.4).
+
+        The per-row `upsert_perceptual` opened a session and committed for every
+        track, so a full mart rebuild paid ~2k transactions to write ~2k small
+        rows — the single largest cost in the post-drain chain, and it grows
+        linearly with the corpus while the worker's poll interval does not.
+        One transaction is also more correct: a crash mid-rebuild leaves the
+        perceptual table wholly old or wholly new, never half-transformed.
+
+        `rows` is [{spotify_track_id, features}, ...].
+        """
+        if not rows:
+            return 0
+        when = computed_at or utcnow()
+        with self._Session() as s:
+            for r in rows:
+                s.merge(TrackPerceptual(spotify_track_id=r["spotify_track_id"],
+                                        features=r["features"],
+                                        version=version, computed_at=when))
+            s.commit()
+        return len(rows)
+
     def get_perceptual(self, track_ids: list[str]) -> dict[str, dict]:
         if not track_ids:
             return {}
