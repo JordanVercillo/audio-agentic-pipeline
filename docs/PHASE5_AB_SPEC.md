@@ -293,7 +293,7 @@ legal source" gap stated (unchanged from D-65). Then the **F2 memo** applying
 D-73's bars to the measured evidence, ending in exactly one of the three
 verdicts per estimator (ADOPT v2 / KEEP v1 FOREVER / SOFTEN THE CLAIM), each
 publishable. Any ADOPT escalates to the owner as a D-67 Tier A/B decision
-with the full blast radius named: a `tempo_bpm` change forces FAISS rebuild,
+with the full blast radius named: a `tempo_bpm` change forces a full re-extraction,
 cluster retrain (D-62 machinery), perceptual blend shifts, gold re-export.
 
 ## 3. The D-73 evidence bars (frozen before the join runs)

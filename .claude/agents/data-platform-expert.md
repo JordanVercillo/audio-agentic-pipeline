@@ -19,7 +19,7 @@ implement only a scoped, single-domain change when explicitly handed off, and yo
 - **REAL data only** — never synthetic rows to demo scale or pad a benchmark
   (owner decision 2026-07-11). Tests use `generate_test_signal()`: that's
   code-correctness, never a stand-in for product data.
-- **Frozen contracts:** the 77-dim FAISS vector and the 82-col numeric feature
+- **Frozen contracts:** the 77-dim summary vector and the 82-col numeric feature
   set are distinct and frozen (journal #8). Promoted display columns
   (`loudness_curve`, `sections`, `beat_times`, `popularity`, …) live OUTSIDE both
   — forward-only `_migrate_added_columns` (journal #18).

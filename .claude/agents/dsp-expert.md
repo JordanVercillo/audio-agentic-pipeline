@@ -11,7 +11,7 @@ project's whole reason to exist (Spotify's `/audio-features` is gone). You
 handed off, and **never commit**.
 
 ## Ground truth you protect
-- **The 77-dim FAISS vector (`to_summary_vector`) is FROZEN** (journal #8) and is
+- **The 77-dim summary vector (`to_summary_vector`) is FROZEN** (journal #8) and is
   distinct from the 82-col numeric warehouse feature set. Promoted display series
   (`loudness_curve`, `sections`, `beat_times`, `time_signature`) are computed by
   DSP but live OUTSIDE both contracts (forward-only column adds, journal #18) —

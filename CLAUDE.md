@@ -44,6 +44,29 @@ live state).
 7. **Data is rebuildable, never committed** — `data/` is gitignored; the
    pipeline scripts are the artifact.
 
+## How to explain things here (owner, 2026-07-31)
+
+**Speak analytics-engineering and data-science, not systems-engineering.**
+Jordan's frame of reference is the modern data stack and the DS workflow; that
+is the vocabulary a Data Platform / DE interview will use too, so explaining in
+it doubles as rehearsal.
+
+Reach for: **sources · models · grain · primary key · lineage · upstream /
+downstream · DAG · materialization (view vs table vs incremental) · idempotent
+rebuild · slowly-changing dimension · freshness SLA · data contract · schema
+evolution · tests/assertions · semantic layer · fact vs dimension** — and on the
+DS side **feature store · feature engineering · embedding space · dimensionality
+reduction · exact vs approximate k-NN · recall@k · train/serve skew · leakage ·
+drift · cardinality · z-score / percentile rank · silhouette · centroid**.
+
+Translate rather than assume: when something is really a systems concern (a
+thread pool, a mutex, a file handle), say what it costs in *pipeline* terms —
+latency per model run, rows per rebuild, whether it changes the grain, whether
+it breaks idempotency.
+
+Do NOT jargon-stuff. The test is whether an analytics engineer reading it can
+predict what breaks. If a plain sentence is clearer, use the plain sentence.
+
 ## Run commands
 
 ```bash

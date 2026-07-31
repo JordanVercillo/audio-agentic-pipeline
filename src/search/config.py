@@ -1,15 +1,14 @@
 """
-config.py — Vector Search Configuration
+config.py — UMAP projection configuration
 =========================================
-Centralized configuration for the vector similarity search layer.
+Configuration for the taste-map projection.
 
-Key design decisions (per 03_data_orchestrator.md):
-    - Cosine similarity (NOT Euclidean) for all vector comparisons.
-      Why? Audio embeddings live on a manifold where direction matters
-      more than magnitude. Two quiet recordings of the same song should
-      match despite having different absolute energy levels. Cosine
-      similarity measures angular distance, making it magnitude-invariant.
+This file used to carry the FAISS vector-store settings too (`metric`,
+`index_path`, `SimilarityMetric`). Those went with the FAISS stack on
+2026-07-31 - see `docs/DELETIONS.md`. Similarity is answered today by a plain
+`math.dist` scan in `src/store/cache.py`.
 
+Key design decision:
     - UMAP for dimensionality reduction (NOT PCA or t-SNE).
       Why? UMAP preserves both local AND global topological structure.
       PCA only captures linear variance. t-SNE preserves local structure
@@ -19,7 +18,6 @@ Key design decisions (per 03_data_orchestrator.md):
 """
 
 from dataclasses import dataclass, field
-from enum import Enum
 from pathlib import Path
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -33,23 +31,6 @@ EMBEDDINGS_DIR = DATA_DIR / "embeddings"
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-#  SIMILARITY METRICS
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-class SimilarityMetric(Enum):
-    """
-    Supported similarity/distance metrics for vector search.
-
-    COSINE is the default and ONLY recommended metric per
-    03_data_orchestrator.md. Others are available for experimentation
-    but should not be used on raw audio embeddings.
-    """
-    COSINE = "cosine"          # Angular distance — magnitude-invariant (RECOMMENDED)
-    INNER_PRODUCT = "ip"       # Dot product — requires normalized vectors
-    L2 = "l2"                  # Euclidean — NOT recommended for audio embeddings
-
-
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 #  VECTOR STORE CONFIG
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -59,9 +40,7 @@ class VectorStoreConfig:
     Runtime configuration for the vector similarity search engine.
 
     Attributes:
-        metric:         Similarity metric (default: COSINE).
-        index_path:     Path to persist the FAISS index file.
-        metadata_path:  Path to the Parquet file mapping index positions
+        metadata_path:  Path to the Parquet file mapping projection rows
                         to spotify_track_ids and other metadata.
         n_results:      Default number of results for similarity queries.
         umap_n_neighbors:   UMAP locality parameter. Higher = more global
@@ -70,9 +49,10 @@ class VectorStoreConfig:
                             Lower = tighter clusters (default: 0.1).
         umap_n_components:  Output dimensionality for UMAP (2 for 2D viz,
                             3 for 3D viz).
+        umap_random_state:  Seed - keeps the committed taste map reproducible.
+                            Unseeded, every rebuild would redraw it and no
+                            diff would ever mean anything.
     """
-    metric: SimilarityMetric = SimilarityMetric.COSINE
-    index_path: Path = field(default_factory=lambda: VECTOR_STORE_DIR / "faiss.index")
     metadata_path: Path = field(default_factory=lambda: VECTOR_STORE_DIR / "index_metadata.parquet")
     n_results: int = 10
 

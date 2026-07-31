@@ -1,77 +1,34 @@
 """
-src.search — Vector Similarity Search & Visualization
-=======================================================
-The final layer of the audio-agentic-pipeline. Indexes audio embeddings
-in FAISS for sub-millisecond cosine similarity queries, and projects
-collections into 2D taste maps via UMAP.
+src.search — UMAP projection for the taste map
+==============================================
+Projects the 77-dim acoustic fingerprints into 2D so a collection can be
+plotted. `compute_umap` is consumed by `src.analysis.clustering` (the taste-map
+path) and by `scripts/build_taste_map.py`.
 
 Architecture:
-    config.py      → Vector store + UMAP configuration
-    faiss_store.py → FAISS index management (add, query, persist)
-    visualizer.py  → UMAP projection + dark-themed scatter/radar plots
-    pipeline.py    → End-to-end DAG orchestrator
+    config.py     → UMAP configuration (seeded, so the map is reproducible)
+    visualizer.py → UMAP projection + dark-themed scatter/radar plots
 
 Quick Start:
-    >>> from src.search import FAISSStore, find_similar_tracks
+    >>> from src.search import compute_umap
+    >>> xy = compute_umap(vectors)          # (n, 2) float32, deterministic
 
-    # Build an index from DSP features
-    >>> from src.search import build_index_from_features
-    >>> store = build_index_from_features("data/embeddings/dsp_features.parquet")
-
-    # Find similar tracks
-    >>> results = find_similar_tracks("spotify:track:xxx", store=store, k=5)
-
-    # Visualize the collection
-    >>> from src.search import visualize_collection
-    >>> projection, fig = visualize_collection(store=store)
-
-Full DAG (from 03_data_orchestrator.md):
-    1. Fetch Metadata (src.ingestion)
-    2. Extract Features (src.dsp)
-    3. Upsert to Vector Store (src.search)  ← this module
+This package used to own a FAISS vector-similarity index (`faiss_store.py`) and
+an end-to-end DAG (`pipeline.py`). Both were deleted on 2026-07-31: nothing
+imported them, and the live "similar tracks" answer is a plain `math.dist` scan
+in `src/store/cache.py` at 7.7 ms over the corpus. See `docs/DELETIONS.md` for
+what they did and the one command that restores them.
 """
 
-import importlib
-
 # Configuration
-from .config import SimilarityMetric, VectorStoreConfig
+from .config import VectorStoreConfig
 
-# Visualization (light: umap + matplotlib — needed by the taste-map path)
+# Visualization (umap + matplotlib — the taste-map path)
 from .visualizer import compute_umap, plot_similarity_radar, plot_taste_map
 
-# ── Lazy heavy submodules ──
-# FAISS (faiss_store) and the full DAG (pipeline) are loaded ON FIRST ACCESS,
-# not at package import. Otherwise `from src.search.visualizer import compute_umap`
-# — the taste-map / report path — would drag in FAISS it never uses (and emit
-# faiss's AVX-fallback noise). `from src.search import FAISSStore` still works.
-_LAZY = {
-    "FAISSStore": ".faiss_store",
-    "build_index_from_features": ".pipeline",
-    "build_index_from_embeddings": ".pipeline",
-    "find_similar_tracks": ".pipeline",
-    "visualize_collection": ".pipeline",
-}
-
-
-def __getattr__(name: str):  # PEP 562
-    target = _LAZY.get(name)
-    if target is None:
-        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
-    return getattr(importlib.import_module(target, __name__), name)
-
-
-def __dir__():
-    return sorted([*globals().keys(), *_LAZY])
-
-
 __all__ = [
-    # Config
-    "VectorStoreConfig", "SimilarityMetric",
-    # FAISS
-    "FAISSStore",
-    # Visualization
-    "compute_umap", "plot_taste_map", "plot_similarity_radar",
-    # Pipeline
-    "build_index_from_features", "build_index_from_embeddings",
-    "find_similar_tracks", "visualize_collection",
+    "VectorStoreConfig",
+    "compute_umap",
+    "plot_taste_map",
+    "plot_similarity_radar",
 ]

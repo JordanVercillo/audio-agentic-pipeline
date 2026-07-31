@@ -66,11 +66,11 @@ audio-agentic-pipeline/
 │   │   ├── cleansed.py        # Validate, type-cast, deduplicate
 │   │   └── modeled.py         # Build star schema (fact + dimensions)
 │   │
-│   ├── search/             # Vector similarity search (FAISS)
-│   │   ├── config.py          # VectorStoreConfig
-│   │   ├── faiss_store.py     # FAISS index CRUD operations
-│   │   ├── pipeline.py        # End-to-end DAG orchestrator
+│   ├── search/             # UMAP projection for the taste map
+│   │   ├── config.py          # VectorStoreConfig (UMAP params, seeded)
 │   │   └── visualizer.py      # UMAP taste maps
+│   │                          # faiss_store.py + pipeline.py DELETED
+│   │                          # 2026-07-31 (docs/DELETIONS.md)
 │   │
 │   └── analysis/           # Temporal taste analysis
 │       ├── drift.py           # Taste drift scores (cosine distance)
@@ -272,7 +272,7 @@ python scripts/run_pipeline.py --skip-extract    # Skip DSP extraction (uses cac
 | Item | Description | Priority | Complexity |
 |------|-------------|----------|-----------|
 | **5.1** | Automated Insight Narrative Generation | High | Medium |
-| **5.2** | Genre Clustering (FAISS + UMAP on real embeddings) | High | Medium |
+| **5.2** | Genre Clustering (KMeans + UMAP on real embeddings) | High | Medium |
 | **5.3** | Temporal Trend Visualizations (interactive plots) | Medium | Low |
 | **5.4** | Portfolio Export (static HTML report) | Medium | Low |
 
@@ -307,7 +307,8 @@ Output: UMAP 2D projection + cluster assignments + taste map visualization
 ```
 
 **Approach:**
-- Use existing `src/search/faiss_store.py` for index building
+- NOTE: `src/search/faiss_store.py` was deleted 2026-07-31 (unused; docs/DELETIONS.md).
+  Similarity today is `math.dist` in `src/store/cache.py`.
 - Use existing `src/search/visualizer.py` for UMAP + plotting
 - Add genre label overlay from `dim_artists.genres`
 - Optionally enhance with PANNs 2048D embeddings
@@ -463,7 +464,7 @@ python spark/temporal_aggregate.py
 | Warehouse (Staging) | ✅ Working | Raw Parquet landing |
 | Warehouse (Cleansed) | ✅ Working | Validated + deduped |
 | Warehouse (Modeled) | ✅ Working | Star schema |
-| FAISS vector search | ✅ Working | Similarity queries |
+| Similarity queries | ✅ Working | `math.dist` over the perceptual plane, 7.7 ms (the FAISS stack was deleted 2026-07-31 unused — docs/DELETIONS.md) |
 | Drift analysis | ✅ Working | Cosine distance metrics |
 | PySpark aggregation | ✅ Working | Distributed centroids |
 | Web application | ✅ Working | FastAPI + OAuth + frontend |

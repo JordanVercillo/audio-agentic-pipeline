@@ -32,8 +32,10 @@ dependencies = [
     "python-dotenv>=1.0.0",
     # ── Audio acquisition (YouTube → MP3); CVE floor pinned ──
     "yt-dlp>=2026.7.4",
-    # ── Vector search + dimensionality reduction + clustering ──
-    "faiss-cpu>=1.7.0",
+    # ── Dimensionality reduction + clustering ──
+    # faiss-cpu was dropped 2026-07-31 with the dormant vector-search stack
+    # (docs/DELETIONS.md): nothing imported it, and similarity is a math.dist
+    # scan at 7.7 ms over the corpus.
     "umap-learn>=0.5.0",
     "scikit-learn>=1.3.0",
     # ── Distributed transforms ──

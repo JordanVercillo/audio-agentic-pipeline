@@ -18,7 +18,7 @@ when a prerequisite failed.
    fail, check the conda interpreter before declaring the env broken —
    wrong-interpreter-on-PATH mimics a missing environment.
 2. **Core imports** — `python -c "import librosa, soundfile, numpy, pandas,
-   pyarrow, spotipy, yt_dlp, faiss, umap, matplotlib"`. On failure:
+   pyarrow, spotipy, yt_dlp, umap, matplotlib"`. On failure:
    `pip install -r requirements.txt` (name the missing module explicitly).
 3. **yt-dlp version** — must be ≥ 2026.2.21 (CVE floor pinned in
    requirements.txt): `python -c "import yt_dlp; print(yt_dlp.version.__version__)"`.
