@@ -42,7 +42,8 @@
     {% if genre %}<a class="chip chip-clear" href="/artists">× clear filter</a>{% endif %}
   </div>
   <p class="cap">Genres known for <b>{{ strip.covered }} of {{ strip.total }}</b> of the
-    artists on this page — Spotify's genre arrays are sparse and now deprecated (stored
+    {{ shown }} artists this search matches (not just this page) — Spotify's genre
+    arrays are sparse and now deprecated (stored
     copy shown); unlabeled artists carry their acoustic cluster label on Analytics
     instead.</p>
   {% endif %}
@@ -64,7 +65,7 @@
   </div>
   {% endif %}
 
-  <h2 class="section">{{ cards|length }}{% if genre %} of {{ total_cards }}{% endif %} artists</h2>
+  <h2 class="section">{{ shown }}{% if genre or q %} of {{ total_cards }}{% endif %} artists</h2>
   <div class="artist-grid">
     {% for c in cards %}
     <div class="acard">

@@ -146,7 +146,12 @@ ALL = "all"
 # The query keys this surface owns. Pager URLs are rebuilt from an ALLOWLIST,
 # never echoed from whatever arrived, so a crafted /library?<junk> can't plant
 # junk in our own links.
-_PAGER_KEYS = ("q", "sort", "order", "tab", "filter", "dupes", "per")
+# Every param a paged surface must carry across a page change. `genre` and `f`
+# are /artists' (R1) — without them, paging silently DROPPED the genre filter
+# and reset the comparison chart's column, which reads as the page losing your
+# place (director review 2026-07-31). A surface that adds a filter adds it here.
+_PAGER_KEYS = ("q", "sort", "order", "tab", "filter", "dupes", "per",
+               "genre", "f")
 
 
 def _coerce_per(per: Any) -> int:

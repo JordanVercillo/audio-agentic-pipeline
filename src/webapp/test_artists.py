@@ -611,3 +611,71 @@ def test_drift_labels_itself_from_the_shared_registry():
     d = artist_drift(albums, "rms_mean")
     assert d["label"] == scales.display_name("rms_mean")
     assert d["direction"] == "up" and d["shape"] == "trend"
+
+
+# ── the pager must carry the filters the surface actually has ──────────────
+def test_pager_carries_the_genre_filter_and_the_chart_column():
+    """Paging dropped `genre` and `f` because neither was in the allowlist —
+    page 2 of a genre view silently became page 2 of everything, with the
+    comparison chart reset to its default column (director review 2026-07-31).
+    """
+    from urllib.parse import parse_qs
+
+    from .library import pager_query
+
+    params = {"genre": "indie rock", "f": "brightness", "q": "the",
+              "per": "60", "page": "3"}
+    got = parse_qs(pager_query(params, page=2))
+    assert got.get("genre") == ["indie rock"], "the genre filter was dropped"
+    assert got.get("f") == ["brightness"], "the chart column was reset"
+    assert got.get("q") == ["the"] and got.get("per") == ["60"]
+    # and an unset filter still contributes nothing to the URL
+    assert "genre" not in parse_qs(pager_query({"q": "x"}, page=2))
+
+
+def test_artists_heading_and_genre_caption_count_the_same_population(client):
+    """Two captions counted something other than what they said: the heading
+    rendered "N of " (nothing supplied `total_cards`), and the genre strip said
+    "artists on this page" while counting every match."""
+    r = client.get("/artists?per=15")
+    assert r.status_code == 200
+    body = r.text
+    assert "of  artists" not in body, "total_cards is unsupplied again"
+    assert "artists on this page" not in body, (
+        "the genre caption claims a page but counts every match")
+
+
+def test_artist_page_never_claims_a_track_credited_to_another_artist_id():
+    """The index deliberately keeps an id-keyed artist and a name-keyed one
+    apart — two acts share a name often enough that fusing them attributes
+    someone else's catalogue to this page, and the drift and acoustic profile
+    then describe a chimera. /artist/{id} was fusing exactly what /artists
+    splits (director review 2026-07-31).
+
+    Asserted at the selection rule, which is the thing that was wrong.
+    """
+    from .artists import primary_artist
+
+    rows = [{"id": "a1", "primary_artist_id": "ART1", "artist": "Nirvana"},
+            {"id": "a2", "primary_artist_id": None, "artist": "Nirvana"},
+            {"id": "a3", "primary_artist_id": "ART2", "artist": "Nirvana"},
+            {"id": "a4", "primary_artist_id": None, "artist": "Someone Else"}]
+
+    def select(artist_id, name):
+        by_id, by_name = [], []
+        for r in rows:
+            pid = r.get("primary_artist_id")
+            if pid == artist_id:
+                by_id.append(r["id"])
+            elif not pid and primary_artist(r.get("artist") or "").lower() == name.lower():
+                by_name.append(r["id"])
+        return by_id, by_name
+
+    by_id, by_name = select("ART1", "Nirvana")
+    assert by_id == ["a1"]
+    assert by_name == ["a2"], "the unresolved row is what name-matching is for"
+    assert "a3" not in by_id + by_name, (
+        "a track credited to a DIFFERENT artist id was claimed by name")
+
+    # and the other act keeps its own track
+    assert select("ART2", "Nirvana")[0] == ["a3"]

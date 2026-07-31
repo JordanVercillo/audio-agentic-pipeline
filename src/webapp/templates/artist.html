@@ -142,7 +142,10 @@
     ({{ n_dated }} of {{ n_albums }} carry a release date). Dates are as Spotify
     reports them, so a <b>remaster reads as its reissue year</b>, not the year
     the music was recorded. Per-release tempo and energy are means over the
-    tracks of that release we've analyzed.</p>
+    tracks of that release we've analyzed.{% if n_by_name %} {{ n_by_name }} of
+    these track{{ '' if n_by_name == 1 else 's' }} matched on <b>artist name
+    alone</b> (no Spotify artist id stored yet); tracks credited to a different
+    artist id are never claimed here, even under the same name.{% endif %}</p>
   {% endif %}
 
   {% if similar %}

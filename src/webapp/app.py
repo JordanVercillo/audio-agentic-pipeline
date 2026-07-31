@@ -1140,6 +1140,10 @@ def create_app() -> FastAPI:
         return templates.TemplateResponse(request, "artists.html", {
             **flags, "tab": tab, "cards": page["page_rows"],
             "shown": v["shown"], "total": v["total"], "my_count": my_count,
+            # The heading renders "<shown> of <total_cards>" when a filter is
+            # on; the template referenced a name nothing supplied, so it read
+            # "N of  artists" on every ?genre= page.
+            "total_cards": v["total"],
             "n_linkable": v["n_linkable"], "n_with_genres": v["n_with_genres"],
             "n_name_keyed": v["n_name_keyed"], "n_folded": v["n_folded"],
             "q": v["q"], "genre": v["genre"],
@@ -1178,15 +1182,30 @@ def create_app() -> FastAPI:
         # no MusicBrainz (D-61 deferred it; the remaster caveat is stated in
         # the template rather than silently corrected).
         lib_rows = cache.library_rows()
-        their_tids = [r["id"] for r in lib_rows
-                      if (r.get("primary_artist_id") == artist_id
-                          or artists_view_mod.primary_artist(r.get("artist") or "").lower()
-                          == name.lower())]
+        # Name-matching, but only where a name cannot CONTRADICT an id. The
+        # corpus index deliberately keeps an id-keyed artist and a name-keyed
+        # one apart — two acts genuinely share a name often enough that fusing
+        # them would attribute someone else's catalogue to this page, and the
+        # drift and acoustic profile would then describe a chimera. This page
+        # was fusing exactly what the index splits (director review
+        # 2026-07-31). A track that carries a DIFFERENT primary_artist_id is
+        # now never claimed; one that carries none is the unresolved case the
+        # name match exists for, and the page says how many it took.
+        by_id, by_name = [], []
+        for r in lib_rows:
+            pid = r.get("primary_artist_id")
+            if pid == artist_id:
+                by_id.append(r["id"])
+            elif not pid and artists_view_mod.primary_artist(
+                    r.get("artist") or "").lower() == name.lower():
+                by_name.append(r["id"])
+        their_tids = by_id + by_name
         albums = artists_view_mod.artist_albums(
             their_tids, cache.all_track_identity(), perceptual,
             {r["id"]: r.get("art") for r in lib_rows})
         ctx_albums = {
             "albums": albums,
+            "n_by_id": len(by_id), "n_by_name": len(by_name),
             "n_albums": len(albums),
             "n_dated": sum(1 for a in albums if a["year"]),
             # R4a: how their sound moved across their OWN catalogue — an artist
