@@ -355,3 +355,95 @@ def artists_view(index: dict[str, Any], *, q: str = "", genre: str = "",
         "q": q,
         "genre": (genre or "").strip().lower(),
     }
+
+
+# ── R2/R4 (P4.7.3): albums + within-artist chronological drift ───────────────
+_ALBUM_FEATURES = ("tempo", "energy", "brightness", "danceability")
+
+
+def artist_albums(track_ids: list[str], identity: dict[str, dict],
+                  perceptual: dict[str, dict],
+                  art: Optional[dict[str, str]] = None) -> list[dict[str, Any]]:
+    """This artist's releases, oldest first — the discography R2 unlocks.
+
+    Built entirely from metadata the D-70 backfill captured (album name, type,
+    release date), so it costs no API call and needs no MusicBrainz (D-61).
+
+    Grouped by (name, type) and dated by the EARLIEST release seen: the live
+    data has "Absolution" under both 2003 and 2004 (regional releases) and
+    "Will Of The People" as both an album and a single. Collapsing on name
+    alone would fuse an album with its lead single; keeping every release id
+    separate would show one record three times.
+
+    HONESTY: the date is Spotify's `release_date`, so a remaster reads as its
+    reissue year, not the original recording. Stated in the UI (D-61) rather
+    than silently corrected — fixing it properly needs MusicBrainz, which the
+    owner deferred.
+    """
+    art = art or {}
+    groups: dict[tuple[str, str], dict[str, Any]] = {}
+    n_undated = 0
+    for tid in track_ids:
+        idt = identity.get(tid) or {}
+        name = (idt.get("album_name") or "").strip()
+        if not name:
+            continue
+        kind = (idt.get("album_type") or "album").strip()
+        date = (idt.get("album_release_date") or "").strip()
+        if not date:
+            n_undated += 1
+        g = groups.setdefault((name.lower(), kind), {
+            "name": name, "type": kind, "date": date, "tids": [],
+            "image": None})
+        g["tids"].append(tid)
+        if date and (not g["date"] or date < g["date"]):
+            g["date"] = date
+        if not g["image"] and art.get(tid):
+            g["image"] = art[tid]
+
+    out: list[dict[str, Any]] = []
+    for g in groups.values():
+        analyzed = [t for t in g["tids"] if t in perceptual]
+        feats = {c: _mean([float(perceptual[t][c]) for t in analyzed
+                           if isinstance(perceptual[t].get(c), (int, float))])
+                 for c in _ALBUM_FEATURES}
+        out.append({
+            "name": g["name"], "type": g["type"],
+            "date": g["date"], "year": (g["date"] or "")[:4] or None,
+            "image": g["image"],
+            "n_tracks": len(g["tids"]), "n_analyzed": len(analyzed),
+            "feat": feats,
+        })
+    # Undated releases sort last rather than pretending to be year zero.
+    out.sort(key=lambda a: (a["year"] is None, a["year"] or "", a["name"].lower()))
+    return out
+
+
+def artist_drift(albums: list[dict], column: str = "energy",
+                 min_albums: int = 3) -> Optional[dict[str, Any]]:
+    """How this artist's sound moved across their OWN catalogue (R4a).
+
+    An artist FACT, not a taste fact — valid for an anonymous visitor, unlike
+    the listening-window drift on /analytics.
+
+    Returns None under `min_albums` dated, analyzed releases: two points is a
+    line through anything, and a "trend" drawn from them would be noise wearing
+    a trend's clothes (the journal-#28 degenerate-n rule).
+    """
+    pts = [a for a in albums
+           if a["year"] and a["n_analyzed"] and a["feat"].get(column) is not None]
+    if len(pts) < min_albums:
+        return None
+    first, last = pts[0], pts[-1]
+    delta = float(last["feat"][column]) - float(first["feat"][column])
+    vals = [float(p["feat"][column]) for p in pts]
+    return {
+        "column": column,
+        "points": [{"year": p["year"], "name": p["name"],
+                    "value": float(p["feat"][column])} for p in pts],
+        "n": len(pts),
+        "from_year": first["year"], "to_year": last["year"],
+        "delta": round(delta, 4),
+        "min": min(vals), "max": max(vals),
+        "direction": "up" if delta > 0 else ("down" if delta < 0 else "flat"),
+    }

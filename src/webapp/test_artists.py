@@ -412,3 +412,66 @@ def test_an_ambiguous_name_is_left_split_on_purpose():
     assert idx["n_artists"] == 3, "an ambiguous name was silently merged"
     assert idx["n_tracks_folded_by_name"] == 0
     assert idx["n_name_keyed"] == 1
+
+
+# ── R2/R4a (P4.7.3): discography + chronological drift ───────────────────────
+def _ident(rows):
+    return {t: {"album_name": n, "album_type": k, "album_release_date": d}
+            for t, n, k, d in rows}
+
+
+def test_albums_group_by_name_and_type_and_take_the_earliest_date():
+    """Live data has "Absolution" under 2003 AND 2004 (regional releases) and
+    "Will Of The People" as both an album and a single. Collapsing on name
+    alone fuses a record with its lead single; keeping every release id shows
+    one record twice."""
+    from .artists import artist_albums
+
+    ident = _ident([
+        ("t1", "Absolution", "album", "2003-09-15"),
+        ("t2", "Absolution", "album", "2004-03-23"),   # reissue
+        ("t3", "Will Of The People", "album", "2022-08-26"),
+        ("t4", "Will Of The People", "single", "2022-06-17"),
+    ])
+    albums = artist_albums(["t1", "t2", "t3", "t4"], ident, {})
+    names = [(a["name"], a["type"], a["year"], a["n_tracks"]) for a in albums]
+    assert ("Absolution", "album", "2003", 2) in names       # merged, earliest date
+    assert ("Will Of The People", "album", "2022", 1) in names
+    assert ("Will Of The People", "single", "2022", 1) in names
+    assert len(albums) == 3
+
+
+def test_albums_are_chronological_and_undated_sort_last():
+    from .artists import artist_albums
+
+    ident = _ident([("t1", "Later", "album", "2015-01-01"),
+                    ("t2", "Earlier", "album", "2001-01-01"),
+                    ("t3", "Undated", "album", "")])
+    albums = artist_albums(["t1", "t2", "t3"], ident, {})
+    assert [a["name"] for a in albums] == ["Earlier", "Later", "Undated"]
+
+
+def test_drift_refuses_to_draw_a_trend_from_too_few_points():
+    """Two points is a line through anything (journal #28)."""
+    from .artists import artist_drift
+
+    two = [{"year": "2001", "name": "A", "n_analyzed": 1, "feat": {"energy": 0.2}},
+           {"year": "2010", "name": "B", "n_analyzed": 1, "feat": {"energy": 0.8}}]
+    assert artist_drift(two, "energy") is None
+    three = two + [{"year": "2020", "name": "C", "n_analyzed": 1,
+                    "feat": {"energy": 0.5}}]
+    d = artist_drift(three, "energy")
+    assert d is not None and d["n"] == 3
+    assert d["from_year"] == "2001" and d["to_year"] == "2020"
+    assert d["direction"] == "up" and round(d["delta"], 2) == 0.30
+
+
+def test_drift_ignores_releases_with_no_analyzed_tracks():
+    from .artists import artist_drift
+
+    albums = [{"year": "2001", "name": "A", "n_analyzed": 0, "feat": {"energy": None}},
+              {"year": "2005", "name": "B", "n_analyzed": 2, "feat": {"energy": 0.3}},
+              {"year": "2010", "name": "C", "n_analyzed": 2, "feat": {"energy": 0.4}},
+              {"year": "2015", "name": "D", "n_analyzed": 2, "feat": {"energy": 0.6}}]
+    d = artist_drift(albums, "energy")
+    assert d["n"] == 3 and d["from_year"] == "2005"

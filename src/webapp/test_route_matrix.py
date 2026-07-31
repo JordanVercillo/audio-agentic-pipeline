@@ -184,8 +184,12 @@ MATRIX: list[Row] = [
         USER: Expect(200),
         OWNER: Expect(200)}),
 
-    Row("/artist/{artist_id}", "GET", f"/artist/{ARTIST}", "viewer-gated", {
-        ANON: _gate("/"),
+    # R2: PUBLIC too — the discography and acoustic profile are corpus facts.
+    # The listening-derived list and the borrowed-time live top-10 degrade to
+    # honest captions rather than gating the page (the live call stays authed:
+    # PKCE means a guest fetch would be the owner's token leaking).
+    Row("/artist/{artist_id}", "GET", f"/artist/{ARTIST}", "D-18 public artist page", {
+        ANON: Expect(200, effects=NONE),
         GUEST: Expect(200, effects=NONE),
         USER: Expect(200, effects=frozenset({SPOTIFY})),
         OWNER: Expect(200, effects=frozenset({SPOTIFY}))}),

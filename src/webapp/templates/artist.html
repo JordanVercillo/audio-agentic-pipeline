@@ -72,6 +72,53 @@
     doesn't depend on it.</p>
   {% endif %}
 
+  {% if albums %}
+  <h2 class="section">Discography <span class="muted">· {{ n_albums }} release{{ '' if n_albums == 1 else 's' }} in the corpus</span></h2>
+
+  {% if drift %}
+  <div class="insight">
+    <div class="insight-badge">How their sound moved</div>
+    <p>Across {{ drift.n }} dated releases from <b>{{ drift.from_year }}</b> to
+      <b>{{ drift.to_year }}</b>, their energy went
+      {% if drift.direction == 'up' %}<b>up {{ '%.2f'|format(drift.delta) }}</b>
+      {% elif drift.direction == 'down' %}<b>down {{ '%.2f'|format(-drift.delta) }}</b>
+      {% else %}<b>nowhere</b>{% endif %}
+      (from {{ '%.2f'|format(drift.points[0].value) }} on
+      <i>{{ drift.points[0].name }}</i> to
+      {{ '%.2f'|format(drift.points[-1].value) }} on
+      <i>{{ drift.points[-1].name }}</i>).</p>
+    <p class="cap">Measured from OUR DSP over the tracks of theirs we've
+      analyzed — not a Spotify metric, and only as complete as our corpus.</p>
+  </div>
+  {% endif %}
+
+  <div class="lib-wrap">
+    <table class="catalog">
+      <thead><tr><th></th><th>Release</th><th>Year</th><th>Type</th>
+        <th>Analyzed</th><th>Tempo</th><th>Energy</th></tr></thead>
+      <tbody>
+      {% for a in albums %}
+        <tr>
+          <td>{% if a.image %}<img class="art art-sm" src="{{ a.image }}" alt=""
+                 loading="lazy">{% else %}<span class="art art-ph art-sm">♪</span>{% endif %}</td>
+          <td class="tname">{{ a.name }}</td>
+          <td>{{ a.year or '—' }}</td>
+          <td class="muted">{{ a.type }}</td>
+          <td>{{ a.n_analyzed }} of {{ a.n_tracks }}</td>
+          <td class="num">{% if a.feat.tempo is not none %}{{ a.feat.tempo|round|int }}{% else %}—{% endif %}</td>
+          <td class="num">{% if a.feat.energy is not none %}{{ '%.2f'|format(a.feat.energy) }}{% else %}—{% endif %}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="cap">Releases we hold at least one track from, oldest first
+    ({{ n_dated }} of {{ n_albums }} carry a release date). Dates are as Spotify
+    reports them, so a <b>remaster reads as its reissue year</b>, not the year
+    the music was recorded. Per-release tempo and energy are means over the
+    tracks of that release we've analyzed.</p>
+  {% endif %}
+
   {% if similar %}
   <h2 class="section">Similar in your library</h2>
   <ul class="sim-artists">

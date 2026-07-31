@@ -1146,9 +1146,13 @@ def create_app() -> FastAPI:
 
     @app.get("/artist/{artist_id}", response_class=HTMLResponse)
     def artist_page(request: Request, artist_id: str):
+        """R1/R2: PUBLIC, on the same terms as /artists and /song — the
+        discography and acoustic profile are corpus facts. The listening-derived
+        "your top tracks" and the borrowed-time live top-10 stay personal and
+        authed respectively; each degrades to an honest caption instead of
+        gating the whole page.
+        """
         session = request.state.session
-        if not _is_viewer(session):
-            return RedirectResponse("/", status_code=303)
         if not _ARTIST_ID_RE.fullmatch(artist_id or ""):
             return RedirectResponse("/artists", status_code=303)
         cache = _feature_cache()
@@ -1158,8 +1162,28 @@ def create_app() -> FastAPI:
         name = am.get("artist_name") or artist_id
         taste = session.get("taste") or {}
         metas = cache.all_meta()
-        card = artist_rollup([{"name": name}], metas,
-                             cache.all_perceptual(), {artist_id: am})[0]
+        perceptual = cache.all_perceptual()
+        card = artist_rollup([{"name": name}], metas, perceptual, {artist_id: am})[0]
+
+        # R2: the discography, from metadata D-70 captured — no API call, and
+        # no MusicBrainz (D-61 deferred it; the remaster caveat is stated in
+        # the template rather than silently corrected).
+        lib_rows = cache.library_rows()
+        their_tids = [r["id"] for r in lib_rows
+                      if (r.get("primary_artist_id") == artist_id
+                          or artists_view_mod.primary_artist(r.get("artist") or "").lower()
+                          == name.lower())]
+        albums = artists_view_mod.artist_albums(
+            their_tids, cache.all_track_identity(), perceptual,
+            {r["id"]: r.get("art") for r in lib_rows})
+        ctx_albums = {
+            "albums": albums,
+            "n_albums": len(albums),
+            "n_dated": sum(1 for a in albums if a["year"]),
+            # R4a: how their sound moved across their OWN catalogue — an artist
+            # fact, so it renders for anonymous visitors too.
+            "drift": artists_view_mod.artist_drift(albums, "energy"),
+        }
 
         yours = your_top_by_artist(name, taste.get("range_ids") or {}, metas)
         analyzed_ids = cache.cached_ids([t["id"] for t in yours])
@@ -1203,7 +1227,7 @@ def create_app() -> FastAPI:
 
         return templates.TemplateResponse(request, "artist.html", {
             **_viewer_flags(session), "artist": card, "artist_id": artist_id,
-            "yours": yours, "similar": sim,
+            "yours": yours, "similar": sim, **ctx_albums,
             "live_rows": live_rows, "live_dark": live_dark,
             "can_analyze": can_analyze})
 

@@ -495,3 +495,4 @@ a.prov-glyph:hover { text-decoration: underline; }
   content: ""; position: absolute; inset: 0 auto 0 0;
   width: var(--pct, 0%); background: var(--spotify); border-radius: 3px;
 }
+.art-sm { width: 34px; height: 34px; border-radius: 4px; object-fit: cover; }
