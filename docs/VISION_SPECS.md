@@ -1650,27 +1650,27 @@ gated on the owner's dataset download.
 
 ## Phase 4.7 — transparency, Epic R, polish (build order)
 
-- **P4.7.0 — consolidation before fan-out (Opus):** lift `_BANDS`/
+- **P4.7.0 — SHIPPED 2026-07-30 (S4a, 96bbf78) — and it caught a live 'Energy' vs 'Loudness' collision:** lift `_BANDS`/
   `_SIGNATURE_DIMS`/archetype thresholds into one `scales.py` with
   caption-parity tests (F8); extract the pager into a shared module.
-- **P4.7.1 — per-song transparency (Opus, D-66):** `RAW_FEATURE_DOC` + the two
+- **P4.7.1 — SHIPPED 2026-07-30 (S4b, 7ab8230) — all 83 features:** `RAW_FEATURE_DOC` + the two
   raw marts + `GET /song/{track_id}/features` (public, same guards as
   `/song`) + the doc tripwire; `/song` reorder + one caption stating the 3/6/8
   subset relationship + "See all 83 measured features →".
-- **P4.7.2 — Epic R R1 (Opus):** corpus-scale artist index (grouped by
+- **P4.7.2 — SHIPPED 2026-07-30 (S5a, 8266426) — /artists 15 -> 902 public:** corpus-scale artist index (grouped by
   `primary_artist_id`, counted name-fallback, never a silent merge), `/artists`
   public + paginated + searchable on the `/library` pattern, "All artists
   (892) | Your artists" tabs; artist names LINK from `/library` + `/song`
   (F5); route-matrix rows for every new route.
-- **P4.7.3 — R2 albums (Opus):** per-artist album grid from stored meta
+- **P4.7.3 — SHIPPED 2026-07-30 (S5b, 27ad2cd) — discography + drift:** per-artist album grid from stored meta
   (cover, counts, mean DSP profile) + chronology once P4.6.6 dates land, with
   the D-61 remaster caption.
-- **P4.7.4 — R3+R4 artist depth (Opus):** artist signature via the EXISTING
+- **P4.7.4 — SHIPPED 2026-07-30 (S5c, 2955393) — character + spread:** artist signature via the EXISTING
   `acoustic_signature()` (never a second routine) + spread (range-artist vs
   formula-artist); drift ×2 — chronological (public, needs R2 dates) and
   your-listening via `drift_over_rows` (viewer-only, honest "not enough
   ranked tracks" empty state).
-- **P4.7.5 — polish batch (Opus, each with a number or named defect):** kill
+- **P4.7.5 — SHIPPED 2026-07-30 (S6, 6d256ae) — /recommend 166->18 KB, /explore 153->72 KB, both now bounded:** kill
   the 1,895-option seed picker · sample/hex-bin `/explore` above ~600 pts
   (visitor's tracks always on top, sampling captioned) · touch parity +
   ~480px breakpoint + `aria-current` nav · `--fg` CSS var + hover sweep ·
