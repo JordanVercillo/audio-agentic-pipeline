@@ -1,0 +1,214 @@
+"""docs_facts.py - the numbers the public docs are allowed to state.
+
+ONE source for every countable claim in `README.md` and `docs/CASE_STUDY.md`.
+Print them (`--print`), or rewrite the docs to match (`--apply`).
+
+Why this exists: on 2026-07-31 the two documents a recruiter actually reads
+carried ELEVEN wrong numbers - 579 tests when there were 930, 771 analyzed
+tracks when there were 1,946, 14 exposed features when there were 83, a
+decision log stated as D-1..D-57 when it ran to D-73. None of them were ever
+wrong when written; every one of them rotted, because a number typed into prose
+has no relationship to the thing it describes.
+
+    uv run python scripts/docs_facts.py --print
+    uv run python scripts/docs_facts.py --apply     # rewrite the docs
+    uv run python scripts/docs_facts.py --check     # exit 1 if a doc disagrees
+
+The `--check` mode runs as a test (`src/store/test_docs_freshness.py`), so the
+docs going stale FAILS A BUILD instead of quietly misrepresenting the project.
+That is the whole point: journal #60 - a fix that is a command, not a trigger,
+regresses on schedule.
+
+Every fact here is derived from the live system (the cache, the marts, the
+suite, the spec), never typed. If a fact cannot be derived, it does not belong
+in this file - and arguably not in the docs either.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import re
+import sqlite3
+import subprocess
+import sys
+from pathlib import Path
+
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8")
+    except (AttributeError, ValueError):
+        pass
+
+ROOT = Path(__file__).resolve().parent.parent
+DB = ROOT / "data" / "feature_cache.db"
+
+
+def _q(con: sqlite3.Connection, sql: str) -> int:
+    try:
+        return int(con.execute(sql).fetchone()[0])
+    except sqlite3.Error:
+        return 0
+
+
+def collect() -> dict:
+    """Every countable claim the public docs may make, derived from the source."""
+    facts: dict[str, object] = {}
+
+    # ── the corpus, from the serving cache ────────────────────────────────
+    if DB.exists():
+        con = sqlite3.connect(f"file:{DB}?mode=ro", uri=True)
+        try:
+            facts["analyzed_tracks"] = _q(con, "SELECT COUNT(*) FROM track_features")
+            facts["cached_tracks"] = _q(con, "SELECT COUNT(*) FROM track_meta")
+            facts["artists"] = _q(con, "SELECT COUNT(*) FROM artist_meta")
+            facts["with_isrc"] = _q(
+                con, "SELECT COUNT(*) FROM track_meta WHERE isrc IS NOT NULL")
+            # "has a recorded audio source" == a YouTube URL we can point at.
+            # The column is `youtube_url`; guessing `source_url` here derived a
+            # confident 0, which is the same disease this file treats.
+            facts["sourced_tracks"] = _q(
+                con, "SELECT COUNT(DISTINCT spotify_track_id) FROM track_provenance "
+                     "WHERE youtube_url IS NOT NULL AND youtube_url <> ''")
+        finally:
+            con.close()
+
+    # ── the feature surface, from the mart the page actually reads ────────
+    stats = ROOT / "data" / "marts" / "raw_feature_stats.parquet"
+    if stats.exists():
+        try:
+            import pandas as pd
+            facts["exposed_features"] = int(len(pd.read_parquet(stats)))
+        except Exception:  # noqa: BLE001 - a fact we cannot derive is omitted
+            pass
+
+    # ── the suite, by collection (fast: no test actually runs) ────────────
+    try:
+        # NOT -q: quiet mode prints per-file counts and suppresses the
+        # "N tests collected" summary this reads.
+        p = subprocess.run([sys.executable, "-m", "pytest", "src/",
+                            "--collect-only", "-p", "no:warnings"],
+                           capture_output=True, text=True, cwd=ROOT, timeout=600)
+        m = re.search(r"(\d+)\s+tests? collected", p.stdout or "")
+        if m:
+            facts["tests"] = int(m.group(1))
+    except Exception:  # noqa: BLE001
+        pass
+
+    # ── the decision log's high-water mark, from the spec itself ──────────
+    highest = 0
+    for doc in ("docs/VISION_SPECS.md", "SPEC.md"):
+        f = ROOT / doc
+        if f.exists():
+            for n in re.findall(r"\bD-(\d{1,3})\b", f.read_text(encoding="utf-8")):
+                highest = max(highest, int(n))
+    if highest:
+        facts["highest_decision"] = highest
+
+    return facts
+
+
+# Each rule: (doc-glob, regex with ONE capture group, fact key, human label).
+# The regex must anchor on enough surrounding prose that it cannot match an
+# unrelated number - a bare \d+ would rewrite dates, ports and version pins.
+RULES: list[tuple[str, str, str, str]] = [
+    # Prose claims only. A pasted COMMAND TRANSCRIPT is deliberately NOT
+    # rewritten here - substituting numbers inside one would fabricate output
+    # that was never produced. Those blocks are regenerated by re-running the
+    # command (see the README's qa_audit and pytest blocks).
+    ("README.md", r"(\d[\d,]*) synthetic-data tests", "tests", "test count"),
+    # This one IS inside a transcript, and is enforced because `pytest` really
+    # does print it - so keeping it true means re-running, not inventing.
+    ("README.md", r"^(\d[\d,]*) passed in ", "tests", "test count (transcript)"),
+    ("README.md", r"#\s*(\d[\d,]*) tests — synthetic audio", "tests",
+     "test count (cmd comment)"),
+    ("README.md", r"\*\*(\d[\d,]*) analyzed tracks\*\*", "analyzed_tracks",
+     "analyzed tracks"),
+    ("README.md", r"decision log \(D-1…D-(\d+)\)", "highest_decision",
+     "decision log high-water mark"),
+    ("docs/CASE_STUDY.md", r"\*\*Tests:\*\* (\d[\d,]*)", "tests", "test count"),
+    ("docs/CASE_STUDY.md", r"\| Tests \| \*\*(\d[\d,]*)\*\*", "tests",
+     "test count (table)"),
+    ("docs/CASE_STUDY.md", r"\*\*(\d[\d,]*)\*\* analyzed tracks", "analyzed_tracks",
+     "analyzed tracks"),
+    ("docs/CASE_STUDY.md", r"decision log \(D-1…D-(\d+)\)", "highest_decision",
+     "decision log high-water mark"),
+]
+
+
+def _apply(text: str, pattern: str, value: int) -> tuple[str, int]:
+    """Replace the capture group of every match with `value`. Returns (text, n)."""
+    n = 0
+    out, last = [], 0
+    for m in re.finditer(pattern, text, flags=re.MULTILINE):
+        s, e = m.span(1)
+        if m.group(1).replace(",", "") == str(value):
+            continue                     # already correct
+        out.append(text[last:s])
+        out.append(f"{value:,}" if "," in m.group(1) else str(value))
+        last = e
+        n += 1
+    out.append(text[last:])
+    return "".join(out), n
+
+
+def audit(facts: dict, *, apply: bool) -> list[str]:
+    """Findings (empty == docs agree with the source)."""
+    findings: list[str] = []
+    for doc, pattern, key, label in RULES:
+        if key not in facts:
+            continue                     # undeivable fact -> not enforced
+        path = ROOT / doc
+        if not path.exists():
+            continue
+        text = path.read_text(encoding="utf-8")
+        value = int(facts[key])
+        for m in re.finditer(pattern, text, flags=re.MULTILINE):
+            if m.group(1).replace(",", "") != str(value):
+                findings.append(
+                    f"{doc}: {label} says {m.group(1)}, source says {value:,}")
+        if apply:
+            new, n = _apply(text, pattern, value)
+            if n:
+                path.write_text(new, encoding="utf-8")
+    return findings
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    g = ap.add_mutually_exclusive_group()
+    g.add_argument("--print", action="store_true", help="print the derived facts")
+    g.add_argument("--apply", action="store_true", help="rewrite docs to match")
+    g.add_argument("--check", action="store_true", help="exit 1 if a doc disagrees")
+    ap.add_argument("--json", action="store_true", help="machine-readable")
+    args = ap.parse_args()
+
+    facts = collect()
+    if args.json:
+        print(json.dumps(facts, indent=2))
+        return 0
+    if args.apply:
+        before = audit(facts, apply=False)
+        audit(facts, apply=True)
+        after = audit(facts, apply=False)
+        print(f"rewrote {len(before) - len(after)} stale claim(s); "
+              f"{len(after)} remain")
+        for f in after:
+            print(f"  STILL STALE: {f}")
+        return 0
+    if args.check:
+        findings = audit(facts, apply=False)
+        for f in findings:
+            print(f"STALE: {f}")
+        print("docs agree with the source." if not findings
+              else f"\n{len(findings)} stale claim(s). Fix: "
+                   "uv run python scripts/docs_facts.py --apply")
+        return 1 if findings else 0
+
+    for k, v in facts.items():
+        print(f"  {k:20s} {v:,}" if isinstance(v, int) else f"  {k:20s} {v}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

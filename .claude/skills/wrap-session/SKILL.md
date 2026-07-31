@@ -51,6 +51,22 @@ D-self · every 10 sessions. **If one fired, stop and run `/director-review
 day's work that every existing gate had passed, one of them corrupting live
 serving data.
 
+## 5c — Refresh the public numbers
+
+`uv run python scripts/docs_facts.py --apply` — regenerates every countable
+claim in `README.md` + `docs/CASE_STUDY.md` from the live system.
+
+Do this EVERY wrap, not when you remember. `src/store/test_docs_freshness.py`
+fails the build when a doc disagrees with the source, so skipping it turns a
+one-command refresh into a red CI run. The test count moves whenever you add a
+test — which is most sessions.
+
+Numbers are REGENERATED, never retyped. Retyping is what produced ten wrong
+numbers on the public README by 2026-07-31 (journal #60: a fix that is a
+command, not a trigger, regresses on schedule). If a claim can't be derived,
+`docs_facts.py` doesn't enforce it — and that's a hint the claim doesn't belong
+in the docs either.
+
 ## 6 — Commit + push (the repo is its own backup)
 `git add notes/ docs/ && git commit -m "wrap-session: <one-line>" && git push`.
 Watch CI stays green.

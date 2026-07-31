@@ -10,33 +10,37 @@
 
 ![Taste map — the reproducible batch warehouse projected in 77-dim acoustic space, clustered and genre-colored](artifacts/taste_map.png)
 
-*The committed batch artifact: every track in a reproducible warehouse snapshot projected from its own 77-dimension acoustic fingerprint (UMAP + KMeans), colored by genre, sized by how many listening windows it persists in. Clusters are named by what **acoustically** distinguishes them — the vendor's genre tags were too sparse to do it. The live app serves a larger, continuously-grown corpus (**771 analyzed tracks** today); the two planes are described below.*
+*The committed batch artifact: every track in a reproducible warehouse snapshot projected from its own 77-dimension acoustic fingerprint (UMAP + KMeans), colored by genre, sized by how many listening windows it persists in. Clusters are named by what **acoustically** distinguishes them — the vendor's genre tags were too sparse to do it. The live app serves a larger, continuously-grown corpus (**1946 analyzed tracks** today); the two planes are described below.*
 
 ---
 
 ## The 90-second tour
 
 **The corpus is real and its provenance is verified.** The live app serves
-**771 analyzed tracks**, grown from real logins and playlist imports.
-**731 have a recorded audio source** and shape every aggregate; the other 40
+**1946 analyzed tracks**, grown from real logins and playlist imports.
+**1,894 have a recorded audio source** and shape every aggregate; the other 40
 are *withheld* — from display **and** from the clusters, percentiles and chat —
 until a source is verified. Every track that shapes a number can be traced,
 one click, to the exact YouTube recording its features were measured from:
 
 ```text
 $ uv run python scripts/qa_audit.py        # 9 checks over the LIVE corpus, exit 1 on any fail
- ✓ PASS  duration_sanity      no track's audio is implausibly longer than its Spotify length
- ✓ PASS  title_affinity       every machine-chosen acquisition still passes the affinity check
- ✓ PASS  aggregate_exclusion  all withheld tracks are absent from every serving plane
- ✓ PASS  plane_coherence      feature store, perceptual plane and analyst card agree
- ✓ PASS  shared_gate          the live worker refuses a DJ set / wrong title before downloading
- · NOTE  provenance_coverage  731/771 canonical analyzed have a source; 40 withheld
+ ✓ PASS [   A1] duration_sanity      no track's audio is implausibly longer than its Spotify length
+ ✓ PASS [A2/A3] title_affinity       every machine-chosen acquisition still passes the affinity check
+ · NOTE [  A2+] confident_match      1785/1895 recorded acquisitions (94.2%) would pass today's strict gate
+ · NOTE [    Q] provenance_coverage  1894/1934 canonical analyzed (97.9%) have a source; 40 withheld
+ ✓ PASS [   B2] aggregate_exclusion  all 203 excluded tracks are absent from every serving plane
+ ✓ PASS [   A5] plane_coherence      feature store, perceptual plane and analyst card agree
+ ✓ PASS [   B1] shared_gate          the live worker refuses a DJ set and a wrong-title candidate before downloading
+ ✓ PASS [   A4] mp3_encoder          an MP3-capable ffmpeg resolves
+ ✓ PASS [   A6] upload_cap           owner upload cap is 120 MB (lossless masters fit)
  0 failed · 7 passed · 2 notes
 ```
 
 *(The 40 withheld are the ones excluded from the aggregates, so **every one of
-the 731 tracks that shapes a number has a verified source** — 100% of the
-serving corpus.)*
+the 1,894 tracks that shapes a number has a verified source** — 100% of the
+serving corpus. The one absolute path in that output is elided; everything else
+is verbatim.)*
 
 **The result** (owner's snapshot, three listening windows — last 4 weeks / 6
 months / all-time): taste archetype **"The Drifting Loyalist"** — one sound owns
@@ -49,12 +53,13 @@ a σ-shift, not a vibe). The full analysis is a single self-contained file:
 
 ```text
 $ pytest
-579 passed
+933 passed in 97.14s
 
 $ uv run .claude/skills/warehouse-audit/audit_warehouse.py
 errors: none · bridge-key + fact↔dim integrity green · exact feature-contract verified
-2 advisory flags, both documented: 6 legitimately >1h DJ-mix durations · a frozen
-point-in-time star-schema snapshot (see "two data planes" below)
+26 quality flags, ALL FALSE — including the cluster-freshness and
+CLUSTER_ASSIGNMENT_DESYNC tripwires added after a 2026-07-31 director review
+found a promoted model disagreeing with its own stored assignments
 ```
 
 **Two data planes, one bridge key.** The **live serving plane** (SQLite+WAL
@@ -119,7 +124,7 @@ Spotify API (PKCE, no secret)        YouTube (yt-dlp + ffmpeg)
 | Signal | Where |
 |---|---|
 | **Reproducible env** | `pyproject.toml` + `uv.lock` (pinned graph); `requirements.txt` kept as a pip export |
-| **CI / quality gates** | GitHub Actions: `ruff` + `pytest` on every push & PR; 579 synthetic-data tests (no secrets, no network) |
+| **CI / quality gates** | GitHub Actions: `ruff` + `pytest` on every push & PR; 933 synthetic-data tests (no secrets, no network) |
 | **Data quality** | deterministic `warehouse-audit` + `app-verify` — bridge-key integrity, fact↔dim joins, **exact** feature-contract verification, live-system flags |
 | **Data provenance & lineage** | every acquisition writes an append-only `track_provenance` event (source URL, matcher, confidence, duration delta); a 9-check `qa_audit` sweep runs the whole regression set over **live** data and exits non-zero on any failure; unverified features are *withheld* from every aggregate, not just the display — a fail-safe stops an empty lineage table from emptying the corpus |
 | **Production at $0** | self-hosted multi-user FastAPI app: session-scoped PKCE (no client secret exists), SQLite+WAL serving cache, DB-as-queue extraction worker, Cloudflare Tunnel + an origin-down fallback Worker |
@@ -158,13 +163,13 @@ uv run python scripts/run_webapp.py       # the app on :8000 (guest mode works w
                                           #   once a demo snapshot exists; login needs your own dev-mode app)
 uv run python scripts/run_extraction_worker.py --loop   # the DSP worker (downloads + analyzes queued tracks)
 python scripts/run_pipeline.py            # or: the batch pipeline → warehouse → report
-pytest                                    # 579 tests — synthetic audio, no credentials, no network
+pytest                                    # 933 tests — synthetic audio, no credentials, no network
 ```
 
 ## Design docs
 
 - **[`docs/CASE_STUDY.md`](docs/CASE_STUDY.md)** — the build story + the AI-assisted engineering methodology.
-- **[`docs/VISION_SPECS.md`](docs/VISION_SPECS.md)** — the live roadmap: phases, acceptance criteria, numbered decision log (D-1…D-57).
+- **[`docs/VISION_SPECS.md`](docs/VISION_SPECS.md)** — the live roadmap: phases, acceptance criteria, numbered decision log (D-1…D-73).
 - **[`notes/PROJECT_CONTEXT.md`](notes/PROJECT_CONTEXT.md)** — verified status + session log.
 - **[`CLAUDE_INSTRUCTIONS.md`](CLAUDE_INSTRUCTIONS.md)** — architecture manual + ADRs.
 
