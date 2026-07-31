@@ -1823,3 +1823,61 @@ of the fix, because they encoded the direction I had thought about.
 > opposite. When you add a rule to prevent A, ask what B it now produces — and
 > use the feature yourself, because the case you never thought to test is
 > exactly the case a test cannot fail on.*
+
+## 68 — Templates reloaded, routes didn't, and green meant nothing (2026-07-31)
+
+Spent a day closing twelve review findings, verifying each one in the browser
+against `127.0.0.1:8000`. The template fixes rendered. The route fixes appeared
+to render too, because I was checking captions and headings — which live in
+templates.
+
+They weren't running. `scripts/run_webapp.py` calls uvicorn with
+`reload=False` — correct for a served process — so the Python that had been
+loaded at 10:06 that morning was still serving every request. Jinja, though,
+re-reads templates per request. So half my changes went live instantly and half
+didn't, and the half that did was the half I was looking at.
+
+The live site served the morning's code all day while `status_app.bat` reported
+Webapp RUNNING, Tunnel Running, Health OK. Every indicator was green and none of
+them compared the running process to the repo.
+
+**The realization:** a partial hot-reload is worse than none. If nothing
+reloaded I would have restarted out of habit; because the visible layer did, the
+stale layer was invisible. The fix wasn't discipline, it was making the
+comparison exist: `start` stamps the commit it launched, `status` prints
+`Code STALE - serving X, repo is at Y`, and `deploy_app.bat` does the whole
+pull-sync-restart-verify in one click.
+
+> A status board that reports liveness but not VERSION will tell you the truth
+> about a process that is running the wrong code.
+
+
+## 69 — The spec was built on a premise nobody had measured (2026-07-31)
+
+`docs/PIPELINE_CONCURRENCY_SPEC.md` had ten invariants, a staged rollout and a
+risk policy, all resting on one sentence: throughput and YouTube request rate
+are welded together, so going faster means asking YouTube more often, so
+parallelism is a ban-risk decision.
+
+Measuring the 14.7s per-track budget broke that sentence. YouTube search 1.2s,
+download and transcode ~2–3s — and `extract_features` **8.1–12.7s**, of which
+HPSS alone is 5.26s. Roughly **75–80% is local single-threaded CPU.** The
+rate-governed part is the small end.
+
+So the threaded acquisition pipeline would have bought ≤1.25× while raising the
+request rate by that same 1.25× — paying the entire ban-risk toll for the
+smaller half of the budget. Meanwhile a thread pool over `extract_features`
+measured **2.25× with bit-identical vectors and zero YouTube requests**: the
+free win was on the other side of the wall the spec had drawn.
+
+The exit clause fired too — `extraction_jobs` held 0 queued and 0 running. There
+was no backlog to speed up.
+
+**The realization:** the spec's invariants were all sound. Its premise wasn't,
+and no amount of rigour downstream of an unmeasured premise recovers that. We
+had measured outcomes constantly this month and never once measured the
+assumption those measurements were organised around.
+
+> Measure the premise, not just the result. A carefully-specced solution to a
+> mis-stated bottleneck is still waste — and it looks like diligence.
+

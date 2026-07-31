@@ -24,7 +24,7 @@ item below should strengthen that story.
 | W-5 | **Env not reproducible** — conda + requirements.txt, no lockfile; heavy deps (pyspark, faiss, librosa) | 🟡 Low (until W-1 forces it) | Pre-uv era | Migrate to uv + `pyproject.toml` + lock; keep requirements.txt export for compat |
 | W-6 | **No CI** — tests exist but nothing runs them automatically | 🟡 Low | Never set up | GitHub Actions: ruff + pytest (synthetic-data tests make this free) — strong platform-DE signal |
 | W-7 | ✅ ~~Legacy code unintegrated~~ | ~~🟡~~ | Accretion | **RESOLVED 2026-07-04 (P6):** `spotify/` + `00_tools/` moved to `legacy/` (see `legacy/README.md`); excluded from ruff/tests/CI; nothing in `src/` imports them |
-| W-8 | **README is generic** — no results, no architecture diagram, no demo path for a recruiter/engineer reading 90 seconds | 🟡 Low (until Phase 5 gives results) | Pre-results | Portfolio-grade rewrite after Phase 5.1 lands |
+| W-8 | ✅ ~~README is generic~~ — it stopped being generic and became **WRONG**, which on a public repo is worse: ten stale numbers (579 tests vs 930, 771 analyzed vs 1,946, D-57 vs D-73) | ~~🟡~~ | Numbers were retyped, so they rotted | **RESOLVED 2026-07-31:** `scripts/docs_facts.py` DERIVES every countable claim and `test_docs_freshness.py` fails the build on drift. Plus `docs/HOW_IT_WORKS.md` + `docs/concepts/` — the plain-language front door, structure guarded by `test_docs_structure.py` |
 
 ## The gameplan
 

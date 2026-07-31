@@ -1387,8 +1387,12 @@ narrative goes to `notes/engineering_journal.md`, plans to
 | `src/ingestion/` | Spotify PKCE auth, top-items fetchers, YouTube→MP3 downloader (rate-limited, idempotent), Parquet serializer. Tests: `test_ingestion.py`, `test_audio_downloader.py`. |
 | `src/dsp/` | librosa loader, 77-dim feature extractor, batch collection extractor, optional PANNs embeddings. Tests: `test_dsp.py`, `test_collection_extractor.py`. |
 | `src/warehouse/` | Medallion: `staging.py` (Bronze) → `cleansed.py` (Silver) → `modeled.py` (Gold star schema; fact denormalized, agent-optimized per ADR-002). |
-| `src/search/` | FAISS store, UMAP visualizer, DAG pipeline. Test: `test_search.py`. |
+| `src/search/` | UMAP visualizer + its config (feeds the taste map via `analysis/clustering.py`). Tests: `test_visualizer.py`. **`faiss_store.py`, `pipeline.py` and `test_search.py` DELETED 2026-07-31** — zero importers, and `test_search.py`'s entry point wasn't named `test_*` so pytest never collected it (`docs/DELETIONS.md`). |
 | `src/analysis/` | Temporal drift (cosine, ADR-003) + matplotlib visuals. |
+| `docs/HOW_IT_WORKS.md` + `docs/concepts/` | **The plain-language front door** (2026-07-31): the whole system for a reader with no AE background, five deeper pages. Numbers derived by `docs_facts.py`; `src/store/test_docs_structure.py` fails on an orphan page or a dead link. Keep the PROSE current when behaviour changes (wrap-session §5d). |
+| `docs/DELETIONS.md` | **The standing deletion log.** Nothing is archived in-tree — deleted code is recorded here with what it did, why it went, the last commit containing it, and the one-line `git checkout` to restore. |
+| `scripts/docs_facts.py` | Derives every countable claim in the public docs from the live system (`--print` / `--apply` / `--check`). `test_docs_freshness.py` fails the build on drift. |
+| `deploy_app.bat` → `scripts/app_control.ps1 -Action deploy` | Pull → `uv sync` if the lock moved → restart → verify. The app runs `reload=False`, so a running site NEVER picks up new code; `status_app.bat` now prints a `Code up-to-date / STALE / UNKNOWN` line from the commit `start` stamps. |
 | `spark/` | PySpark jobs: temporal centroid aggregation, feature transform. |
 | `scripts/run_pipeline.py` | The 7-step orchestrator (`--clean`, `--skip-download`, `--skip-extract`, `--limit N`). REBUILT 2026-07-03 — the uploaded copy was a notebook-runner; this now matches the CLAUDE_INSTRUCTIONS step table. |
 | `.env` (local only, gitignored) | `SPOTIPY_CLIENT_ID` + `SPOTIPY_REDIRECT_URI` — that's ALL. PKCE-only project: no client secret exists anywhere (code/env/deploy) as of 2026-07-03. auth.py has no in-code fallbacks. |
@@ -3133,3 +3137,70 @@ narrative goes to `notes/engineering_journal.md`, plans to
   the ISRC→MBID bridge (the only piece left before the coverage number can be
   measured; D-70 already put the ISRC side at 100%). Owner track: needs-source
   repairs at leisure; the DMARC reject-flip. NEW SESSION: run `/resume`.**
+
+- **2026-07-31 (session 72, part two — carried findings closed, then consolidation).**
+  Closed **all 12 carried findings** from the director review, then ran
+  `/orchestrator` at the phase boundary: three parallel consults (dsp ·
+  data-platform · agile-coach) all ranked **consolidation over a new vision**,
+  and the owner picked it. **Findings:** `_backfill_promoted_at` was a standing
+  rule re-evaluated on every `FeatureCache()` (the webapp builds one per
+  request), so a rollback auto-promoted the newest UNREVIEWED model — now
+  one-shot in `schema_migrations`, with `--unpromote` as the rollback verb;
+  `_migrate_track_cluster_key` dialect-guarded; new audit flag
+  **`CLUSTER_ASSIGNMENT_DESYNC`** (26 flags now), proven to fire both ways — the
+  question no gate was asking when 1,894/1,894 assignments disagreed; three
+  misnamed tests rewritten; `rebuild_marts` reads the corpus ONCE (2 scans → 1,
+  0.20s of 3.24s); `_percentile` moved to **deciles** — measured mean error
+  **4.69 → 0.72 pts**, max 22 → 9.2, pull-toward-ordinary −4.25 → −0.18;
+  `artist_drift` now on `loudness_db` (a MEASUREMENT — `energy` is a corpus
+  rank, so other artists' tracks moved this artist's history) with a
+  least-squares slope that names an **arc** instead of flattening it;
+  `/artist/{id}` stopped fusing what `/artists` splits; pager keys + two
+  miscounting captions; two tautological assertions; the 375/768/1280 pass
+  (zero page overflow; wide tables scroll inside `.lib-wrap`).
+  **Found by USING it, not by 930 tests:** the live app had served the MORNING's
+  code all day — `reload=False` is right for a served process, but templates
+  re-read per request, so template fixes looked live while route fixes weren't.
+  Fixed structurally: `start` stamps its commit to `logs/running_commit.txt`,
+  `status` prints **Code up-to-date / STALE / UNKNOWN**, and **`deploy_app.bat`**
+  (pull → `uv sync` if the lock moved → restart → verify) skips the restart
+  when nothing is new.
+  **Docs truth:** README + CASE_STUDY carried TEN wrong numbers (579 tests vs
+  930, 771 analyzed vs 1,946, D-57 vs D-73). Retyping resets the same clock, so
+  `scripts/docs_facts.py` DERIVES them and `test_docs_freshness.py` fails the
+  build on drift — it fired twice on its own work (adding its own test file,
+  then writing D-74).
+  **D-74:** P4.6.5 stage ③ **DECLINED** — measured p50 14.7s (n=1,879) is ~3–4s
+  network vs **75–80% local CPU**, so the threaded pipeline buys ≤1.25× while
+  raising the request rate by the same 1.25×; queue is empty (0 queued, 0
+  running); **D-64 stays unwritten**. The genuinely free 2.25× (threaded
+  `extract_features`, bit-identical vectors, zero YouTube requests) is banked
+  for a future re-extraction.
+  **Coverage:** 88.8% was averaging live code against dead code —
+  `faiss_store.py`/`pipeline.py` had zero importers, and `test_search.py`'s
+  entry point isn't named `test_*` so pytest never collected it. **Owner call:
+  no legacy kept in-tree for the portfolio** — deleted outright (808 lines + the
+  `faiss-cpu` dep) with **`docs/DELETIONS.md`** as the standing log (what, why,
+  restore commit, one-line `git checkout`). `visualizer.py` (live, feeds
+  `/analytics`) and `staging.py` (live, MOCKED in its only test) got real tests
+  — staging's first honest test found `snapshot_label` reaching the column but
+  never the FILENAME, so two landings in the same second silently overwrote
+  each other.
+  **New front door:** `docs/HOW_IT_WORKS.md` + five `docs/concepts/` pages,
+  plain language, no AE background assumed, with `test_docs_structure.py`
+  failing on an orphan page or a dead link (both proven to fire). New CLAUDE.md
+  rule: explain in analytics-engineering / data-science vocabulary, not systems
+  framing.
+  **948 tests · ruff clean · 26/26 audit flags FALSE · app-verify ALL FALSE ·
+  CI green.**
+  **Left off: Vision F is CLOSED at its D-63 exit bar and the consolidation
+  slice is done — the public docs, the deploy path and the coverage number are
+  now all self-checking. ➡️ NEXT = Session B, Phase 5 groundwork (needs NO
+  dump): J0.5 ISRC bridge · the 58-track `duration_ms` supply gap (without it
+  D-72's ±3s filter can't run and a SUPPLY gap is miscounted as ISRC
+  ambiguity) · pre-register the measured **77.1% mechanical ceiling**
+  (445/1,946 released on/after 2022-06-23) against the spec's 50–62%. Good
+  companion: the null-model test on the k=2 clustering (silhouette 0.148,
+  937/957 — may be an artifact, and it is live on the site). Owner track:
+  download the AcousticBrainz CC0 dump to unblock J0b. NEW SESSION: run
+  `/resume`.**
