@@ -67,6 +67,21 @@ command, not a trigger, regresses on schedule). If a claim can't be derived,
 `docs_facts.py` doesn't enforce it — and that's a hint the claim doesn't belong
 in the docs either.
 
+## 5d — Keep the plain-language explainer true
+
+`docs/HOW_IT_WORKS.md` + `docs/concepts/` are the front door for someone with
+little data-engineering background. Step 5c regenerates their NUMBERS; their
+PROSE is on you.
+
+Update it when this session changed **what the system does or how it behaves** —
+a new stage, a changed default, a retired capability, a new honest limitation.
+Do NOT update it for an internal refactor a reader would never notice; this set
+explains behaviour, not implementation.
+
+`src/store/test_docs_structure.py` fails the build on an orphan page or a dead
+link, so a new concept page must be linked from the front door (or from the
+page it follows).
+
 ## 6 — Commit + push (the repo is its own backup)
 `git add notes/ docs/ && git commit -m "wrap-session: <one-line>" && git push`.
 Watch CI stays green.

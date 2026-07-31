@@ -1,6 +1,7 @@
 """docs_facts.py - the numbers the public docs are allowed to state.
 
-ONE source for every countable claim in `README.md` and `docs/CASE_STUDY.md`.
+ONE source for every countable claim in `README.md`, `docs/CASE_STUDY.md` and
+the plain-language explainer (`docs/HOW_IT_WORKS.md` + `docs/concepts/`).
 Print them (`--print`), or rewrite the docs to match (`--apply`).
 
 Why this exists: on 2026-07-31 the two documents a recruiter actually reads
@@ -132,6 +133,17 @@ RULES: list[tuple[str, str, str, str]] = [
      "analyzed tracks"),
     ("docs/CASE_STUDY.md", r"decision log \(D-1…D-(\d+)\)", "highest_decision",
      "decision log high-water mark"),
+    # The plain-language explainer states the feature count in three places.
+    # It is the front door for a newcomer, so a wrong number there is the most
+    # expensive kind.
+    ("docs/HOW_IT_WORKS.md", r"waveform → (\d+) numbers per song", "exposed_features",
+     "feature count (diagram)"),
+    ("docs/HOW_IT_WORKS.md", r"There are \*\*(\d+)\*\* of them per song",
+     "exposed_features", "feature count"),
+    ("docs/HOW_IT_WORKS.md", r"the (\d+) measurements are stored against it",
+     "exposed_features", "feature count (bridge key)"),
+    ("docs/concepts/features.md", r"There are \*\*(\d+)\*\* per song",
+     "exposed_features", "feature count"),
 ]
 
 

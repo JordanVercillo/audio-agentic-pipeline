@@ -12,6 +12,11 @@ It is the project's living memory — verified status, next action, key files,
 conventions, session log — updated at the end of every session. This file
 holds only stable rules; status is deliberately NOT here.
 
+Plain-language explainer (the front door for a newcomer, and the thing to keep
+current as we build): [`docs/HOW_IT_WORKS.md`](docs/HOW_IT_WORKS.md) + the
+deeper pages in `docs/concepts/`. `src/store/test_docs_structure.py` fails on an
+orphan or a dead link; `scripts/docs_facts.py` keeps its numbers true.
+
 Design spec: [`SPEC.md`](SPEC.md) — approved vision, phase plan (P0–P7) with
 acceptance criteria, and decision log (2026-07-03). Architecture manual:
 [`CLAUDE_INSTRUCTIONS.md`](CLAUDE_INSTRUCTIONS.md) (medallion layers, module
