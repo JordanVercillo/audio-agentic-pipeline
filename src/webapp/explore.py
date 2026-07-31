@@ -124,6 +124,11 @@ def histogram_svg(stats_row: pd.Series, user_values: list[float],
 
 
 # ── the feature×feature scatter ─────────────────────────────────────────────
+# Above this many plotted marks the chart stops gaining information and starts
+# costing bytes that grow with the corpus.
+_SCATTER_MAX = 700
+
+
 def scatter_xy_svg(points: list[dict], user_ids: set[str],
                    x_label: str, y_label: str,
                    width: int = 640, height: int = 420) -> Optional[str]:
@@ -132,6 +137,20 @@ def scatter_xy_svg(points: list[dict], user_ids: set[str],
     pts = [p for p in points if p.get("x") is not None and p.get("y") is not None]
     if len(pts) < 3:
         return None
+    # P4.7.5: sample the BACKGROUND above a ceiling. At ~1.9k tracks the SVG was
+    # 153 KB, and it grows with the corpus forever; past a few hundred marks the
+    # extra dots add ink, not information. The visitor's OWN tracks are never
+    # sampled — they are the point of the chart — and the caption states the
+    # sampling rather than quietly showing a subset (the /library lesson: say
+    # what is on screen). Deterministic stride, so the same corpus renders the
+    # same chart instead of shimmering between reloads.
+    n_total = len(pts)
+    if n_total > _SCATTER_MAX:
+        mine = [p for p in pts if p.get("id") in user_ids]
+        others = [p for p in pts if p.get("id") not in user_ids]
+        keep = max(1, _SCATTER_MAX - len(mine))
+        stride = max(1, len(others) // keep)
+        pts = mine + others[::stride][:keep]
     pad = 34
     xs, ys = [p["x"] for p in pts], [p["y"] for p in pts]
     x0, x1, y0, y1 = min(xs), max(xs), min(ys), max(ys)
@@ -185,3 +204,16 @@ def window_strip(per_window_values: dict[str, list[float]], unit: str,
             delta_line = (f"Your last 4 weeks run {val}{unit_s} "
                           f"{'higher' if d > 0 else 'lower'} than your all-time.")
     return {"windows": windows, "delta": delta_line}
+
+
+def scatter_plotted_count(points: list[dict], user_ids: set[str]) -> int:
+    """How many marks the scatter will actually DRAW after sampling.
+
+    Derived from the same rule the renderer uses, so the caption cannot claim a
+    number the chart doesn't show (journal #27/#60 — and the /analytics caption
+    that over-counted by 4 for exactly this reason)."""
+    pts = [p for p in points if p.get("x") is not None and p.get("y") is not None]
+    if len(pts) <= _SCATTER_MAX:
+        return len(pts)
+    mine = sum(1 for p in pts if p.get("id") in user_ids)
+    return min(len(pts), mine + max(1, _SCATTER_MAX - mine))

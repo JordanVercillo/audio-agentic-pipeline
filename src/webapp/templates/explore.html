@@ -84,11 +84,13 @@
   {% if scatter %}
   <div class="map-card">
     {{ scatter|safe }}
-    <p class="cap">{{ scatter_counts.total }} songs; colors are the sound
-      clusters from your analytics page{% if scatter_counts.clustered <
+    <p class="cap">{% if scatter_counts.plotted < scatter_counts.total %}A
+      {{ scatter_counts.plotted }}-song sample of {{ scatter_counts.total }}{% else %}
+      {{ scatter_counts.total }} songs{% endif %}; colors are the sound clusters
+      from your analytics page{% if scatter_counts.clustered <
       scatter_counts.total %}, gray = the {{ scatter_counts.total -
       scatter_counts.clustered }} not yet clustered{% endif %}. Your tracks are
-      ringed — hover for names.</p>
+      ringed and never sampled out — hover for names.</p>
   </div>
   {% endif %}
 

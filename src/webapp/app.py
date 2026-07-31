@@ -44,6 +44,7 @@ from ..store.cache import _SIMILARITY_COLS, FeatureCache
 from ..store.dedup import canonicalize_ids, canonicalize_range_ids
 from . import artists as artists_view_mod
 from . import auth_web, config
+from . import explore as explore_mod
 from . import library as library_view_mod
 from . import playlists as playlists_mod
 from .analytics import (
@@ -987,7 +988,8 @@ def create_app() -> FastAPI:
             # claimed nothing about it (journal #60).
             "scatter_counts": {
                 "total": len(points),
-                "clustered": sum(1 for p in points if p.get("cluster_id") is not None)},
+                "clustered": sum(1 for p in points if p.get("cluster_id") is not None),
+                "plotted": explore_mod.scatter_plotted_count(points, user_set)},
         }
 
     def _recommend_context(session: dict[str, Any],
@@ -1046,9 +1048,16 @@ def create_app() -> FastAPI:
             })
 
         form = {f"{c.kind}_{c.column}": c.value for c in constraints}
+        # P4.7.5: this listed EVERY analyzed track — 1,894 <option> elements,
+        # ~117 KB of markup, and nobody scrolls 1,894 options, so it was weight
+        # AND an unusable control. Bounded to the visitor's OWN analyzed tracks
+        # (what you actually seed from); any other song is still seedable from
+        # its /song page via "More like this — tune it", which is the path that
+        # already existed. Capability unchanged, control usable.
+        _my_ids = [t for ids in (taste.get("range_ids") or {}).values() for t in ids]
         seed_options = sorted(
             ({"id": t, "name": (meta.get(t) or {}).get("track_name") or t}
-             for t in perceptual),
+             for t in dict.fromkeys(_my_ids) if t in perceptual),
             key=lambda o: o["name"].lower())
         feature_rows = catalog[["column", "friendly", "tier", "unit"]].to_dict("records")
         feature_rows.append({"column": "popularity", "friendly": "Popularity",

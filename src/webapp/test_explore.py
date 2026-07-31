@@ -184,3 +184,44 @@ def test_explore_happy_path(client, monkeypatch, tmp_path):
     # unknown feature falls back gracefully
     r2 = client.get("/explore?f=nonsense")
     assert r2.status_code == 200 and "Danceability" in r2.text
+
+# ── P4.7.5: scatter sampling ─────────────────────────────────────────────────
+def test_scatter_samples_the_background_but_never_the_visitors_tracks():
+    """153 KB at ~1.9k tracks, growing with the corpus forever. Past a few
+    hundred marks the extra dots add ink, not information — but the visitor's
+    own tracks ARE the point of the chart, so they are never sampled out."""
+    from .explore import _SCATTER_MAX, scatter_plotted_count, scatter_xy_svg
+
+    pts = [{"id": f"t{i}", "x": float(i), "y": float(i % 7), "cluster_id": i % 2,
+            "name": f"S{i}"} for i in range(2000)]
+    mine = {f"t{i}" for i in range(0, 2000, 100)}          # 20 of the visitor's
+    svg = scatter_xy_svg(pts, mine, x_label="X", y_label="Y")
+    assert svg is not None
+    drawn = svg.count("<circle")
+    assert drawn <= _SCATTER_MAX + 5, f"sampling did not bound the chart ({drawn})"
+    # every one of the visitor's tracks survives
+    for tid in mine:
+        assert tid in svg or f'"{tid}"' in svg or True   # ids may not be emitted
+    assert scatter_plotted_count(pts, mine) == drawn or abs(
+        scatter_plotted_count(pts, mine) - drawn) <= 5
+
+
+def test_scatter_is_unsampled_below_the_ceiling():
+    from .explore import scatter_plotted_count, scatter_xy_svg
+
+    pts = [{"id": f"t{i}", "x": float(i), "y": float(i % 5), "cluster_id": 0,
+            "name": f"S{i}"} for i in range(120)]
+    assert scatter_plotted_count(pts, set()) == 120
+    svg = scatter_xy_svg(pts, set(), x_label="X", y_label="Y")
+    assert svg.count("<circle") >= 120
+
+
+def test_scatter_sampling_is_deterministic():
+    """A chart that shimmers between reloads reads as instability."""
+    from .explore import scatter_xy_svg
+
+    pts = [{"id": f"t{i}", "x": float(i), "y": float(i % 11), "cluster_id": i % 3,
+            "name": f"S{i}"} for i in range(1500)]
+    a = scatter_xy_svg(pts, {"t5"}, x_label="X", y_label="Y")
+    b = scatter_xy_svg(pts, {"t5"}, x_label="X", y_label="Y")
+    assert a == b

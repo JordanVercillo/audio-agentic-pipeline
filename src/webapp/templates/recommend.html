@@ -19,6 +19,8 @@
     <input type="hidden" name="prev_seed" value="{{ seed }}">
     <div class="reco-seed">
       <label for="seed"><b>Seed</b> — fill the targets from a song you like</label>
+      <p class="cap">Your analyzed songs. To seed from any other track in the
+        corpus, open its page and use “More like this — tune it”.</p>
       <select name="seed" id="seed">
         <option value="">(no seed — set tunables by hand)</option>
         {% for o in seed_options %}
