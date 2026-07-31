@@ -20,6 +20,14 @@ import subprocess
 import sys
 from pathlib import Path
 
+# The box-drawing characters below crash a Windows cp1252 console — the same
+# gremlin that bit two other scripts this session. Every CLI here does this.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8")
+    except (AttributeError, ValueError):
+        pass
+
 ROOT = Path(__file__).resolve().parent.parent
 
 

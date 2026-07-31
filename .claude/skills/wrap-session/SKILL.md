@@ -36,6 +36,21 @@ record the real result: `uv run .claude/skills/warehouse-audit/audit_warehouse.p
 `pytest src/ -q`. (Locally the RAG-fallback tests may fail only because `.env`
 points `WEBAPP_LLM_MODEL` at live Ollama — the CI way is `WEBAPP_LLM_MODEL=claude-opus-4-8`.)
 
+## 5b — Scorecard (the cheap director pass)
+
+`uv run python scripts/session_scorecard.py --base <the commit this session
+started from> --session <N>`. Paste the row into `docs/QUALITY_LEDGER.md` and
+fill the six defect-discovery lines by hand — they are the honest half, and the
+row being visibly empty when skipped is the only thing that makes them real.
+
+**Then check the FULL triggers** in `.claude/skills/director-review/SKILL.md`:
+an epic/vision closing · an irreversible or public step · a new
+security-adversarial surface · two consecutive sessions where D-use beat
+D-self · every 10 sessions. **If one fired, stop and run `/director-review
+--full` BEFORE committing** — the 2026-07-31 review found three blockers in a
+day's work that every existing gate had passed, one of them corrupting live
+serving data.
+
 ## 6 — Commit + push (the repo is its own backup)
 `git add notes/ docs/ && git commit -m "wrap-session: <one-line>" && git push`.
 Watch CI stays green.
