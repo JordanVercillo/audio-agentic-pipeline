@@ -464,7 +464,7 @@ def artist_drift(albums: list[dict], column: str = "rms_mean",
     n = len(vals)
     mx, my = sum(years) / n, sum(vals) / n
     denom = sum((y - mx) ** 2 for y in years)
-    slope = (sum((y - mx) * (v - my) for y, v in zip(years, vals)) / denom
+    slope = (sum((y - mx) * (v - my) for y, v in zip(years, vals, strict=True)) / denom
              if denom else 0.0)
 
     # "Flat" has to mean something. A trend is only a trend if the total move

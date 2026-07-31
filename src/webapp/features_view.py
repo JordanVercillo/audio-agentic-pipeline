@@ -78,7 +78,7 @@ def _percentile(value: float, stat: dict) -> Optional[int]:
     tied = [p for a, p in anchors if a == value]
     if len(tied) >= 2:
         return int(round((min(tied) + max(tied)) / 2))
-    for (a, pa), (b, pb) in zip(anchors, anchors[1:]):
+    for (a, pa), (b, pb) in zip(anchors, anchors[1:], strict=False):
         if a <= value <= b:
             if b == a:
                 return int(round((pa + pb) / 2))
