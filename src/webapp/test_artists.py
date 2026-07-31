@@ -475,3 +475,35 @@ def test_drift_ignores_releases_with_no_analyzed_tracks():
               {"year": "2015", "name": "D", "n_analyzed": 2, "feat": {"energy": 0.6}}]
     d = artist_drift(albums, "energy")
     assert d["n"] == 3 and d["from_year"] == "2005"
+
+
+def test_artist_signature_reuses_the_shared_vocabulary_and_adds_spread():
+    """R3: the words and the ±2σ cap come from analytics/scales, not a copy.
+    Spread is the part a centroid distance structurally cannot say — it
+    collapses a whole catalogue to one point, so a range artist and a formula
+    artist look identical to it."""
+    from .analytics import _SIGNATURE_DIMS
+    from .artists import artist_signature
+
+    cols = [c for c, *_ in _SIGNATURE_DIMS]
+    # population: 60 tracks with moderate spread on every dim
+    pop = [{c: 1.0 + (i % 10) * 0.1 for c in cols} for i in range(60)]
+    # a WIDE artist: swings far on every dim
+    wide_ids = [f"w{i}" for i in range(8)]
+    wide = {f"w{i}": {c: 1.0 + (i % 8) * 0.5 for c in cols} for i in range(8)}
+    got = artist_signature(wide_ids, wide, pop)
+    assert got is not None
+    assert got["n_tracks"] == 8
+    assert {d["feature"] for d in got["signature"]} <= {lbl for _c, lbl, *_ in _SIGNATURE_DIMS}
+    assert got["widest"]["sigma"] >= got["narrowest"]["sigma"]
+    assert got["range_artist"] is True
+
+
+def test_artist_signature_refuses_on_too_few_tracks():
+    from .analytics import _SIGNATURE_DIMS
+    from .artists import artist_signature
+
+    cols = [c for c, *_ in _SIGNATURE_DIMS]
+    pop = [{c: float(i) for c in cols} for i in range(30)]
+    two = {"a": {c: 1.0 for c in cols}, "b": {c: 2.0 for c in cols}}
+    assert artist_signature(["a", "b"], two, pop) is None

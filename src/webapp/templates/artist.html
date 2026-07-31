@@ -72,6 +72,28 @@
     doesn't depend on it.</p>
   {% endif %}
 
+  {% if profile %}
+  <h2 class="section">Their acoustic character</h2>
+  <div class="sig">
+    {% for s in profile.signature %}
+    <div class="sig-row">
+      <span class="sig-name">{{ s.feature }}</span>
+      <span class="sig-bar"><span class="sig-fill {{ 'neg' if s.z < 0 else '' }}"
+            style="width: {{ (s.strength * 100)|round }}%"></span></span>
+      <span class="sig-word">{{ s.word }} than the corpus <b>({{ '%+.1f'|format(s.z) }}<abbr class="stat-abbr" title="standard deviations from the corpus average">σ</abbr>)</b></span>
+    </div>
+    {% endfor %}
+  </div>
+  <p class="cap">Across the {{ profile.n_tracks }} tracks of theirs we've analyzed.
+    They vary most on <b>{{ profile.widest.feature|lower }}</b>
+    ({{ profile.widest.sigma }}× the corpus's own spread) and least on
+    <b>{{ profile.narrowest.feature|lower }}</b> ({{ profile.narrowest.sigma }}×) —
+    {% if profile.range_artist %}a <b>range</b> artist: their catalogue moves more
+    than the corpus does{% else %}a <b>consistent</b> artist: their catalogue moves
+    less than the corpus does{% endif %}. Spread is what a "similar artists"
+    distance can't tell you — it collapses a whole catalogue to one point.</p>
+  {% endif %}
+
   {% if albums %}
   <h2 class="section">Discography <span class="muted">· {{ n_albums }} release{{ '' if n_albums == 1 else 's' }} in the corpus</span></h2>
 

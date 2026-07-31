@@ -1184,6 +1184,16 @@ def create_app() -> FastAPI:
             # fact, so it renders for anonymous visitors too.
             "drift": artists_view_mod.artist_drift(albums, "energy"),
         }
+        # R3: their acoustic character vs the corpus + their SPREAD. Projected
+        # to the signature columns only (the P4.6.2 rule — no all_features on a
+        # request path), and reusing analytics.acoustic_signature so the words
+        # and the ±2σ cap stay in one place (P4.7.0).
+        _sig_cols = [c for c, *_ in _SIGNATURE_DIMS]
+        _sig_feats = cache.feature_columns(_sig_cols)
+        _excl = cache.excluded_from_aggregates()
+        ctx_albums["profile"] = artists_view_mod.artist_signature(
+            their_tids, _sig_feats,
+            [f for t, f in _sig_feats.items() if t not in _excl])
 
         yours = your_top_by_artist(name, taste.get("range_ids") or {}, metas)
         analyzed_ids = cache.cached_ids([t["id"] for t in yours])

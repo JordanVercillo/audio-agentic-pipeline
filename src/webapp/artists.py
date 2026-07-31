@@ -25,6 +25,7 @@ from typing import Any, Optional
 from markupsafe import escape
 
 from ..store.cache import _SIMILARITY_COLS
+from . import scales
 
 # Aggregate features shown on the hover card (means over analyzed tracks).
 _CARD_FEATURES = ("tempo", "energy", "danceability")
@@ -446,4 +447,58 @@ def artist_drift(albums: list[dict], column: str = "energy",
         "delta": round(delta, 4),
         "min": min(vals), "max": max(vals),
         "direction": "up" if delta > 0 else ("down" if delta < 0 else "flat"),
+    }
+
+
+def artist_signature(track_ids: list[str], features: dict[str, dict],
+                     population: list[dict], min_tracks: int = 3
+                     ) -> Optional[dict[str, Any]]:
+    """This artist's acoustic character vs the corpus, plus their SPREAD (R3).
+
+    Calls `analytics.acoustic_signature` rather than reimplementing it: the
+    words ("louder", "brighter") and the ±2σ bar cap live in one registry
+    (P4.7.0 / scales.py), and a second copy would drift the day one is retuned.
+
+    The spread is the part a centroid distance structurally cannot say. An
+    artist at high within-catalogue variance is a RANGE artist; one at low
+    variance is a formula — and "similar in your library" collapses both to a
+    single point, so it can never tell them apart.
+    """
+    from .analytics import acoustic_signature
+
+    rows = [features[t] for t in track_ids if t in features]
+    if len(rows) < min_tracks or len(population) < 3:
+        return None
+    sig = acoustic_signature(rows, population)
+    if not sig:
+        return None
+
+    # Spread per signature dimension, in the SAME σ units as the signature, so
+    # the two numbers are comparable rather than merely adjacent.
+    spread: list[dict[str, Any]] = []
+    for col, label, _hi, _lo in scales.signature_dims():
+        pop = [float(r[col]) for r in population
+               if isinstance(r.get(col), (int, float))]
+        mine = [float(r[col]) for r in rows if isinstance(r.get(col), (int, float))]
+        if len(pop) < 3 or len(mine) < min_tracks:
+            continue
+        p_mean = sum(pop) / len(pop)
+        p_std = (sum((v - p_mean) ** 2 for v in pop) / len(pop)) ** 0.5
+        if p_std == 0:
+            continue
+        m_mean = sum(mine) / len(mine)
+        m_std = (sum((v - m_mean) ** 2 for v in mine) / len(mine)) ** 0.5
+        spread.append({"feature": label, "sigma": round(m_std / p_std, 2)})
+    spread.sort(key=lambda d: -d["sigma"])
+
+    widest = spread[0] if spread else None
+    narrowest = spread[-1] if spread else None
+    return {
+        "signature": sig,
+        "spread": spread,
+        "n_tracks": len(rows),
+        "widest": widest,
+        "narrowest": narrowest,
+        # >1 means they vary MORE than the corpus does on that dimension.
+        "range_artist": bool(widest and widest["sigma"] > 1.0),
     }
