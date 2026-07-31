@@ -367,7 +367,11 @@ def artists_view(index: dict[str, Any], *, q: str = "", genre: str = "",
 
 
 # ── R2/R4 (P4.7.3): albums + within-artist chronological drift ───────────────
-_ALBUM_FEATURES = ("tempo", "energy", "brightness", "danceability")
+# `loudness_db` is here because artist_drift defaults to it: a per-release
+# feature the album builder does not compute is a feature the drift block
+# silently cannot render (which is exactly what happened when the default moved
+# off `energy` — 929 tests stayed green and the surface went blank).
+_ALBUM_FEATURES = ("tempo", "energy", "brightness", "danceability", "loudness_db")
 
 
 def artist_albums(track_ids: list[str], identity: dict[str, dict],
@@ -428,7 +432,7 @@ def artist_albums(track_ids: list[str], identity: dict[str, dict],
     return out
 
 
-def artist_drift(albums: list[dict], column: str = "rms_mean",
+def artist_drift(albums: list[dict], column: str = "loudness_db",
                  min_albums: int = 3) -> Optional[dict[str, Any]]:
     """How this artist's sound moved across their OWN catalogue (R4a).
 
@@ -440,7 +444,7 @@ def artist_drift(albums: list[dict], column: str = "rms_mean",
     percentile RANK against the current corpus, not a measurement. Every other
     artist's tracks moving would move this artist's "drift" without a single
     note of their music changing — the opposite of an artist fact. The default
-    is now `rms_mean`, a measured quantity in its own units. A rank column
+    is now `loudness_db` (tier "measured", dBFS). A rank column
     still works if a caller passes one; it just isn't the honest default.
 
     **The direction.** It reported `last - first` while requiring three points.

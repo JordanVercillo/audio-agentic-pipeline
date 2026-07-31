@@ -51,6 +51,14 @@ _SCALES: dict[str, tuple[str, str, Optional[tuple[str, str]], Optional[list]]] =
     "onset_strength_mean": ("Punch", "", ("punchier", "gentler"), None),
     "rms_std": ("Dynamics", "", ("more dynamic", "steadier"), None),
     "spectral_rolloff_mean": ("Treble reach", "Hz", ("airier", "rounder"), None),
+    # The perceptual layer's MEASURED loudness (dBFS), as distinct from
+    # `rms_mean`'s raw units and from `energy`, which is a corpus-relative
+    # rank. /artist's drift reads this one, and rendered the bare column name
+    # until it was registered here — the failure this registry exists to
+    # prevent, arriving from a surface the registry hadn't been told about.
+    "loudness_db": (
+        "Loudness", "dBFS", ("louder", "quieter"),
+        [(-20, "quiet"), (-12, "moderate"), (1e9, "loud")]),
 }
 
 # Order is load-bearing for the signature (it ranks by |z| but ties resolve in

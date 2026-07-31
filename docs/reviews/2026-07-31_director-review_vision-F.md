@@ -87,22 +87,39 @@ Not proof, but worth watching.
 - ✅ `docs/QUALITY_BAR.md` (Q1–Q12) + `src/store/test_audit_tripwires.py`
 - ✅ Coverage tooling added; runs in CI because Windows can't (numpy/tracer clash)
 
-## Still open — carried, not fixed
+## Carried findings — all 12 closed, same day
 
-| from | item |
-|---|---|
-| platform | `_backfill_promoted_at` runs per `FeatureCache()`, so clearing `promoted_at` to roll back auto-promotes the newest unreviewed model. Needs a real one-shot marker + an `--unpromote` verb. |
-| platform | `_migrate_track_cluster_key` uses SQLite-only `INSERT OR IGNORE` and catches only `OperationalError` — on Postgres it would raise per request. Dialect-guard it. |
-| platform | Proposed `CLUSTER_ASSIGNMENT_DESYNC` audit flag — would have caught B1 on the first run. |
-| platform | 3 tests that don't test their name: silhouette sampling never executes the sampled branch (60 rows vs a 5000 threshold); the batch-write test counts calls not transactions; the analytics guard tests the tool, not the caller. |
-| platform | `build_raw_feature_marts` re-reads `all_features()` — a second heavy scan in the chain S3a just debounced. |
-| webapp | `_percentile` interpolates on quartiles: mean error 7.5 pts, max 23, systematically toward "ordinary". Store deciles or render a band. |
-| webapp | `artist_drift` runs on `energy`, which is a corpus-relative RANK, not a measurement — so "an artist fact" is not currently true for that column. |
-| webapp | `artist_drift` reports `last - first` while requiring 3 points; an up-then-down catalogue renders as "up". |
-| webapp | `/artist/{id}` fuses by name exactly what the index deliberately keeps split. |
-| webapp | Pager drops `genre`/`f` (not in `_PAGER_KEYS`); `total_cards` renders empty on `?genre=`; genre caption says "on this page" but counts all matches. |
-| webapp | Tautological assertions in the new tests (`assert … or True`, sorted-then-compared, ±5 tolerance on an exact equality). |
-| both | No 375/768/1280 visual pass on the new `/artists` grid or the 83-row feature tables. |
+Every row below was fixed, with the measurement or the test that proves it.
+
+| from | item | closed by |
+|---|---|---|
+| platform | `_backfill_promoted_at` ran per `FeatureCache()` | one-shot marker in `schema_migrations`; the shipped test hid this by simulating a "legacy" DB *after* the migration had run, so it was split into the two cases it conflated |
+| platform | `_migrate_track_cluster_key` SQLite-only | dialect guard + drops a stranded `_pkfix` first (stale rows would have won under `INSERT OR IGNORE`) |
+| platform | proposed `CLUSTER_ASSIGNMENT_DESYNC` | shipped and **proven to fire both ways** (clean 1.0 / id-space scramble 0.0); live corpus reads 95.8%, FALSE. 26 flags now |
+| platform | 3 tests that don't test their name | all three rewritten; each now fails for the reason it is named |
+| platform | `build_raw_feature_marts` re-reads the corpus | one read for the whole chain: **2 scans → 1, 0.20 s of 3.24 s**, linear in corpus size |
+| webapp | `_percentile` quartile interpolation | deciles stored; **mean error 4.69 → 0.72, max 22 → 9.2, pull-toward-ordinary −4.25 → −0.18** |
+| webapp | `artist_drift` on a corpus rank | now `loudness_db` (tier "measured", dBFS) |
+| webapp | `artist_drift` reports `last − first` | least-squares slope per year over every point; up-then-down is named an `arc` |
+| webapp | `/artist/{id}` fuses what the index splits | name-matching only where a name cannot contradict an id; the caption says how many it took |
+| webapp | pager drops `genre`/`f`; `total_cards` empty; genre caption miscounts | all three fixed and live-verified (`/artists?genre=uk+garage&per=50&f=brightness` keeps both params across pages) |
+| webapp | tautological assertions | `assert … or True` and a ±5 escape hatch on an exact equality replaced with real claims — both pass, so the code was right and the tests weren't looking |
+| both | no 375/768/1280 pass | done on `/artists`, `/song/{id}/features` (83 rows) and `/artist/{id}`: **zero page overflow at all three**; wide tables scroll inside `.lib-wrap`, the body never does |
+
+### One new defect, found the same way the review's worst ones were
+
+Moving `artist_drift` off `energy` pointed it at a column `artist_albums`
+does not compute, and **the entire drift block silently stopped rendering**.
+929 tests stayed green — every one of them passed its own column explicitly.
+Found by loading the page (D-use). Fixed by pointing at `loudness_db`, which
+the album builder does produce, plus the assertion that would have caught it:
+the default column must be in `_ALBUM_FEATURES`. Rendering it then printed the
+raw column name, because the P4.7.0 registry had never been told about
+`loudness_db` — the exact failure that registry exists to prevent, arriving
+from a surface it hadn't heard of. Registered, and gated by a test.
+
+> Two of the three defects in this fix-up round came from *using the page*.
+> That is the same finding the review opened with, arriving again, one level up.
 
 ## The lesson worth keeping
 

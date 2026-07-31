@@ -557,11 +557,11 @@ def test_drift_names_an_arc_instead_of_flattening_it_to_up():
     Director review 2026-07-31."""
     from .artists import artist_drift
 
-    albums = [{"year": y, "name": n, "n_analyzed": 2, "feat": {"rms_mean": v}}
+    albums = [{"year": y, "name": n, "n_analyzed": 2, "feat": {"loudness_db": v}}
               for y, n, v in (("2001", "A", 0.20), ("2005", "B", 0.55),
                               ("2009", "C", 0.80), ("2013", "D", 0.50),
                               ("2017", "E", 0.25))]
-    d = artist_drift(albums, "rms_mean")
+    d = artist_drift(albums, "loudness_db")
     assert d["n"] == 5
     assert d["shape"] == "arc", "an up-then-down catalogue was flattened"
     assert d["max"] == 0.80, "the peak the arc is about is not reported"
@@ -574,11 +574,11 @@ def test_drift_reads_the_trend_not_the_endpoints():
     rising; `last - first` says it fell."""
     from .artists import artist_drift
 
-    albums = [{"year": y, "name": n, "n_analyzed": 2, "feat": {"rms_mean": v}}
+    albums = [{"year": y, "name": n, "n_analyzed": 2, "feat": {"loudness_db": v}}
               for y, n, v in (("2000", "A", 0.10), ("2004", "B", 0.30),
                               ("2008", "C", 0.50), ("2012", "D", 0.70),
                               ("2016", "E", 0.09))]
-    d = artist_drift(albums, "rms_mean")
+    d = artist_drift(albums, "loudness_db")
     assert d["delta"] < 0, "the endpoints do fall — that is the trap"
     assert d["slope_per_year"] > 0, "the trend across all five releases rises"
 
@@ -591,9 +591,15 @@ def test_drift_default_column_is_a_measurement_not_a_corpus_rank():
     import inspect
 
     from . import app as app_mod
-    from .artists import artist_drift
-
-    assert inspect.signature(artist_drift).parameters["column"].default == "rms_mean"
+    from .artists import _ALBUM_FEATURES, artist_drift
+    default = inspect.signature(artist_drift).parameters["column"].default
+    assert default == "loudness_db"
+    # THE gap this missed once already: a default column the album builder does
+    # not compute makes the drift block silently un-renderable, and every test
+    # that passes its own column stays green while the page goes blank.
+    assert default in _ALBUM_FEATURES, (
+        f"artist_albums does not produce {default!r}, so /artist renders no "
+        "drift at all")
     src = inspect.getsource(app_mod)
     assert 'artist_drift(albums, "energy")' not in src, (
         "/artist is back to drifting on a corpus-relative rank")
@@ -606,10 +612,10 @@ def test_drift_labels_itself_from_the_shared_registry():
     from . import scales
     from .artists import artist_drift
 
-    albums = [{"year": y, "name": "A", "n_analyzed": 1, "feat": {"rms_mean": v}}
+    albums = [{"year": y, "name": "A", "n_analyzed": 1, "feat": {"loudness_db": v}}
               for y, v in (("2001", 0.2), ("2005", 0.4), ("2009", 0.6))]
-    d = artist_drift(albums, "rms_mean")
-    assert d["label"] == scales.display_name("rms_mean")
+    d = artist_drift(albums, "loudness_db")
+    assert d["label"] == scales.display_name("loudness_db")
     assert d["direction"] == "up" and d["shape"] == "trend"
 
 

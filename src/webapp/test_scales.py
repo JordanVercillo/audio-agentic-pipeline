@@ -79,3 +79,21 @@ def test_signature_and_character_agree_on_which_columns_are_interpretable():
     sig = {c for c, *_ in _SIGNATURE_DIMS}
     char = {c for c, *_ in scales.character_dims()}
     assert char <= sig, f"cluster names use columns the signature won't explain: {char - sig}"
+
+
+def test_every_column_a_surface_renders_by_name_is_registered():
+    """P4.7.0's whole point: one registry, so a column cannot be "Loudness" on
+    one page and "Energy" on another. A surface that renders `display_name(c)`
+    for a column the registry has never heard of prints the raw column name at
+    the visitor — which is what /artist did the moment its drift moved to
+    `loudness_db` (director review follow-up, 2026-07-31)."""
+    import inspect
+
+    from .artists import _ALBUM_FEATURES, artist_drift
+    from .scales import display_name
+
+    rendered = {inspect.signature(artist_drift).parameters["column"].default}
+    for col in sorted(rendered):
+        assert display_name(col) != col, (
+            f"{col} is rendered by name but not in the scales registry")
+    assert set(rendered) <= set(_ALBUM_FEATURES)
