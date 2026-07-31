@@ -18,6 +18,8 @@ from typing import Any, Optional
 
 from markupsafe import escape  # SVG builders bypass Jinja autoescape (rendered |safe)
 
+from . import scales
+
 # Validated 6-color categorical palette (dark surface #171a21) — fixed order.
 CLUSTER_COLORS = ["#5b8bf5", "#d4682f", "#a865d6", "#1f9994", "#e85d8a", "#a3871f"]
 
@@ -28,16 +30,10 @@ def cluster_color(cluster_id: int) -> str:
 
 # ── acoustic signature ──────────────────────────────────────────────────────
 # feature → (label, high-word, low-word) — interpretable subset only.
-_SIGNATURE_DIMS = [
-    ("tempo_bpm", "Tempo", "faster", "slower"),
-    ("rms_mean", "Loudness", "louder", "quieter"),
-    ("spectral_centroid_mean", "Brightness", "brighter", "darker"),
-    ("zcr_mean", "Noisiness", "noisier", "smoother"),
-    ("harmonic_ratio", "Harmonicity", "more harmonic", "more percussive"),
-    ("onset_strength_mean", "Punch", "punchier", "gentler"),
-    ("rms_std", "Dynamics", "more dynamic", "steadier"),
-    ("spectral_rolloff_mean", "Treble reach", "airier", "rounder"),
-]
+# P4.7.0: derived, not restated. The same eight columns are named in three
+# places (cluster labels, this signature, the absolute bands) and one of them
+# disagreed — see scales.py.
+_SIGNATURE_DIMS = scales.signature_dims()
 
 
 def acoustic_signature(user_rows: list[dict], population: list[dict],

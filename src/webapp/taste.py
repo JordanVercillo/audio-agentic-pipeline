@@ -15,23 +15,18 @@ from typing import Any, Optional
 import pandas as pd
 
 from ..analysis.drift import DRIFT_FEATURE_COLS, compute_taste_drift
+from . import scales
 
 # feature → (label, unit, ordered (upper_bound, word) bands; last is the catch-all)
-_BANDS: dict[str, tuple[str, str, list[tuple[float, str]]]] = {
-    "tempo_bpm": ("Tempo", "bpm",
-                  [(90, "laid-back"), (120, "mid-tempo"), (140, "upbeat"), (1e9, "high-energy")]),
-    "rms_mean": ("Energy", "",
-                 [(0.15, "gentle"), (0.25, "moderate"), (1e9, "loud")]),
-    "spectral_centroid_mean": ("Brightness", "Hz",
-                               [(1800, "warm"), (2800, "balanced"), (1e9, "bright")]),
-}
+# P4.7.0: derived from the ONE registry. `rms_mean` used to be labelled
+# "Energy" here while the signature called it "Loudness" and the perceptual
+# catalog carried a SEPARATE derived `energy` — one column, two visitor-facing
+# names, two different numbers (scales.py).
+_BANDS = scales.bands()
 
 
 def _band(value: float, bands: list[tuple[float, str]]) -> str:
-    for upper, word in bands:
-        if value < upper:
-            return word
-    return bands[-1][1]
+    return scales.band_word(value, bands)
 
 
 def _fmt(v: float) -> str:
