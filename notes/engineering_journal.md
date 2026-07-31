@@ -1770,3 +1770,31 @@ answer you can see, before trusting it on cases you can't.
 > *An invertible-looking formula over a non-invertible pipeline is a silent
 > lie. Before shipping a similarity metric, run it on a pair whose answer you
 > already know — and if it disagrees with the obvious, suspect the metric.*
+
+## 66 — The field we had fetched a thousand times and thrown away (2026-07-30)
+
+D-70 said to capture ISRC because Phase 5's ISRC→MBID→AcousticBrainz bridge
+depends on it, and the consult had measured coverage at "109 of 1,946 (5.6%)".
+Adding the column took ten minutes. Then I read the live cache: **0 of 2,357.**
+The 109 were never in the serving store at all — they sat in Parquet staging
+snapshots from the old top-tracks path, which stopped being how tracks arrive
+the moment playlist imports became the main intake. Meanwhile
+`fetchers._track_to_record` had been building `isrc`, `album_id`, `album_type`
+and `album_release_date` on *every* fetch for the project's whole life, and
+`remember_meta` — the one function that persists what a fetch found — silently
+dropped all four. One backfill of 47 batched calls took coverage to 100%.
+
+**The realization:** the data was never missing, it was *discarded in transit*,
+and no check could see it because every layer downstream was internally
+consistent — a column absent from the cache is absent from the marts, absent
+from gold, absent from the audit's expectations. The consult's 5.6% was
+honestly measured and still misleading: it answered "does this exist anywhere
+in the repo" when the question that mattered was "does the serving path keep
+it". Two different questions with the same words. What made it visible was
+running the number against the store I was about to depend on, rather than
+inheriting a figure from a report.
+
+> *When a fetch and a persist are written by different hands, assume fields are
+> dropped between them until you have counted. And re-measure an inherited
+> statistic against the exact store your work depends on — "it exists" and "we
+> kept it" are different claims.*

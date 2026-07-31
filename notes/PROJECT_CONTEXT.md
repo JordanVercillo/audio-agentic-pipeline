@@ -1040,20 +1040,23 @@
   D-67-gated), `all_features()` on 2 request paths, 15 of 892 artists
   browsable. Harness: `ui-ux-expert` agent registered; full spec + the
   S1–S6 Opus plan in `docs/VISION_SPECS.md` §Vision F.
-  **✅ S1 + S2 SHIPPED (2026-07-29/30) — see the session log.** S1: yt-dlp
-  CVE floor + search throttle + flat-search contract; `/analytics` +
-  `/artist/{id}` projections (280 ms/6.5 MB → 54 ms/0.6 MB). S2: **the F1 fix
-  — cluster coverage 36.7% → 100%** + the D-62 train/promote split, 4 audit
-  flags, and two pre-existing bugs killed (journal #64/#65). Spark now runs
-  and PASSES parity locally on WSL2 (`scripts/spark_wsl.ps1`); the Windows
-  Spark/Hadoop install was removed by owner decision.
-  **➡️ NEXT ACTION — Vision F S3 (P4.6.4 + P4.6.6):** debounce the post-drain
-  chain (measured to outgrow its own 30 s poll interval at ~8k tracks), drop
-  the duplicate `refresh_duplicate_flags`, batch `persist_perceptual`, and
-  bound the O(N²) `silhouette_score(sample_size=5000, random_state=42)`; then
-  the checked-in gold schema manifest + `GOLD_SCHEMA_SHRINK`, and the
-  album/release + **ISRC** capture with its ~48-call backfill (**D-70 — it
-  gates Phase 5's headline coverage number**, measured today at 5.6%). Owner
+  **✅ VISION F S1–S3 SHIPPED (2026-07-29/30) — the whole PLATFORM half; see
+  the session log.** S1: yt-dlp CVE floor + search throttle + flat-search
+  contract; `/analytics` + `/artist/{id}` projections (280 ms/6.5 MB →
+  54 ms/0.6 MB). S2: **the F1 fix — cluster coverage 36.7% → 100%** + the D-62
+  train/promote split, 4 audit flags, two pre-existing bugs killed (journal
+  #64/#65). S3: the post-drain chain 1.39× and debounced (headroom ~11k →
+  ~15.3k), **ISRC 0% → 100%** (D-70, journal #66), `GOLD_SCHEMA_SHRINK` +
+  `dim_tracks` restored to 11 columns. Spark runs and PASSES parity locally on
+  WSL2 (`scripts/spark_wsl.ps1`); the Windows Spark/Hadoop install was removed
+  by owner decision. **PHASE 5 IS UNBLOCKED** — D-70 was its hard prerequisite.
+  **➡️ NEXT ACTION — Vision F S4 (P4.7.0 + P4.7.1), the first user-facing
+  slice:** lift `_BANDS` / `_SIGNATURE_DIMS` / the archetype thresholds into
+  ONE `src/webapp/scales.py` with caption-parity tests — **before Epic R
+  doubles their consumers** — then `RAW_FEATURE_DOC` in the DSP layer + the
+  `raw_feature_dictionary`/`raw_feature_stats` marts + **`GET
+  /song/{id}/features`** (all 83 numeric features grouped, D-66) with the
+  set-equality tripwire so an 84th feature can never ship undocumented. Owner
   track unchanged: needs-source repairs at leisure; the DMARC reject-flip.
 - ✅ **SECURITY + ROBUSTNESS REVIEW (2026-07-09, commits 26891b1←): whole-app
   audit via 2 review subagents + a strategic pass; 7 real fixes, all tested,
@@ -3026,11 +3029,50 @@ narrative goes to `notes/engineering_journal.md`, plans to
   would freeze the model at its smallest population; encoded as a test).
   New key files: `scripts/promote_cluster_model.py`,
   `src/store/test_cluster_freshness.py` (11 tripwires).
-  **Left off: S2 COMPLETE + live (coverage 1.0, growth 1.0, all flags FALSE).
-  ➡️ NEXT = Vision F S3 (P4.6.4 + P4.6.6): debounce the post-drain chain
-  (it outgrows its own 30 s poll interval at ~8k tracks), drop the duplicate
-  `refresh_duplicate_flags`, batch `persist_perceptual`,
-  `silhouette_score(sample_size=5000)`; then the gold schema manifest +
-  `GOLD_SCHEMA_SHRINK`, and the album/release + **ISRC** capture with its
-  ~48-call backfill (D-70 — it gates Phase 5's headline coverage number).
-  NEW SESSION: run `/resume`.**
+  **Left off: S2 COMPLETE + live (coverage 1.0, growth 1.0, all flags FALSE).**
+- **2026-07-30 (session 70 — VISION F S3 / P4.6.4 + P4.6.6 + D-70; Opus +
+  orchestrator; commits 925900c/7b3288a, CI green on BOTH, 861 tests, ruff
+  clean, warehouse ALL-FALSE, qa_audit 0-failed, smoke 14/14, deployed):**
+  **① P4.6.4 — the post-drain chain stops being O(corpus) every poll.**
+  Measured first: **5.31 s / 1,946 tracks = 2.73 ms/track**, outgrowing its own
+  30 s poll at **~11k** — inside the import trajectory, and the worst case was
+  a full O(N) rebuild for the 2 tracks that finished this poll.
+  `persist_perceptual` now writes in ONE transaction (was a session+commit per
+  row — the chain's biggest cost, and a crash now leaves the table wholly old
+  or wholly new); `refresh_duplicate_flags` no longer runs TWICE per drain
+  (`rebuild_marts` already does it first); **debounce** = after
+  `--rebuild-after 50` tracks or `--rebuild-every 10` min, and ALWAYS the
+  moment the queue empties; `silhouette_score` samples above
+  `_SILHOUETTE_SAMPLE=5000` (the only O(N²) step, run once PER CANDIDATE k —
+  ~7 s at 1.9k, ~3 min at 10k, hours at 100k; deterministic, and the value is
+  REPORTED never gated per D-62). **After: 3.81 s (1.96 ms/track), 1.39×,
+  headroom ~11k → ~15.3k** — and it no longer runs every poll at all.
+  **② P4.6.6 + D-70 — ISRC 0% → 100%.** `fetchers._track_to_record` had ALWAYS
+  built `isrc`/`album_id`/`album_type`/`album_release_date`; `remember_meta`
+  discarded all four, so the SERVING CACHE had **0 of 2,357** (journal #66 —
+  the consult's "109 / 5.6%" was availability in the old Parquet staging
+  snapshots, NOT the cache; **stale fact corrected**). Four forward-only
+  columns + preserve-if-absent + `cache.all_track_identity()` (kept OUT of the
+  2-field hot-path `all_meta`) + `scripts/backfill_track_identity.py`; **ran
+  live, 47 batched calls → 2,356/2,357 (100%)**, aggregate corpus 1,894/1,894.
+  **A Phase 5 number measured WITHOUT touching AcousticBrainz: 1,528 of 1,894
+  (80.7%) predate the dump's 2022-06-23 freeze**, so 366 are guaranteed
+  misses — the ceiling D-65's pre-registered 50–62% prediction lives under,
+  and it fits. **③ `GOLD_SCHEMA_SHRINK`** — the D-60 exporter had narrowed
+  `dim_tracks` 10→6 columns and nothing noticed, because no check looks at the
+  shape of what we PROMISE; now a checked-in `docs/gold_schema_manifest.json`
+  (a FLOOR — adding columns is fine) + the flag, `dim_tracks` restored to 11
+  columns carrying real album/ISRC data, and **the flag PROVEN to fire** by
+  simulating the exact D-60 narrowing. New key files:
+  `scripts/backfill_track_identity.py`, `docs/gold_schema_manifest.json`,
+  `src/store/test_cache.py`; new readers `all_track_identity()`,
+  `upsert_perceptual_many()`.
+  **Left off: S3 COMPLETE + live. Vision F is 3/6 (S1–S3 = the whole platform
+  half); what remains is user-facing surface. PHASE 5 IS UNBLOCKED — D-70 was
+  its hard prerequisite and the ISRC bridge is at 100%, so P5-S1's only
+  remaining piece is the MusicBrainz client.
+  ➡️ NEXT = Vision F S4 (P4.7.0 + P4.7.1): lift `_BANDS`/`_SIGNATURE_DIMS`/
+  archetype thresholds into ONE `scales.py` with caption-parity tests (do this
+  BEFORE Epic R doubles their consumers), then `RAW_FEATURE_DOC` + the two raw
+  marts + **`GET /song/{id}/features`** (all 83 numeric features, D-66) with
+  the set-equality doc tripwire. NEW SESSION: run `/resume`.**
