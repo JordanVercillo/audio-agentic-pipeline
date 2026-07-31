@@ -111,7 +111,9 @@ def _mode_num(v: Any) -> Optional[float]:
     return None
 
 
-def compute_perceptual(cache: FeatureCache) -> pd.DataFrame:
+def compute_perceptual(cache: FeatureCache, *,
+                       feats: Optional[dict[str, dict]] = None,
+                       twins: Optional[set[str]] = None) -> pd.DataFrame:
     """The perceptual-v1 transform over every complete cached track.
 
     Returns a DataFrame keyed on the bridge key with every CATALOG column +
@@ -121,8 +123,8 @@ def compute_perceptual(cache: FeatureCache) -> pd.DataFrame:
     is computed only over audio we can point at (cache.excluded_from_aggregates
     is the one shared filter, red-team #8).
     """
-    feats = cache.all_features()
-    twins = cache.excluded_from_aggregates()
+    feats = cache.all_features() if feats is None else feats
+    twins = cache.excluded_from_aggregates() if twins is None else twins
     ts_map = cache.all_time_signatures()  # promoted column, joined by bridge key
     rows = [{"spotify_track_id": tid, **f} for tid, f in feats.items()
             if tid not in twins
@@ -281,7 +283,9 @@ def _write_atomic(df: pd.DataFrame, path: Path) -> None:
             time.sleep(0.1)
 
 
-def build_raw_feature_marts(cache: FeatureCache, marts_dir: Path) -> dict[str, Any]:
+def build_raw_feature_marts(cache: FeatureCache, marts_dir: Path, *,
+                            feats: Optional[dict[str, dict]] = None,
+                            excluded: Optional[set[str]] = None) -> dict[str, Any]:
     """The two marts behind `/song/{id}/features` (D-66).
 
     raw_feature_dictionary — one row per CONCRETE column, expanded from the DSP
@@ -296,8 +300,13 @@ def build_raw_feature_marts(cache: FeatureCache, marts_dir: Path) -> dict[str, A
     from ..analysis.clustering import VECTOR_77_COLUMNS
     from ..dsp.feature_doc import RAW_FEATURE_PROMOTED, documented_columns
 
-    feats = cache.all_features()
-    excluded = cache.excluded_from_aggregates()
+    # `feats`/`excluded` are passed in by rebuild_marts, which read the same
+    # two things moments earlier. Reading them again is the whole 82-column
+    # dict for the whole corpus a SECOND time inside the post-drain chain S3a
+    # just debounced (director review 2026-07-31) — ~1.9k rows today, linear
+    # forever. Standalone callers still get the self-sufficient behaviour.
+    feats = cache.all_features() if feats is None else feats
+    excluded = cache.excluded_from_aggregates() if excluded is None else excluded
     rows = [f for tid, f in feats.items() if tid not in excluded and f]
     if not rows:
         return {"raw_feature_dictionary": 0, "raw_feature_stats": 0}
@@ -355,7 +364,13 @@ def rebuild_marts(cache: FeatureCache, marts_dir: Path) -> dict[str, Any]:
     under WAL when the worker and the Q3 runner rebuild concurrently.
     """
     cache.refresh_duplicate_flags()
-    df = compute_perceptual(cache)
+    # ONE corpus read for the whole chain. compute_perceptual and
+    # build_raw_feature_marts each used to call `all_features()` themselves —
+    # two full 82-column scans of the corpus per post-drain rebuild, the second
+    # of them added the same week S3a debounced the first.
+    feats = cache.all_features()
+    excluded = cache.excluded_from_aggregates()
+    df = compute_perceptual(cache, feats=feats, twins=excluded)
     if df.empty:
         return {"n_tracks": 0, "perceptual": df,
                 "catalog": pd.DataFrame(), "stats": pd.DataFrame()}
@@ -374,7 +389,8 @@ def rebuild_marts(cache: FeatureCache, marts_dir: Path) -> dict[str, Any]:
     _write_atomic(stats, marts_dir / "feature_stats.parquet")
     # D-49: the semantic layer rides the same hook + the frame we just computed
     # (no recompute) — the chat's analyst views stay as fresh as /explore.
-    raw = build_raw_feature_marts(cache, marts_dir)
+    raw = build_raw_feature_marts(cache, marts_dir, feats=feats,
+                                  excluded=excluded)
     from .semantic import build_semantic_marts
     semantic = build_semantic_marts(cache, df, marts_dir)
     return {"n_tracks": n, "perceptual": df, "catalog": catalog, "stats": stats,

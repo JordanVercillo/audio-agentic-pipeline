@@ -89,11 +89,20 @@ def test_analytics_population_never_reads_the_heavy_json_columns(corpus):
     """/analytics and /artist z-score a NAMED subset of the feature dict against
     the corpus. Both called `all_features()` until Vision F P4.6.2 — measured
     1,092 ms / 21 MB vs 54 ms / 1.4 MB projected, per request, growing linearly
-    with the corpus. The projection is the fix; this is the tripwire that keeps
-    it (the same fault the /library guard above catches, on the two routes that
-    guard never covered)."""
+    with the corpus.
+
+    Director review 2026-07-31: this test used to call `feature_columns()`
+    itself, which proves the PROJECTION works and nothing about whether the
+    routes use it — reverting app.py to `all_features()` left it green. It now
+    asserts on the CALLERS: no production module may reach for the whole
+    feature dict on a request path.
+    """
+    import ast
+    import pathlib
+
     from ..webapp.analytics import _SIGNATURE_DIMS
 
+    # 1. the projection itself still projects
     for cols in ([c for c, *_ in _SIGNATURE_DIMS], _SIMILARITY_COLS):
         stmts = _sql_log(corpus)
         got = corpus.feature_columns(cols)
@@ -106,6 +115,26 @@ def test_analytics_population_never_reads_the_heavy_json_columns(corpus):
         assert not any("track_features.features " in s or
                        s.rstrip().endswith("track_features.features")
                        for s in stmts), "the whole 82-col dict was selected"
+
+    # 2. and the request path still uses it. `all_features()` is legitimate
+    #    OFFLINE (training, mart builds, backfills) and a linear-cost bug on a
+    #    route, so the assertion is scoped to the modules a request runs.
+    web = pathlib.Path(__file__).resolve().parent.parent / "webapp"
+    offenders = []
+    for mod in ("app.py", "analytics.py", "artists.py", "features_view.py",
+                "library.py", "recommend.py", "explore.py"):
+        f = web / mod
+        if not f.exists():
+            continue
+        tree = ast.parse(f.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if (isinstance(node, ast.Call)
+                    and isinstance(node.func, ast.Attribute)
+                    and node.func.attr == "all_features"):
+                offenders.append(f"{mod}:{node.lineno}")
+    assert not offenders, (
+        "a request path calls all_features() — that is the whole feature dict "
+        f"for the whole corpus, per request: {offenders}")
 
 
 def test_similar_never_reads_the_display_json_columns(corpus):
@@ -235,6 +264,33 @@ def test_persist_perceptual_writes_in_one_transaction(corpus, monkeypatch):
     assert calls["single"] == 0, "per-row upsert_perceptual is the regression"
 
 
+def test_persist_perceptual_commits_once_not_once_per_row(corpus):
+    """The name of the test above claims a TRANSACTION count; it measured a
+    CALL count. Those differ exactly where the bug lived — a batch entry point
+    that loops `with Session() as s: ... s.commit()` internally is called once
+    and still commits N times. This counts the commits (director review
+    2026-07-31)."""
+    import pandas as pd
+    from sqlalchemy import event
+
+    from .perceptual import persist_perceptual
+
+    commits = []
+
+    def _count(_conn):
+        commits.append(1)
+
+    event.listen(corpus.engine, "commit", _count)
+    try:
+        df = pd.DataFrame([{"spotify_track_id": f"trk{i:02d}", "version": "test-v2",
+                            "tempo": 0.5 + i / 100} for i in range(12)])
+        assert persist_perceptual(corpus, df) == 12
+    finally:
+        event.remove(corpus.engine, "commit", _count)
+    assert len(commits) <= 2, (
+        f"{len(commits)} commits for 12 rows — the per-row write is back")
+
+
 def test_silhouette_is_sampled_only_above_the_threshold():
     """The only O(N²) step in the platform. Sampling must kick in ABOVE the
     threshold and change nothing below it, so small/synthetic corpora keep
@@ -249,3 +305,42 @@ def test_silhouette_is_sampled_only_above_the_threshold():
     labels, k, score = cluster_tracks(X, k_range=(2, 3))
     assert k == 2 and len(labels) == 60
     assert -1.0 <= score <= 1.0
+
+
+def test_silhouette_actually_samples_when_the_corpus_is_large(monkeypatch):
+    """The test above builds 60 rows against a 5,000 threshold, so the sampled
+    branch it is named for never executed — a 60-row corpus proves only the
+    path that was never in question (director review 2026-07-31). Building
+    5,001 real rows would make the suite pay the O(N²) cost this change exists
+    to avoid, so the THRESHOLD moves instead, and the call is inspected.
+    """
+    import numpy as np
+
+    from ..analysis import clustering as cl_mod
+
+    seen: list[dict] = []
+    real = cl_mod.silhouette_score
+
+    def spy(X, labels, **kw):
+        seen.append(kw)
+        return real(X, labels, **kw)
+
+    monkeypatch.setattr(cl_mod, "silhouette_score", spy)
+    rng = np.random.default_rng(0)
+    X = np.vstack([rng.normal(-2, 0.3, (30, 4)), rng.normal(2, 0.3, (30, 4))])
+
+    monkeypatch.setattr(cl_mod, "_SILHOUETTE_SAMPLE", 10_000)   # 60 < threshold
+    cl_mod.cluster_tracks(X, k_range=(2, 2))
+    assert seen and all("sample_size" not in kw for kw in seen), (
+        "sampling kicked in below the threshold — small corpora must keep "
+        "their exact score")
+
+    seen.clear()
+    monkeypatch.setattr(cl_mod, "_SILHOUETTE_SAMPLE", 25)       # 60 > threshold
+    _, k, score = cl_mod.cluster_tracks(X, k_range=(2, 2))
+    assert seen, "silhouette_score was never called"
+    assert all(kw.get("sample_size") == 25 for kw in seen), (
+        f"the sampled branch did not execute: {seen}")
+    assert all("random_state" in kw for kw in seen), (
+        "sampling without random_state makes k selection non-deterministic")
+    assert k == 2 and -1.0 <= score <= 1.0
