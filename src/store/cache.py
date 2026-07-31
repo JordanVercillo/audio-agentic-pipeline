@@ -169,6 +169,12 @@ class FeatureCache:
         overwrites) are copied as-is.
         """
         try:
+            # SQLite-only: `INSERT OR IGNORE` is invalid on Postgres and raises
+            # ProgrammingError — NOT the OperationalError caught below — so it
+            # would escape __init__ on every request. Postgres can ALTER a PK
+            # directly and needs its own branch if we ever run there.
+            if self.engine.dialect.name != "sqlite":
+                return
             inspector = sa_inspect(self.engine)
             if not inspector.has_table("track_clusters"):
                 return
@@ -176,6 +182,9 @@ class FeatureCache:
             if set(pk) == {"spotify_track_id", "model_id"}:
                 return  # already migrated
             with self.engine.begin() as conn:
+                # A killed process can strand _pkfix; INSERT OR IGNORE
+                # would then let its STALE rows win over current ones.
+                conn.execute(text("DROP TABLE IF EXISTS track_clusters_pkfix"))
                 conn.execute(text("""
                     CREATE TABLE IF NOT EXISTS track_clusters_pkfix (
                         spotify_track_id VARCHAR NOT NULL,
@@ -212,6 +221,20 @@ class FeatureCache:
         """
         try:
             with self.engine.begin() as conn:
+                # ONE-SHOT, marked in the DB. Without the marker this is not a
+                # migration but a standing rule ("if nothing is promoted,
+                # promote the newest"), re-evaluated on EVERY FeatureCache() —
+                # and the webapp builds one per request. Clearing promoted_at
+                # to roll back a bad promotion would then auto-promote the
+                # newest UNREVIEWED candidate on the next HTTP request,
+                # inverting D-62's entire premise.
+                conn.execute(text(
+                    "CREATE TABLE IF NOT EXISTS schema_migrations ("
+                    "  name VARCHAR PRIMARY KEY, applied_at DATETIME)"))
+                if conn.execute(text(
+                        "SELECT 1 FROM schema_migrations "
+                        "WHERE name = 'd62_backfill_promoted_at'")).fetchone():
+                    return
                 kinds = [r[0] for r in conn.execute(
                     text("SELECT DISTINCT kind FROM cluster_models")).fetchall()]
                 for kind in kinds:
@@ -226,6 +249,9 @@ class FeatureCache:
                         "WHERE id = (SELECT id FROM cluster_models WHERE kind = :k "
                         "            ORDER BY id DESC LIMIT 1)"
                     ), {"k": kind})
+                conn.execute(text(
+                    "INSERT INTO schema_migrations (name, applied_at) "
+                    "VALUES ('d62_backfill_promoted_at', CURRENT_TIMESTAMP)"))
         except OperationalError:
             pass  # table/column not there yet on a fresh DB — create_all handles it
 

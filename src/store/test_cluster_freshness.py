@@ -206,23 +206,48 @@ def test_identity_match_refuses_on_feature_contract_change(cache):
 
 
 # ── the migration that must not blank a live surface ────────────────────────
-def test_pre_d62_model_is_back_promoted_so_nothing_goes_dark(tmp_path):
-    """A model written before promoted_at existed must keep serving."""
+def _legacy_db(tmp_path, *, forget_migration: bool):
+    """A DB with one unpromoted model, optionally with the migration marker
+    removed so it looks genuinely pre-D-62 rather than merely rolled back."""
+    from sqlalchemy import text
+
     url = f"sqlite:///{tmp_path/'legacy.db'}"
     c = FeatureCache(url)
     for i in range(20):
         c.upsert(f"trk{i:03d}", _feat(i, hi=i % 2 == 0))
     r = cl.train_song_clusters(c)
-    with c._Session() as s:                      # simulate a pre-D-62 row
-        m = s.get(ClusterModel, r["model_id"])
-        m.promoted_at = None
+    with c._Session() as s:
+        s.get(ClusterModel, r["model_id"]).promoted_at = None
         s.commit()
+    if forget_migration:
+        with c.engine.begin() as conn:
+            conn.execute(text("DELETE FROM schema_migrations "
+                              "WHERE name = 'd62_backfill_promoted_at'"))
     c.close()
+    return url, r["model_id"]
 
-    reopened = FeatureCache(url)                 # boot runs the backfill
-    served = cl.latest_model(reopened, "song")
+
+def test_pre_d62_model_is_back_promoted_so_nothing_goes_dark(tmp_path):
+    """A model written before promoted_at existed must keep serving."""
+    url, model_id = _legacy_db(tmp_path, forget_migration=True)
+    served = cl.latest_model(FeatureCache(url), "song")   # boot runs the backfill
     assert served is not None, "the migration took the serving model dark"
-    assert served.id == r["model_id"]
+    assert served.id == model_id
+
+
+def test_backfill_is_one_shot_so_a_rollback_is_not_undone(tmp_path):
+    """Clearing promoted_at must STAY cleared once the migration has run.
+
+    Director review, 2026-07-31: this backfill ran on every `FeatureCache()`
+    construction, and the webapp builds one per request. That made it not a
+    migration but a standing rule — "if nothing is promoted, promote the
+    newest" — so rolling a bad promotion back auto-promoted the newest
+    UNREVIEWED candidate on the very next HTTP request, inverting the entire
+    premise of D-62 (a human ratifies what visitors see).
+    """
+    url, _ = _legacy_db(tmp_path, forget_migration=False)
+    assert cl.latest_model(FeatureCache(url), "song") is None, (
+        "the rollback was undone at boot — D-62's human-in-the-loop is bypassed")
 
 
 def test_descriptions_missing_is_reported(cache):

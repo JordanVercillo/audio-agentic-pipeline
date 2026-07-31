@@ -652,6 +652,90 @@ def check_cluster_freshness():
     return report, warnings, flags
 
 
+def check_cluster_assignment_sync(sample: int = 400):
+    """Does the SERVED model still agree with its own stored assignments?
+
+    The 2026-07-31 blocker: `promote_model` remapped every id-KEYED structure
+    and left `centroids`, which is id-INDEXED. The result was a model whose
+    stored rows said cluster 2 and whose own nearest-centroid rule said cluster
+    0 — 1,894 of 1,894 disagreeing — with every other gate green, because none
+    of them ever asked the model whether it agreed with ITSELF.
+
+    This asks. Deterministic sample (`ORDER BY spotify_track_id`), the model's
+    own scaler and feature_cols, plain Euclidean distance — the same arithmetic
+    `nearest_cluster` does, reimplemented here on purpose so a bug in that
+    function cannot hide itself.
+    """
+    import sqlite3
+    import numpy as np
+
+    report: dict = {}
+    warnings: list[str] = []
+    flags: dict[str, bool] = {}
+    db = REPO / "data" / "feature_cache.db"
+    if not db.exists():
+        return report, warnings, flags
+    try:
+        con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+        try:
+            served = con.execute(
+                "SELECT id, feature_cols, scaler_mean, scaler_std, centroids "
+                "FROM cluster_models WHERE kind='song' AND promoted_at IS NOT NULL "
+                "ORDER BY promoted_at DESC, id DESC LIMIT 1").fetchone()
+            if served is None:
+                return report, warnings, flags
+            mid, cols, mean, std, cents = served
+            cols = json.loads(cols)
+            mean = np.asarray(json.loads(mean), dtype=float)
+            std = np.asarray(json.loads(std), dtype=float)
+            cents = np.asarray(json.loads(cents), dtype=float)
+            rows = con.execute(
+                "SELECT c.spotify_track_id, c.cluster_id, f.features "
+                "FROM track_clusters c JOIN track_features f "
+                "  ON f.spotify_track_id = c.spotify_track_id "
+                "WHERE c.model_id = ? ORDER BY c.spotify_track_id LIMIT ?",
+                (mid, sample)).fetchall()
+        finally:
+            con.close()
+
+        std = np.where(std == 0, 1.0, std)
+        checked = agree = 0
+        for _tid, stored, blob in rows:
+            try:
+                feats = json.loads(blob) if isinstance(blob, str) else blob
+            except (TypeError, ValueError):
+                continue
+            if not isinstance(feats, dict):
+                continue
+            vec = [feats.get(c) for c in cols]
+            if any(v is None or not isinstance(v, (int, float)) for v in vec):
+                continue                       # incomplete row — not a desync
+            x = (np.asarray(vec, dtype=float) - mean) / std
+            nearest = int(np.argmin(np.linalg.norm(cents - x, axis=1)))
+            checked += 1
+            agree += int(nearest == int(stored))
+
+        if not checked:
+            return report, warnings, flags
+        rate = agree / checked
+        report = {"model_id": mid, "checked": checked,
+                  "agreement": round(rate, 4)}
+        # A track legitimately drifts only if its features changed after
+        # assignment, which is rare; 90% is loose enough to never cry wolf and
+        # tight enough that the blocker (0%) screams.
+        if rate < 0.90:
+            warnings.append(
+                f"served cluster model {mid} disagrees with its own stored "
+                f"assignments on {checked - agree}/{checked} sampled tracks "
+                f"({rate:.1%} agreement) — the model's centroids and its rows "
+                f"are in different id spaces — CLUSTER_ASSIGNMENT_DESYNC")
+            flags["CLUSTER_ASSIGNMENT_DESYNC"] = True
+    except Exception as exc:  # noqa: BLE001 - the audit must never be what breaks
+        warnings.append(
+            f"cluster assignment sync check skipped: {type(exc).__name__}: {exc}")
+    return report, warnings, flags
+
+
 def main() -> int:
     errors: list[str] = []
     warnings: list[str] = []
@@ -811,6 +895,10 @@ def main() -> int:
     cf_report, cf_warnings, cf_flags = check_cluster_freshness()
     warnings.extend(cf_warnings)
 
+    # --- does the served model agree with its own rows? (director review) --
+    ds_report, ds_warnings, ds_flags = check_cluster_assignment_sync()
+    warnings.extend(ds_warnings)
+
     # --- gold schema contract (P4.6.6) -------------------------------------
     gs_report, gs_warnings, gs_flags = check_gold_schema()
     warnings.extend(gs_warnings)
@@ -830,11 +918,14 @@ def main() -> int:
         **dis_flags,
         **pa_flags,
         **cf_flags,
+        "CLUSTER_ASSIGNMENT_DESYNC": False,
+        **ds_flags,
         **gs_flags,
     }
     print(json.dumps({"layers": layers, "audio": audio, "marts": marts_report,
                       "duplicates": dup_report, "disagreements": dis_report,
                       "cluster_freshness": cf_report,
+                      "cluster_assignment_sync": ds_report,
                       "gold_schema": gs_report,
                       "errors": errors,
                       "warnings": warnings, "flags": flags}, indent=2))

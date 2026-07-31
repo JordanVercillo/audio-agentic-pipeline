@@ -37,6 +37,7 @@ _FIRE_TESTED = {
     "TWIN_LEAKAGE", "DUPLICATE_TRACKS", "DEDUP_DISAGREEMENT",
     "CLUSTER_COVERAGE", "CLUSTER_MODEL_STALE", "CLUSTER_DESCRIPTION_MISSING",
     "CLUSTER_PROMOTION_PENDING", "GOLD_SCHEMA_SHRINK",
+    "CLUSTER_ASSIGNMENT_DESYNC",
 }
 
 # Known debt, stated rather than hidden. Each needs a fire test; the list may
@@ -155,3 +156,69 @@ def test_gold_schema_allows_added_columns():
             assert flags["GOLD_SCHEMA_SHRINK"] is False
         finally:
             audit.REPO, audit.WAREHOUSE = orig_repo, orig_wh
+
+
+# --- CLUSTER_ASSIGNMENT_DESYNC -------------------------------------------
+# The flag added because of the 2026-07-31 blocker: `promote_model` remapped
+# every id-KEYED structure and left `centroids`, which is id-INDEXED. Every
+# other gate stayed green because none of them ever asked the model whether it
+# agreed with itself. This proves the new one asks — in both directions.
+
+
+def _desync_db(tmp_path, *, scramble: bool):
+    """A two-cluster corpus whose rows either match the centroids, or don't."""
+    import sqlite3
+
+    root = tmp_path / "repo"
+    (root / "data").mkdir(parents=True)
+    con = sqlite3.connect(root / "data" / "feature_cache.db")
+    con.executescript("""
+        CREATE TABLE cluster_models (id INTEGER PRIMARY KEY, kind TEXT, k INT,
+            feature_cols TEXT, scaler_mean TEXT, scaler_std TEXT,
+            centroids TEXT, promoted_at DATETIME);
+        CREATE TABLE track_features (spotify_track_id TEXT PRIMARY KEY, features TEXT);
+        CREATE TABLE track_clusters (spotify_track_id TEXT, model_id INT, cluster_id INT);
+    """)
+    cents = [[-1.0, -1.0], [1.0, 1.0]]        # cluster 0 = low, cluster 1 = high
+    if scramble:
+        cents = cents[::-1]                    # exactly the blocker: indexed list
+    con.execute(                               # left in the OTHER id space
+        "INSERT INTO cluster_models VALUES (1,'song',2,?,?,?,?,'2026-07-31')",
+        (json.dumps(["a", "b"]), json.dumps([0.0, 0.0]), json.dumps([1.0, 1.0]),
+         json.dumps(cents)))
+    for i in range(20):
+        tid, lo = f"t{i:03d}", i % 2 == 0
+        val = -1.0 if lo else 1.0
+        con.execute("INSERT INTO track_features VALUES (?,?)",
+                    (tid, json.dumps({"a": val, "b": val})))
+        con.execute("INSERT INTO track_clusters VALUES (?,1,?)",
+                    (tid, 0 if lo else 1))
+    con.commit()
+    con.close()
+    return root
+
+
+def _sync_report(tmp_path, *, scramble: bool):
+    audit = _load_audit_module()
+    original = audit.REPO
+    audit.REPO = _desync_db(tmp_path, scramble=scramble)
+    try:
+        return audit.check_cluster_assignment_sync()
+    finally:
+        audit.REPO = original
+
+
+def test_assignment_desync_is_false_when_the_model_agrees_with_its_rows(tmp_path):
+    report, warnings, flags = _sync_report(tmp_path, scramble=False)
+    assert report["checked"] == 20
+    assert report["agreement"] == 1.0
+    assert flags.get("CLUSTER_ASSIGNMENT_DESYNC") is not True
+    assert not warnings
+
+
+def test_assignment_desync_fires_when_centroids_are_in_the_other_id_space(tmp_path):
+    report, warnings, flags = _sync_report(tmp_path, scramble=True)
+    assert report["checked"] == 20
+    assert report["agreement"] == 0.0        # the live blocker measured 0/1894
+    assert flags["CLUSTER_ASSIGNMENT_DESYNC"] is True
+    assert any("CLUSTER_ASSIGNMENT_DESYNC" in w for w in warnings)
