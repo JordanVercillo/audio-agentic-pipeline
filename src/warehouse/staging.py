@@ -19,6 +19,7 @@ Data Contract:
 Reference: Medallion Architecture — Bronze/Staging Layer
 """
 
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional, Union
@@ -28,6 +29,33 @@ import pandas as pd
 # ── Default paths ──
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 STAGING_DIR = _PROJECT_ROOT / "data" / "warehouse" / "staging"
+
+
+def _unique_landing_path(output_dir: Path, prefix: str, ts: str,
+                         snapshot_label: Optional[str] = None) -> Path:
+    """A landing path that cannot silently clobber an earlier landing.
+
+    The timestamp is second-resolution, so two landings inside the same second
+    used to write the SAME filename and the second `to_parquet` overwrote the
+    first without a word. `snapshot_label` was accepted, written into the
+    `_snapshot_label` COLUMN, and then left out of the filename entirely - so
+    even explicitly labelling two runs did not separate them on disk.
+
+    Found 2026-07-31 by the first real test this module ever had: it landed two
+    labelled snapshots and got one file back.
+    """
+    label = ""
+    if snapshot_label:
+        # Filesystem-safe: a label is free text and reaches a filename.
+        safe = re.sub(r"[^A-Za-z0-9._-]+", "-", str(snapshot_label)).strip("-")
+        if safe:
+            label = f"_{safe[:40]}"
+    path = output_dir / f"{prefix}_{ts}{label}.parquet"
+    n = 2
+    while path.exists():          # same second AND same label - still distinct
+        path = output_dir / f"{prefix}_{ts}{label}_{n}.parquet"
+        n += 1
+    return path
 
 
 def land_staging_tracks(
@@ -76,8 +104,8 @@ def land_staging_tracks(
 
     # ── Write to Parquet (append-safe via timestamped filenames) ──
     ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-    filename = f"tracks_raw_{ts}.parquet"
-    output_path = output_dir / filename
+    output_path = _unique_landing_path(output_dir, "tracks_raw", ts, snapshot_label)
+    filename = output_path.name
 
     df.to_parquet(output_path, engine="pyarrow", index=False)
 
@@ -127,8 +155,8 @@ def land_staging_features(
     df["_snapshot_label"] = snapshot_label or f"snapshot_{now[:10]}"
 
     ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-    filename = f"features_raw_{ts}.parquet"
-    output_path = output_dir / filename
+    output_path = _unique_landing_path(output_dir, "features_raw", ts, snapshot_label)
+    filename = output_path.name
 
     df.to_parquet(output_path, engine="pyarrow", index=False)
 
@@ -167,8 +195,8 @@ def land_staging_artists(
     df["_snapshot_label"] = snapshot_label or f"snapshot_{now[:10]}"
 
     ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-    filename = f"artists_raw_{ts}.parquet"
-    output_path = output_dir / filename
+    output_path = _unique_landing_path(output_dir, "artists_raw", ts, snapshot_label)
+    filename = output_path.name
 
     df.to_parquet(output_path, engine="pyarrow", index=False)
 

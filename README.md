@@ -53,7 +53,7 @@ a σ-shift, not a vibe). The full analysis is a single self-contained file:
 
 ```text
 $ pytest
-933 passed in 97.14s
+946 passed in 97.14s
 
 $ uv run .claude/skills/warehouse-audit/audit_warehouse.py
 errors: none · bridge-key + fact↔dim integrity green · exact feature-contract verified
@@ -124,7 +124,7 @@ Spotify API (PKCE, no secret)        YouTube (yt-dlp + ffmpeg)
 | Signal | Where |
 |---|---|
 | **Reproducible env** | `pyproject.toml` + `uv.lock` (pinned graph); `requirements.txt` kept as a pip export |
-| **CI / quality gates** | GitHub Actions: `ruff` + `pytest` on every push & PR; 933 synthetic-data tests (no secrets, no network) |
+| **CI / quality gates** | GitHub Actions: `ruff` + `pytest` on every push & PR; 946 synthetic-data tests (no secrets, no network) |
 | **Data quality** | deterministic `warehouse-audit` + `app-verify` — bridge-key integrity, fact↔dim joins, **exact** feature-contract verification, live-system flags |
 | **Data provenance & lineage** | every acquisition writes an append-only `track_provenance` event (source URL, matcher, confidence, duration delta); a 9-check `qa_audit` sweep runs the whole regression set over **live** data and exits non-zero on any failure; unverified features are *withheld* from every aggregate, not just the display — a fail-safe stops an empty lineage table from emptying the corpus |
 | **Production at $0** | self-hosted multi-user FastAPI app: session-scoped PKCE (no client secret exists), SQLite+WAL serving cache, DB-as-queue extraction worker, Cloudflare Tunnel + an origin-down fallback Worker |
@@ -163,13 +163,13 @@ uv run python scripts/run_webapp.py       # the app on :8000 (guest mode works w
                                           #   once a demo snapshot exists; login needs your own dev-mode app)
 uv run python scripts/run_extraction_worker.py --loop   # the DSP worker (downloads + analyzes queued tracks)
 python scripts/run_pipeline.py            # or: the batch pipeline → warehouse → report
-pytest                                    # 933 tests — synthetic audio, no credentials, no network
+pytest                                    # 946 tests — synthetic audio, no credentials, no network
 ```
 
 ## Design docs
 
 - **[`docs/CASE_STUDY.md`](docs/CASE_STUDY.md)** — the build story + the AI-assisted engineering methodology.
-- **[`docs/VISION_SPECS.md`](docs/VISION_SPECS.md)** — the live roadmap: phases, acceptance criteria, numbered decision log (D-1…D-73).
+- **[`docs/VISION_SPECS.md`](docs/VISION_SPECS.md)** — the live roadmap: phases, acceptance criteria, numbered decision log (D-1…D-74).
 - **[`notes/PROJECT_CONTEXT.md`](notes/PROJECT_CONTEXT.md)** — verified status + session log.
 - **[`CLAUDE_INSTRUCTIONS.md`](CLAUDE_INSTRUCTIONS.md)** — architecture manual + ADRs.
 

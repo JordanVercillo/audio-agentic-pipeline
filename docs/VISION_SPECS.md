@@ -1732,6 +1732,28 @@ ISRCs map 2 corpus tracks to one recording), never a second identity.
   publishable verdicts: ADOPT v2 (owner-signed, full blast radius named) ·
   KEEP v1 FOREVER · SOFTEN THE CLAIM (confidence display, display-only,
   no re-extraction). Full bars in PHASE5_AB_SPEC §3.
+- **D-74 — P4.6.5 stage ③ (the threaded acquisition pipeline) is DECLINED,
+  2026-07-31.** The spec's own don't-build exit fires literally:
+  `extraction_jobs` holds 1,975 done / 248 failed and **0 queued, 0 running**
+  (last activity 2026-07-29) — there is no backlog to drain. More importantly
+  the spec's premise was measured and does not hold. Per-track p50 is **14.7 s**
+  (n=1,879, consecutive `track_provenance.extracted_at` gaps; p90 20.2 s), and
+  it splits: YouTube search 1.2 s + download/ffmpeg ~2–3 s = **~3–4 s
+  rate-governed**, against `extract_features` 8.1–12.7 s (HPSS alone 5.26 s)
+  plus mel 0.5–0.9 s = **~75–80% local single-threaded CPU**. So the threaded
+  pipeline would buy ≤1.25× *and* raise the aggregate request rate by that same
+  1.25× — paying the ban-risk toll for the smaller half of the budget.
+  **D-64 therefore stays unwritten**: nothing we are building raises the rate.
+  The genuinely free win is banked instead: `ThreadPoolExecutor(3)` over
+  `extract_features` measured **2.25× with bit-identical `to_summary_vector()`**
+  and ZERO YouTube requests, applicable to the network-free paths only (the
+  `backfill_*` scripts and `re_extract.py`). NOT built today, because with an
+  empty queue it buys nothing until a re-extraction or a corpus growth run is
+  actually scheduled — revisit then. **Guardrail if it is ever picked up:**
+  `harmonic_ratio` (the 5.26 s HPSS) is a member of the frozen 77-dim vector,
+  so "make HPSS cheaper" is a contract change plus full re-extraction (D-67),
+  never a throughput tweak; and pool admission must be capped by summed audio
+  duration, not job count (the p99 is a 410 s track).
 
 ## Sequence
 
