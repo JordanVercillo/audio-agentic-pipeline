@@ -2001,3 +2001,62 @@ they had accumulated silently for months.
 > Before adding a source, inventory the one you have. The pipeline had been
 > storing an answer to an interesting question for weeks and nobody had asked it.
 
+## 74 — `NaN is None` is False, and the mart rebuild found out for me (2026-08-12)
+
+Last session I added a `decade` column to `track_card`:
+
+```python
+df["release_year"].map(lambda y: None if y is None else int(y) // 10 * 10)
+```
+
+It worked. `/eras` shipped on it, the charts rendered, the tests passed, CI was
+green. Today, adding an unrelated mart, the entire `rebuild_marts()` call
+crashed on that line.
+
+Nothing about the code had changed. What changed was the data: pandas types a
+column of ints-and-Nones as **float64**, so every `None` becomes `NaN` — and
+`NaN is None` evaluates to False. The guard passes NaN straight into `int()`,
+which raises. The column only becomes float once *some* track lacks a release
+date, so the bug was unreachable until the corpus contained one, and then it
+took down every mart at once rather than degrading.
+
+**The realization:** the guard was written against the value I was thinking
+about (`None`) rather than against the type the container would actually
+produce. `None` and `NaN` are the same idea to a person and different objects to
+an identity check, and pandas silently converts between them at a boundary I
+never looked at — the moment a list becomes a column.
+
+The fix was four characters. The interesting part is that a passing test, a
+green CI and a rendered page had all agreed the code was correct, because none
+of them had ever been handed a row without a date.
+
+> A null check is only as good as your knowledge of which null you'll be
+> handed. At a dtype boundary, `is None` is a guess — `pd.isna()` is the check.
+
+
+## 75 — The backlog emptied, and that was the deliverable (2026-08-12)
+
+For months every session ended by naming the next one. Today the last
+stored-but-unread asset got surfaced and there was nothing left to name.
+
+Phase 5 had been declined, the ML track parked, MPD blocked, FAISS deleted,
+threaded acquisition measured-and-refused. Every remaining item was cut for a
+reason recorded at the time. The instinct was immediate and strong: find
+something. Open a vision. There is always more.
+
+Instead the roadmap got written as **five doors, each with the condition that
+makes it worth opening** — not a priority order. "Start Track B if you have 50+
+curated playlists" is a different kind of statement than "Track B is next",
+because the first one can be *false*, and while it is false the track is not
+work being deferred, it is work that would be wrong to do.
+
+**The realization:** an empty backlog reads like a failure of planning and is
+usually the opposite — it is what it looks like when every remaining item has
+been honestly evaluated instead of accumulated. The failure mode isn't running
+out of things to build; it's a list long enough that nobody notices half of it
+serves a goal that changed three sessions ago.
+
+> A backlog is not an asset. Items that survived because nobody re-read them
+> are a liability, and the moment the list empties is the moment you can choose
+> the next thing on evidence instead of inertia.
+

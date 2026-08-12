@@ -86,6 +86,9 @@ pytest src/ -v                                            # test suite
 uv run .claude/skills/warehouse-audit/audit_warehouse.py  # data-quality audit
 ```
 
+What to build next (five doors, each with its entry condition):
+[`docs/PHASE2_ROADMAP.md`](docs/PHASE2_ROADMAP.md).
+
 Showing it to someone: [`docs/DEMO_SCRIPT.md`](docs/DEMO_SCRIPT.md)
 (T-30 checklist + a 7-minute click path).
 
@@ -104,6 +107,7 @@ The session loop is **`/resume` → work → `/wrap-session`**.
 | Data-quality audit — after any pipeline run / transform change | `/warehouse-audit` |
 | Is the live app up? what state is the system in? | `/app-verify` |
 | Environment broken / imports fail / tests won't run | `/env-verify` |
+| Interview prep · poke holes before committing to a phase | `/grill-me` |
 
 Skills live in `.claude/skills/`; domain-expert agents (advise by default,
 in-lane, never commit) in `.claude/agents/` — `data-platform-expert`,

@@ -20,6 +20,7 @@ defect-discovery channels (hand-entered — a discipline, not a gate; see
 | 72 | 2026-07-31 | carried findings (12/12) + consolidation | 20 | 914→948 | clean | all-false (26 flags) | +873/+1287 | 3·2·0·**5**·1·0 | All 12 carried findings closed. New tripwire `CLUSTER_ASSIGNMENT_DESYNC` proven to fire. Percentile error 4.69→0.72 pts. D-74 declines P4.6.5 on a measured premise. FAISS stack deleted (`docs/DELETIONS.md`). Public numbers + docs structure now self-checking. **D-use beat D-self 5:3 — if session 73 repeats it, the FULL review trigger fires.** |
 | 73 | 2026-08-12 | Track B - measure the models | 8 | 948->971 | clean | all-false (26 flags) | +1055/+460 | 2.1.0.0.2.0 | First offline eval for both shipped models. Whitening SHIPPED (+0.0059 held out). Feature selection REJECTED (+14% pool / **-11.3% untouched holdout**). Two of my own earlier readings corrected by measurement. |
 | 74 | 2026-08-12 | goal reframe - the workplace demo | 3 | 975->986 | clean | all-false (26 flags) | +317/+98 | 0.2.0.0.3.0 | D-75 declines Phase 5 + the ML track. Three consults all found the blocker was DISCOVERABILITY, not capability. /eras built from a stored-but-unread column: +4.1 dB loudness, -66 s length across 6 decades. |
+| 75 | 2026-08-12 | fact_section + the Phase 2 roadmap | 3 | 986->996 | clean | all-false (26 flags) | +145/+156 | 1.0.1.0.0.0 | Second fact grain shipped (65.1% of tracks change key mid-song). Found a NaN crash in LAST session's code that took down the whole mart rebuild. Build backlog now empty by design. |
 
 ## Reading the rows
 
@@ -99,3 +100,18 @@ One consult claim was REJECTED after checking: '77 vs 83 is a stale
 contradiction'. Both numbers are real and different - the frozen similarity
 vector and the exposed feature count - and bulk-replacing would have
 introduced an error rather than fixed one.
+
+### Session 75 - D-build, and what a passing suite did not know
+
+D-self 1 (the section-mart guards), D-build 1 - and the D-build one is the
+entry worth keeping. Building `fact_section` crashed `rebuild_marts()` on a
+line shipped LAST session: `None if y is None` against a pandas float64
+column, where every None is NaN and `NaN is None` is False.
+
+986 tests, a green CI and a rendered /eras page had all agreed that code was
+correct, because none of them had ever been handed a track without a release
+date. The defect was unreachable until the data changed, and then it took
+down every mart at once rather than degrading (journal #74).
+
+Test-to-code ratio 1.08 - the highest of any build session, because most of
+the work was guards on a new grain rather than new surface.

@@ -210,6 +210,7 @@ checks, the duplicate problem, and why some songs are withheld.
 |---|---|
 | run it yourself | [`SELF_HOSTING.md`](SELF_HOSTING.md) |
 | demo it to someone | [`DEMO_SCRIPT.md`](DEMO_SCRIPT.md) |
+| know what's next | [`PHASE2_ROADMAP.md`](PHASE2_ROADMAP.md) |
 | see the build story | [`CASE_STUDY.md`](CASE_STUDY.md) |
 | understand the architecture in depth | [`../CLAUDE_INSTRUCTIONS.md`](../CLAUDE_INSTRUCTIONS.md) |
 | see what's planned and why | [`VISION_SPECS.md`](VISION_SPECS.md) |

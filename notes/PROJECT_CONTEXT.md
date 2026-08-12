@@ -1389,6 +1389,8 @@ narrative goes to `notes/engineering_journal.md`, plans to
 | `src/warehouse/` | Medallion: `staging.py` (Bronze) → `cleansed.py` (Silver) → `modeled.py` (Gold star schema; fact denormalized, agent-optimized per ADR-002). |
 | `src/search/` | UMAP visualizer + its config (feeds the taste map via `analysis/clustering.py`). Tests: `test_visualizer.py`. **`faiss_store.py`, `pipeline.py` and `test_search.py` DELETED 2026-07-31** — zero importers, and `test_search.py`'s entry point wasn't named `test_*` so pytest never collected it (`docs/DELETIONS.md`). |
 | `src/analysis/` | Temporal drift (cosine, ADR-003) + matplotlib visuals. |
+| `docs/PHASE2_ROADMAP.md` | **What to build next** — five doors, each stating the condition that makes it worth STARTING rather than a priority order, plus the explicit not-doing list. Written when the Phase 1 backlog emptied. |
+| `.claude/skills/grill-me/SKILL.md` | Adversarial interview about this project, grounded in its own journal/decisions/reviews. Ends with three lists; the third is gaps that are roadmap items. |
 | `docs/DEMO_SCRIPT.md` | **How to show this to someone**: the T-30 checklist (deploy_app.bat, app-verify, load it from a phone on cell data, warm the LLM), a 7-minute click path with the words for each stop, failure cards, and the questions colleagues ask. |
 | `src/webapp/eras.py` + `/eras` | Decade-grain corpus facts — the loudness war (+4.1 dB) and the streaming squeeze (−66 s), from `album_release_date` which was stored and unused. Headline numbers derived from the mart, thin decades dropped. |
 | `src/analysis/model_eval.py` | **The offline evaluation both shipped models lacked** (2026-08-12): recall@k vs playlist co-occurrence with random AND popularity baselines, same-artist pairs excluded as leakage, `stratified_by_popularity()`, and `cluster_null_model()` (is k=2 real?). Run it: `scripts/evaluate_models.py`. |
@@ -3302,3 +3304,43 @@ narrative goes to `notes/engineering_journal.md`, plans to
   (9,129 rows already stored, a real second fact grain — 66% of tracks change
   key mid-song) and a provenance/reliability page (97% coverage + an honest 11%
   extraction failure rate, never surfaced). NEW SESSION: run `/resume`.**
+
+
+- **2026-08-12 (session 75 — the last unread asset, and a roadmap for what comes
+  after).** Built `fact_section`, the corpus's **SECOND fact grain**: 8,604 rows
+  at (track, section) where everything else is one row per track, plus
+  `section_summary` folding it back. The payoff is one column — **65.1% of
+  tracks change KEY partway through**, 53.3% shift major/minor, median **10.7 dB
+  loudness range WITHIN a song**. `changes_key` cannot be computed from a
+  track-grain table at all (it is a property of how a track's PARTS differ), so
+  it is the argument for the extra grain in a single column, now on `/eras`.
+  Guards, each tested: `(spotify_track_id, section_index)` identifies a ROW and
+  nothing joins on the index — the test asserts the bridge key is deliberately
+  NOT unique here, because that IS the grain; twins/withheld sit out via the one
+  shared filter; a track detecting >60 sections is dropped WHOLE (the live
+  corpus has one at 134 — detector fragmentation, not a 134-part song).
+  **FOUND AND FIXED, in last session's code:** `build_track_card` computed
+  `decade` with `None if y is None`, but pandas types ints-and-Nones as float64
+  so every None arrives as **NaN** — and `NaN is None` is False, so it went into
+  `int()` and **crashed the entire mart rebuild**. Invisible until a dateless
+  track appeared. NaN-safe now, with a test that also proves the unguarded
+  version raises.
+  **Every stored-but-unread asset is now surfaced or explicitly cut** — the
+  build backlog is genuinely empty.
+  **NEW `docs/PHASE2_ROADMAP.md`** — five doors (reliability · label supply →
+  ML · ListenBrainz Spark · product depth · extracting the harness), each with
+  the CONDITION that makes it worth starting rather than a priority order, plus
+  what is not in Phase 2 and why. **NEW `/grill-me` skill** — an adversarial
+  interview drawing questions from this repo's own decisions, defects and
+  measurements, ending in three lists where the third is *questions you could
+  not answer because the work does not exist yet* → roadmap input.
+  **996 tests · ruff clean · 26/26 flags FALSE · app-verify ALL FALSE · public
+  edge 200 · CI green.**
+  **Left off: Phase 1 is complete and the backlog is empty by design. ➡️ NEXT =
+  run `/grill-me` before committing to anything — it is built to surface gaps
+  that are roadmap items, and that is better input than a list written in
+  advance. Recommended order without it: **A (reliability — the 11% failure rate
+  is the most credible thing a platform candidate can show) → E (extract the
+  harness — the transferable artifact) → D (product depth)**. Owner track:
+  rehearse the click path twice, seat 1–2 colleagues a week early. NEW SESSION:
+  run `/resume`.**
