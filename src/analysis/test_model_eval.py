@@ -181,3 +181,54 @@ def test_the_p_value_floor_is_reported_rather_than_hidden():
     res = cluster_null_model(X, k_range=(2, 2), n_shuffles=8, seed=0)
     assert res["p_at_floor"] is True
     assert res["p_value"] == res["p_floor"]
+
+
+# ── the stratified view that reversed the headline ──────────────────────────
+
+def test_stratification_separates_the_two_regimes():
+    """The aggregate said 'acoustic loses to popularity'. Stratifying by how
+    famous a seed's co-members are showed acoustic winning 7x where they are
+    obscure and losing where they are famous — because the ground truth is
+    popularity-biased, not because the features are useless.
+
+    This fixture reproduces that shape in miniature: an obscure playlist the
+    acoustic ranker gets right, and a famous one it gets wrong.
+    """
+    from .model_eval import stratified_by_popularity
+
+    feats = _corpus(12)
+    popularity = {f"t{i:02d}": (90 if i >= 8 else 5) for i in range(12)}
+    artists = {t: t for t in feats}
+    playlists = {
+        "obscure": ["t00", "t01", "t02"],     # all unpopular
+        "famous": ["t08", "t09", "t10"],      # all popular
+    }
+    neighbours = {
+        # acoustic nails the obscure playlist...
+        "t00": ["t01", "t02"], "t01": ["t00", "t02"], "t02": ["t00", "t01"],
+        # ...and misses the famous one entirely
+        "t08": ["t00", "t01"], "t09": ["t00", "t01"], "t10": ["t00", "t01"],
+    }
+    cache = _FakeCache(playlists, feats, artists=artists, popularity=popularity,
+                       neighbours=neighbours)
+
+    res = stratified_by_popularity(cache, k=2, cut=50, n_boot=50)
+    assert res["strata"]["unpopular"]["winner"] == "acoustic"
+    assert res["strata"]["unpopular"]["n_seeds"] == 3
+    assert res["strata"]["popular"]["winner"] == "popularity"
+
+
+def test_stratification_reports_both_strata_even_when_one_is_small():
+    """The unpopular stratum is the interesting one and it is the SMALLER one
+    (93 of 588 live). Dropping a stratum for being small would delete the
+    finding."""
+    from .model_eval import stratified_by_popularity
+
+    feats = _corpus(8)
+    popularity = {t: (95 if t >= "t06" else 3) for t in feats}
+    artists = {t: t for t in feats}
+    playlists = {"a": ["t00", "t01"], "b": ["t06", "t07"]}
+    cache = _FakeCache(playlists, feats, artists=artists, popularity=popularity,
+                       neighbours={t: [] for t in feats})
+    res = stratified_by_popularity(cache, k=2, n_boot=20)
+    assert set(res["strata"]) == {"unpopular", "popular"}

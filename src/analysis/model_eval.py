@@ -232,3 +232,68 @@ def cluster_null_model(X, *, k_range: tuple[int, int] = (2, 6),
                     if n_ge > 0
                     else "structure beyond what KMeans imposes on noise"),
     }
+
+
+def stratified_by_popularity(cache: Any, *, k: int = 10, cut: int = 50,
+                             truth: Optional[dict[str, set[str]]] = None,
+                             n_boot: int = 500, seed: int = 0) -> dict[str, Any]:
+    """Where does acoustic similarity actually earn its keep?
+
+    The aggregate recall@k says the acoustic model loses to a popularity ranker.
+    That aggregate is misleading, and this function is why.
+
+    Playlist co-occurrence is popularity-biased: measured 2026-08-12, the
+    co-members in the ground truth have median popularity 68 against the
+    corpus's 48. A static "most famous tracks" list therefore scores well on the
+    majority of seeds for reasons that have nothing to do with sound — and
+    because recall's denominator is min(k, |relevant|), a seed with many
+    co-members converts a single lucky hit into a large score.
+
+    Splitting seeds by how famous their co-members are separates the two
+    regimes. The unpopular stratum is the one a discovery product exists for:
+    if you cannot beat "recommend whatever is famous" THERE, the acoustic
+    features are not doing anything a popularity sort could not.
+    """
+    analyzed = set(cache.all_features())
+    truth = truth if truth is not None else playlist_truth(cache, analyzed=analyzed)
+    rows = cache.library_rows()
+    pop_of = {r["id"]: (r.get("popularity") or 0) for r in rows}
+    excluded = set(cache.excluded_from_aggregates())
+    universe = sorted(analyzed - excluded)
+    by_pop = sorted(universe, key=lambda t: (-pop_of.get(t, 0), t))
+
+    def _median(xs: list[float]) -> float:
+        xs = sorted(xs)
+        n = len(xs)
+        if not n:
+            return 0.0
+        return xs[n // 2] if n % 2 else (xs[n // 2 - 1] + xs[n // 2]) / 2
+
+    buckets: dict[str, dict[str, list[float]]] = {
+        "unpopular": {"model": [], "popularity": []},
+        "popular": {"model": [], "popularity": []},
+    }
+    for s, relevant in sorted(truth.items()):
+        med = _median([pop_of.get(b, 0) for b in relevant])
+        key = "unpopular" if med < cut else "popular"
+        ranked = [t for t, _ in cache.similar(s, k=k)]
+        popranked = [t for t in by_pop if t != s][:k]
+        buckets[key]["model"].append(_recall(ranked, relevant, k))
+        buckets[key]["popularity"].append(_recall(popranked, relevant, k))
+
+    out: dict[str, Any] = {"k": k, "popularity_cut": cut, "strata": {}}
+    for key, b in buckets.items():
+        if not b["model"]:
+            continue
+        m = sum(b["model"]) / len(b["model"])
+        p = sum(b["popularity"]) / len(b["popularity"])
+        out["strata"][key] = {
+            "n_seeds": len(b["model"]),
+            "model": round(m, 4),
+            "popularity": round(p, 4),
+            "model_ci95": _bootstrap_ci(b["model"], n=n_boot, seed=seed),
+            "popularity_ci95": _bootstrap_ci(b["popularity"], n=n_boot, seed=seed),
+            "ratio": round(m / p, 2) if p > 0 else None,
+            "winner": "acoustic" if m > p else "popularity",
+        }
+    return out

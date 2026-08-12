@@ -139,7 +139,9 @@ Given a song, find the closest others. Deliberately simple:
 
 - **13 of the features**, not all 83 — hand-chosen: tempo, loudness, spectral
   shape, harmonicity, punch, and five MFCCs
-- **z-scored** so no column dominates by scale
+- **z-scored** so no column dominates by scale, then **whitened** so correlated
+  columns stop voting twice (five MFCCs correlate with the spectral columns, so
+  timbre used to out-vote tempo by accident)
 - **exact** distance to every candidate — no index, no approximation
 - **7.7 ms** across ~1,900 songs
 
@@ -154,20 +156,35 @@ would be itself under a different ID.
 
 Stated plainly, because it's the honest state:
 
-1. ~~No evaluation exists~~ — **measured 2026-08-12.** Against playlist
-   co-occurrence (588 seed tracks, 16,085 pairs, same-artist pairs excluded as
-   leakage), `similar()` scores **recall@10 = 0.051**. It beats a random ranker
-   (0.032) and **loses to simply recommending the most popular tracks (0.082)**.
-   Read carefully: playlists over-represent popular music, so the popularity
-   baseline is strong for reasons unrelated to sound — this says the acoustic
-   model does not predict playlist co-membership better than fame does, which
-   is not the same as saying it is bad at acoustic similarity. It is still the
-   first real number this model has ever had, and it is not a good one.
+1. ~~No evaluation exists~~ — **measured 2026-08-12**, and the first headline
+   was misleading. Against playlist co-occurrence (588 seeds, 16,085 pairs,
+   same-artist pairs excluded as leakage) the aggregate said acoustic
+   similarity **loses** to simply recommending famous tracks. Stratifying by
+   how well-known a seed's co-members are shows why:
+
+   | seeds whose co-members are… | n | acoustic | popularity | winner |
+   |---|---|---|---|---|
+   | **obscure** (median popularity < 50) | 93 | **0.038** | 0.005 | **acoustic, 7×** |
+   | well-known (≥ 50) | 495 | 0.060 | **0.097** | popularity |
+
+   Confidence intervals do not overlap in either row. The ground truth is
+   popularity-biased — co-members have median popularity 68 against the
+   corpus's 48 — so a static "most famous" list scores well on the 495 seeds
+   that dominate the average, for reasons unrelated to sound.
+
+   **Acoustic similarity wins exactly where a popularity ranker is useless**,
+   which is the case a discovery feature exists for. The aggregate was hiding
+   that, and an aggregate that hides the case you care about is the wrong
+   summary.
+
 2. ~~k=2 may be an artifact~~ — **tested, and it is not** (see above).
+
 3. **The 13 similarity features were chosen by judgement**, not by any selection
    procedure — and several are correlated, so timbre is over-weighted relative
-   to tempo purely by how many columns describe it. Now that a baseline exists,
-   this is finally measurable.
+   to tempo purely by how many columns describe it. **Partly addressed
+   2026-08-12:** whitening now decorrelates the space before distance is taken
+   (recall@10 0.0475 → 0.0534 on held-out playlists, paired over 20 re-splits,
+   16/20 wins). Which columns belong in the set is still an open question.
 
 The weak labels that made this measurable are songs a human put in the same
 playlist — 16,085 usable pairs across 588 seed tracks, once library dumps and

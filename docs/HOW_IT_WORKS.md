@@ -172,11 +172,12 @@ changes which group a visitor's "home sound" belongs to and what the colours on
 the map mean — a human-visible change — so a person approves it. The exception
 is a retrain that provably changes nothing perceptible, which promotes itself.
 
-**Both are now measured — and the news is mixed.** The clustering was tested
-against shuffled data and the groups are real, just weak. The similarity model
-was scored against playlist co-occurrence and **loses to simply recommending
-popular songs**. Neither result is flattering and both are on the page, because
-a number you only publish when it is good is not a measurement.
+**Both are now measured.** The clustering was tested against shuffled data and
+the groups are real, just weak. The similarity model was scored against
+playlist co-occurrence — and the interesting part is where it wins: on songs
+whose playlist-mates are **obscure**, it beats "just recommend famous tracks"
+by 7×; on well-known ones it loses. Since a discovery feature exists precisely
+for the obscure case, that split matters more than the average, which hid it.
 
 → [**Clustering and similarity**](concepts/clustering-and-similarity.md) — how
 each works, the train/serve split, and the open questions.
