@@ -71,23 +71,25 @@ def _zscore(X: np.ndarray) -> np.ndarray:
     return (X - mu) / sd
 
 
-def _whiten(X: np.ndarray, n_components: Optional[int] = None,
-            eps: float = 1e-8) -> np.ndarray:
-    """PCA whitening — decorrelate, then scale each axis to unit variance.
+def _whiten(X: np.ndarray, n_components: Optional[int] = None) -> np.ndarray:
+    """PCA whitening — the SAME transform production serves.
 
-    Euclidean distance in this space IS Mahalanobis distance in the original
-    one. `eps` guards a near-zero eigenvalue: without it a direction the corpus
-    barely varies in gets amplified into the dominant one, which is noise
-    wearing a signal's clothes.
+    Delegates to `src.store.metric.whitening_matrix` so the measured number and
+    the shipped behaviour cannot drift apart. `n_components` truncates
+    afterwards, for the reduced-dimension variants this file also scores.
     """
+    from ..store.metric import whitening_matrix
+
     Z = _zscore(X)
-    cov = np.cov(Z, rowvar=False)
-    vals, vecs = np.linalg.eigh(cov)
-    order = np.argsort(vals)[::-1]
-    vals, vecs = vals[order], vecs[:, order]
+    W = whitening_matrix(Z)
+    if W is None:
+        return Z                        # too small to whiten; production agrees
+    Y = Z @ np.asarray(W, dtype=float)
     if n_components:
-        vals, vecs = vals[:n_components], vecs[:, :n_components]
-    return (Z @ vecs) / np.sqrt(np.maximum(vals, eps))
+        # Order by how much the corpus varies along each whitened axis.
+        keep = np.argsort(Y.var(axis=0))[::-1][:n_components]
+        Y = Y[:, keep]
+    return Y
 
 
 TRANSFORMS: dict[str, Callable[[np.ndarray], np.ndarray]] = {
