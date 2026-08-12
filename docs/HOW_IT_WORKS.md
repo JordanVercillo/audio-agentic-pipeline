@@ -172,9 +172,11 @@ changes which group a visitor's "home sound" belongs to and what the colours on
 the map mean — a human-visible change — so a person approves it. The exception
 is a retrain that provably changes nothing perceptible, which promotes itself.
 
-**None of it is evaluated yet.** There is no accuracy score for the similarity
-model, because there is no ground truth for "these two songs are similar". This
-is a known gap, written down rather than papered over.
+**Both are now measured — and the news is mixed.** The clustering was tested
+against shuffled data and the groups are real, just weak. The similarity model
+was scored against playlist co-occurrence and **loses to simply recommending
+popular songs**. Neither result is flattering and both are on the page, because
+a number you only publish when it is good is not a measurement.
 
 → [**Clustering and similarity**](concepts/clustering-and-similarity.md) — how
 each works, the train/serve split, and the open questions.

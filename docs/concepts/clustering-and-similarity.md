@@ -14,8 +14,10 @@ from. Nobody has labelled which songs belong together, so the algorithm finds
 structure in the numbers on its own.
 
 That's different from **supervised** learning (predicting a label you already
-have examples of) and it has one uncomfortable consequence: **there is no
-accuracy score**, because there is nothing to be accurate against.
+have examples of), and it means there is no accuracy score you can just read
+off. What you can do is find a **proxy** for the right answer and measure
+against that — which is what happens below, using playlists a human curated.
+A proxy gives you evidence, never proof.
 
 ## 1. Clustering — grouping songs that sound alike
 
@@ -46,19 +48,26 @@ the next nearest group? Ranges −1 to +1.
 | silhouette | 0.148 |
 | split | 937 / 957 |
 
-A near-perfect 50/50 split at 0.148 is what it looks like when the algorithm
-**found no real grouping and cut the cloud in half**. Every model back to #7 also
-landed on k=2 — the smallest option offered — which is the signature of picking
-the least-bad answer in a space without natural clusters.
+A near-perfect 50/50 split at 0.148 *looks* like an algorithm that found nothing
+and cut the cloud in half. **It was tested, and that reading was wrong.**
 
-That might be honest: one person's music library is a narrow slice of all
-possible sound, so it may genuinely be *one* taste rather than several. But the
-site presents it as "your two sounds", and the geometry doesn't currently support
-that strongly.
+The test: re-fit the clustering on column-shuffled data. Shuffling each column
+independently destroys which tracks go together while keeping every column's own
+distribution — so if real data scores no better than shuffled, the groups are
+what KMeans imposes on any cloud, not a fact about the music.
 
-**The cheap test** — not yet done: re-run the clustering on deliberately
-shuffled data. If real data scores no better than nonsense, the groups are an
-artifact of the algorithm rather than a fact about the music.
+| | silhouette |
+|---|---|
+| real corpus (1,894 tracks) | **0.176** |
+| shuffled, mean of 20 runs | **0.012** |
+| shuffled, best of 20 | 0.013 |
+
+**Not one of 20 shuffles came close** (z ≈ 337). So the structure is real — it is
+simply *weak*. Both readings matter: the groups are not an artifact, and 0.176 is
+still a long way from the ~0.5 that means clean separation. Two overlapping
+tendencies, not two tidy genres.
+
+Run it yourself: `uv run python scripts/evaluate_models.py --clusters`
 
 ### Naming the groups
 
@@ -145,17 +154,25 @@ would be itself under a different ID.
 
 Stated plainly, because it's the honest state:
 
-1. **No evaluation exists** for similarity or clustering. No recall@k, no
-   held-out test. "Are these actually similar?" is currently unanswered.
-2. **k=2 may be an artifact.** The null-model test above hasn't been run.
+1. ~~No evaluation exists~~ — **measured 2026-08-12.** Against playlist
+   co-occurrence (588 seed tracks, 16,085 pairs, same-artist pairs excluded as
+   leakage), `similar()` scores **recall@10 = 0.051**. It beats a random ranker
+   (0.032) and **loses to simply recommending the most popular tracks (0.082)**.
+   Read carefully: playlists over-represent popular music, so the popularity
+   baseline is strong for reasons unrelated to sound — this says the acoustic
+   model does not predict playlist co-membership better than fame does, which
+   is not the same as saying it is bad at acoustic similarity. It is still the
+   first real number this model has ever had, and it is not a good one.
+2. ~~k=2 may be an artifact~~ — **tested, and it is not** (see above).
 3. **The 13 similarity features were chosen by judgement**, not by any selection
    procedure — and several are correlated, so timbre is over-weighted relative
-   to tempo purely by how many columns describe it.
+   to tempo purely by how many columns describe it. Now that a baseline exists,
+   this is finally measurable.
 
-There *is* a possible source of weak labels: songs a human put in the same
-playlist. About 17,700 such pairs exist across 25 curated playlists. That's
-enough to build a real evaluation — with the caveat that playlist co-occurrence
-measures *taste adjacency*, not acoustic similarity, so it would be evidence
-rather than proof.
+The weak labels that made this measurable are songs a human put in the same
+playlist — 16,085 usable pairs across 588 seed tracks, once library dumps and
+same-artist pairs are removed. `scripts/evaluate_models.py` runs both checks,
+and the harness has its own control test: a deliberately perfect retriever must
+score 1.0, so a low number can be blamed on the model rather than the metric.
 
 → Next: [Trust and data quality](trust-and-data-quality.md)
