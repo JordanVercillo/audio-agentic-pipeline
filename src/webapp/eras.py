@@ -114,3 +114,29 @@ def era_chart_svg(rows: list[dict[str, Any]], column: str, label: str, unit: str
                      f'class="era-axis">{int(r["decade"])}s</text>')
     parts.append("</svg>")
     return "".join(parts)
+
+
+def structure_facts(summary_df) -> Optional[dict[str, Any]]:
+    """Corpus-level statements the SECTION grain makes possible.
+
+    `changes_key` is the one worth understanding: it cannot be computed from a
+    track-grain table at all. It is not a property of a track — it is a property
+    of how a track's parts differ from each other, and expressing it needs a
+    second fact table at (track, section) grain. That is the whole argument for
+    the extra grain, in one column.
+    """
+    if summary_df is None or getattr(summary_df, "empty", True):
+        return None
+    n = len(summary_df)
+    if n == 0:
+        return None
+    return {
+        "n_tracks": int(n),
+        "n_sections": int(summary_df["n_sections"].sum()),
+        "mean_sections": round(float(summary_df["n_sections"].mean()), 2),
+        "pct_change_key": round(float(summary_df["changes_key"].mean()) * 100, 1),
+        "pct_change_mode": round(float(summary_df["changes_mode"].mean()) * 100, 1),
+        "median_loudness_range_db": round(
+            float(summary_df["loudness_range_db"].median()), 1),
+        "median_section_sec": round(float(summary_df["mean_section_sec"].median()), 1),
+    }

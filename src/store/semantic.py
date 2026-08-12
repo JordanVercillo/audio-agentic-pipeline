@@ -157,8 +157,13 @@ def build_track_card(cache: Any, perceptual_df: pd.DataFrame) -> pd.DataFrame:
     ident = cache.all_track_identity()
     df["release_year"] = df["spotify_track_id"].map(
         lambda t: _release_year((ident.get(t) or {}).get("album_release_date")))
+    # NaN-safe, not `y is None`. pandas types a column of ints-and-Nones as
+    # float64, which turns every None into NaN — and `NaN is None` is False, so
+    # the None check silently passes NaN straight into int() and raises. The
+    # column only becomes float when SOME track lacks a release date, so this
+    # is a bug that hides until the corpus contains one.
     df["decade"] = df["release_year"].map(
-        lambda y: None if y is None else int(y) // 10 * 10)
+        lambda y: None if y is None or pd.isna(y) else int(y) // 10 * 10)
     # the safety gate: clearly-broken extractions are excluded from superlatives
     df["feature_valid"] = (df["tempo"] > _MIN_VALID_TEMPO) & \
                           (df["loudness_db"] > _MIN_VALID_LOUDNESS_DB)
@@ -397,6 +402,98 @@ def build_era_profile(track_card: pd.DataFrame) -> pd.DataFrame:
     return out.sort_values("decade").reset_index(drop=True)
 
 
+
+# ── fact_section: the corpus's SECOND fact grain ────────────────────────────
+# Everything else here is one row per track. This is one row per SECTION of a
+# track, which is what lets the warehouse answer questions no track-grain table
+# can express — "how often does a song change key partway through?" is not a
+# property of a track, it is a property of the relationship between its parts.
+
+_MIN_SECTION_SEC = 1.0          # shorter than this is a detector artifact
+_MAX_SECTIONS = 60              # one track fragments to 134; that is not structure
+
+
+def build_fact_section(cache: Any, canonical: Optional[set] = None) -> pd.DataFrame:
+    """One row per (track, section). The bridge key still joins; `section_index`
+    only distinguishes rows WITHIN a track.
+
+    Grain: `(spotify_track_id, section_index)`. That pair is a composite row
+    identifier, NOT a second ID system — nothing joins on `section_index` alone,
+    and the bridge key remains the only key that crosses tables (ground rule 1,
+    and the lesson from the track_clusters composite-key bug).
+
+    Twins and source-unvalidated tracks sit out, via the one shared filter every
+    other serving surface uses — otherwise a duplicated recording contributes
+    its sections twice and `TWIN_LEAKAGE` fires.
+    """
+    import json
+
+    excluded = set(cache.excluded_from_aggregates())
+    if canonical is not None:
+        excluded |= (set(cache.all_features()) - set(canonical))
+    rows: list[dict[str, Any]] = []
+    for tid, blob in cache.all_sections().items():
+        if tid in excluded or not blob:
+            continue
+        try:
+            sections = json.loads(blob) if isinstance(blob, str) else blob
+        except (TypeError, ValueError):
+            continue
+        if not isinstance(sections, list) or len(sections) > _MAX_SECTIONS:
+            # A 134-section track is the detector fragmenting, not a song with
+            # 134 parts. Dropping it whole beats letting it dominate a mean.
+            continue
+        for i, s in enumerate(sections):
+            if not isinstance(s, dict):
+                continue
+            start, end = s.get("start"), s.get("end")
+            if not isinstance(start, (int, float)) or not isinstance(end, (int, float)):
+                continue
+            dur = float(end) - float(start)
+            if dur < _MIN_SECTION_SEC:
+                continue
+            rows.append({
+                "spotify_track_id": tid,
+                "section_index": i,
+                "start_sec": round(float(start), 2),
+                "end_sec": round(float(end), 2),
+                "duration_sec": round(dur, 2),
+                "label": s.get("label"),
+                "tempo_bpm": s.get("tempo_bpm"),
+                "loudness_db": s.get("loudness_db"),
+                "key": s.get("key"),
+                "mode": s.get("mode"),
+            })
+    if not rows:
+        return pd.DataFrame()
+    return pd.DataFrame(rows).sort_values(
+        ["spotify_track_id", "section_index"]).reset_index(drop=True)
+
+
+def build_section_summary(fact_section: pd.DataFrame) -> pd.DataFrame:
+    """Back to track grain — what the section grain lets us SAY about a track.
+
+    This is the payoff of having two grains: `changes_key` cannot be computed
+    from a track-grain table at all, because it is a statement about how a
+    track's parts differ from each other.
+    """
+    if fact_section is None or fact_section.empty:
+        return pd.DataFrame()
+    g = fact_section.groupby("spotify_track_id")
+    out = pd.DataFrame({
+        "n_sections": g.size(),
+        "mean_section_sec": g["duration_sec"].mean().round(2),
+        "longest_section_sec": g["duration_sec"].max(),
+        "n_distinct_keys": g["key"].nunique(dropna=True),
+        "n_distinct_modes": g["mode"].nunique(dropna=True),
+        "loudness_range_db": (g["loudness_db"].max() - g["loudness_db"].min()).round(2),
+        "tempo_range_bpm": (g["tempo_bpm"].max() - g["tempo_bpm"].min()).round(1),
+    }).reset_index()
+    out["changes_key"] = out["n_distinct_keys"] > 1
+    out["changes_mode"] = out["n_distinct_modes"] > 1
+    return out
+
+
 def build_semantic_marts(cache: Any, perceptual_df: pd.DataFrame,
                          marts_dir: Path) -> dict[str, int]:
     """Write the semantic marts (atomic, idempotent). Called from rebuild_marts
@@ -416,6 +513,8 @@ def build_semantic_marts(cache: Any, perceptual_df: pd.DataFrame,
     dfm = build_duplicate_flags_mart(cache)
     dis = build_dedup_disagreements_mart(cache)
     era = build_era_profile(tc)
+    fs = build_fact_section(cache, canonical=set(tc["spotify_track_id"]) if not tc.empty else None)
+    ss = build_section_summary(fs)
     _write_atomic(fd, marts_dir / "feature_dictionary.parquet")
     if not tc.empty:
         _write_atomic(tc, marts_dir / "track_card.parquet")
@@ -423,6 +522,10 @@ def build_semantic_marts(cache: Any, perceptual_df: pd.DataFrame,
         _write_atomic(ar, marts_dir / "artist_rollup.parquet")
     if not era.empty:
         _write_atomic(era, marts_dir / "era_profile.parquet")
+    if not fs.empty:
+        _write_atomic(fs, marts_dir / "fact_section.parquet")
+    if not ss.empty:
+        _write_atomic(ss, marts_dir / "section_summary.parquet")
     if not cf.empty:
         _write_atomic(cf, marts_dir / "corpus_facts.parquet")
     if not cp.empty:

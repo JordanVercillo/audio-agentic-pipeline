@@ -48,6 +48,37 @@
 </div>
 {% endif %}
 
+{% if structure %}
+<div class="insight">
+  <div class="insight-badge">How songs are built</div>
+  <p>Songs aren't one thing all the way through. The pipeline detects where a
+    track changes — <b>{{ '{:,}'.format(structure.n_sections) }} sections</b>
+    across {{ '{:,}'.format(structure.n_tracks) }} tracks, about
+    {{ structure.mean_sections }} per song — and once you can see the parts you
+    can ask how they differ.</p>
+  <div class="tiers">
+    <div class="tier">
+      <span class="tier-name">{{ structure.pct_change_key }}%</span>
+      <p>change <b>key</b> partway through</p>
+    </div>
+    <div class="tier">
+      <span class="tier-name">{{ structure.pct_change_mode }}%</span>
+      <p>shift between <b>major and minor</b></p>
+    </div>
+    <div class="tier">
+      <span class="tier-name">{{ structure.median_loudness_range_db }} dB</span>
+      <p>median <b>loudness range</b> within a single song</p>
+    </div>
+  </div>
+  <p class="cap">This is the one claim on the site that needs a <b>second table
+    grain</b>. &ldquo;Does this song change key?&rdquo; isn't a property of a
+    track — it's a property of how a track's <em>parts</em> differ from each
+    other, so it can only be asked of a table with one row per section.
+    Boundaries are detected from the audio; no &ldquo;chorus/verse&rdquo; claims
+    are made about what the parts <em>are</em>.</p>
+</div>
+{% endif %}
+
 {% if rows %}
 <h2 class="section">The numbers</h2>
 <div class="lib-wrap">

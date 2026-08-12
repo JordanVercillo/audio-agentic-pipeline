@@ -664,6 +664,7 @@ def create_app() -> FastAPI:
             "rows": rows,
             "summary": eras_mod.era_summary(rows),
             "min_tracks": eras_mod.MIN_TRACKS,
+            "structure": eras_mod.structure_facts(_load_mart("section_summary")),
             "loudness_chart": eras_mod.era_chart_svg(
                 rows, "mean_loudness_db", "Mean loudness", " dBFS"),
             "duration_chart": eras_mod.era_chart_svg(

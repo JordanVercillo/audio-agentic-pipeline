@@ -638,6 +638,20 @@ class FeatureCache:
                 .where(TrackFeatures.time_signature.isnot(None))).all()
         return {tid: int(ts) for tid, ts in rows}
 
+    def all_sections(self) -> dict[str, Any]:
+        """Every cached track's stored section list (raw JSON, un-parsed).
+
+        Projected deliberately: `sections` is one of the heavy promoted columns,
+        so this selects it ALONE rather than dragging the 83-column feature dict
+        along with it (the P4.6.2 rule). Callers parse — the store does not
+        decide what a section means.
+        """
+        with self._Session() as s:
+            rows = s.execute(
+                select(TrackFeatures.spotify_track_id, TrackFeatures.sections)
+                .where(TrackFeatures.sections.isnot(None))).all()
+        return {tid: blob for tid, blob in rows}
+
     def time_signature(self, track_id: str) -> Optional[int]:
         """A single track's estimated meter, or None."""
         with self._Session() as s:

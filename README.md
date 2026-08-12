@@ -10,7 +10,7 @@
 
 ![Taste map — the reproducible batch warehouse projected in 77-dim acoustic space, clustered and genre-colored](artifacts/taste_map.png)
 
-*The committed batch artifact: every track in a reproducible warehouse snapshot projected from its own 77-dimension acoustic fingerprint (UMAP + KMeans), colored by genre, sized by how many listening windows it persists in. Clusters are named by what **acoustically** distinguishes them — the vendor's genre tags were too sparse to do it. The live app serves a larger, continuously-grown corpus (**1946 analyzed tracks** today); the two planes are described below.*
+*The committed batch artifact: every track in a reproducible warehouse snapshot projected from its own 77-dimension acoustic fingerprint (UMAP + KMeans), colored by genre, sized by how many listening windows it persists in. Clusters are named by what **acoustically** distinguishes them — the vendor's genre tags were too sparse to do it. The live app serves a larger, continuously-grown corpus (**1965 analyzed tracks** today); the two planes are described below.*
 
 ---
 
@@ -21,7 +21,7 @@
 ## The 90-second tour
 
 **The corpus is real and its provenance is verified.** The live app serves
-**1946 analyzed tracks**, grown from real logins and playlist imports.
+**1965 analyzed tracks**, grown from real logins and playlist imports.
 **1,894 have a recorded audio source** and shape every aggregate; the other 40
 are *withheld* — from display **and** from the clusters, percentiles and chat —
 until a source is verified. Every track that shapes a number can be traced,
@@ -57,7 +57,7 @@ a σ-shift, not a vibe). The full analysis is a single self-contained file:
 
 ```text
 $ pytest
-986 passed in 97.14s
+996 passed in 97.14s
 
 $ uv run .claude/skills/warehouse-audit/audit_warehouse.py
 errors: none · bridge-key + fact↔dim integrity green · exact feature-contract verified
@@ -128,7 +128,7 @@ Spotify API (PKCE, no secret)        YouTube (yt-dlp + ffmpeg)
 | Signal | Where |
 |---|---|
 | **Reproducible env** | `pyproject.toml` + `uv.lock` (pinned graph); `requirements.txt` kept as a pip export |
-| **CI / quality gates** | GitHub Actions: `ruff` + `pytest` on every push & PR; 986 synthetic-data tests (no secrets, no network) |
+| **CI / quality gates** | GitHub Actions: `ruff` + `pytest` on every push & PR; 996 synthetic-data tests (no secrets, no network) |
 | **Data quality** | deterministic `warehouse-audit` + `app-verify` — bridge-key integrity, fact↔dim joins, **exact** feature-contract verification, live-system flags |
 | **Data provenance & lineage** | every acquisition writes an append-only `track_provenance` event (source URL, matcher, confidence, duration delta); a 9-check `qa_audit` sweep runs the whole regression set over **live** data and exits non-zero on any failure; unverified features are *withheld* from every aggregate, not just the display — a fail-safe stops an empty lineage table from emptying the corpus |
 | **Production at $0** | self-hosted multi-user FastAPI app: session-scoped PKCE (no client secret exists), SQLite+WAL serving cache, DB-as-queue extraction worker, Cloudflare Tunnel + an origin-down fallback Worker |
@@ -167,7 +167,7 @@ uv run python scripts/run_webapp.py       # the app on :8000 (guest mode works w
                                           #   once a demo snapshot exists; login needs your own dev-mode app)
 uv run python scripts/run_extraction_worker.py --loop   # the DSP worker (downloads + analyzes queued tracks)
 python scripts/run_pipeline.py            # or: the batch pipeline → warehouse → report
-pytest                                    # 986 tests — synthetic audio, no credentials, no network
+pytest                                    # 996 tests — synthetic audio, no credentials, no network
 ```
 
 ## Design docs
