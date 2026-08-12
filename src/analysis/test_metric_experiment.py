@@ -24,8 +24,15 @@ class _FakeCache:
 
 
 def test_whitening_actually_decorrelates():
-    """The whole point: correlated directions must stop voting twice. After
-    whitening the covariance is the identity, so no direction is double-counted."""
+    """The whole point: correlated directions must stop voting twice.
+
+    The claim is DECORRELATION — off-diagonal covariance goes to ~0. It is
+    deliberately not "the covariance is exactly the identity": the shipped
+    transform adds shrinkage (`cov + lambda*I`) to keep a near-collinear corpus
+    from amplifying noise, and that biases the diagonal by O(lambda). Asserting
+    exact identity here would fail for the guard that makes the transform safe,
+    which is the wrong thing to protect.
+    """
     rng = np.random.default_rng(0)
     base = rng.normal(0, 1, (500, 1))
     X = np.hstack([base, base * 0.98 + rng.normal(0, 0.05, (500, 1)),  # near-duplicates
@@ -35,8 +42,29 @@ def test_whitening_actually_decorrelates():
     assert corr_before > 0.9, "fixture no longer has correlated columns"
 
     W = _whiten(X)
-    cov = np.cov(W, rowvar=False)
-    np.testing.assert_allclose(cov, np.eye(cov.shape[0]), atol=1e-6)
+    corr_after = np.corrcoef(W, rowvar=False)
+    off = corr_after[~np.eye(corr_after.shape[0], dtype=bool)]
+    assert np.abs(off).max() < 1e-6, (
+        f"whitening left correlation behind: max |off-diagonal| = {np.abs(off).max()}")
+    # THE SAFETY PROPERTY, and it is not "every axis has variance 1".
+    #
+    # This fixture contains two near-duplicate columns, so one principal
+    # direction carries almost no real variance. Naive whitening divides by the
+    # square root of that near-zero eigenvalue and AMPLIFIES it into the
+    # dominant term — ranking by numerical noise. Shrinkage inflates the
+    # eigenvalue instead, so that direction comes out DAMPED (measured ~0.53
+    # here) rather than blown up.
+    #
+    # So the assertion is one-sided: nothing may exceed unit variance. A
+    # two-sided "all axes ~1.0" assertion would fail precisely for the guard
+    # that makes the transform safe.
+    var = W.var(axis=0)
+    assert var.max() < 1.01, f"an axis was amplified past unit variance: {var}"
+    assert var.min() < 0.9, (
+        "the near-collinear direction was NOT damped - shrinkage is not doing "
+        f"its job: {var}")
+    # the two well-supported directions still carry full weight
+    assert sorted(var)[-2] > 0.99, var
 
 
 def test_whitening_survives_a_degenerate_column():
