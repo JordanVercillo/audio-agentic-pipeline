@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import json
 import logging
+import pathlib
 import re
 import time
 import uuid
@@ -180,6 +181,71 @@ def ingestion_status(range_ids: dict[str, list[str]], cache: FeatureCache) -> di
         "current": current, "eta_seconds": analyzing * _SECONDS_PER_TRACK,
         "done": analyzing == 0,
     }
+
+
+def _render_explainer() -> Optional[str]:
+    """docs/HOW_IT_WORKS.md as HTML, or None if unavailable."""
+    path = _BASE.parent.parent / "docs" / "HOW_IT_WORKS.md"
+    try:
+        return _render_explainer_cached(str(path), path.stat().st_mtime)
+    except (OSError, FileNotFoundError):
+        return None
+
+
+@lru_cache(maxsize=2)
+def _render_explainer_cached(path: str, _mtime: float) -> Optional[str]:
+    import re
+
+    try:
+        import markdown
+        raw = pathlib.Path(path).read_text(encoding="utf-8")
+    except Exception:  # noqa: BLE001 - never take the site down for a doc
+        return None
+    # Repo-relative links do not resolve as URLs on the site; keep the words,
+    # drop the broken href rather than shipping a page of dead links.
+    raw = re.sub(r"\[([^\]]+)\]\((?!https?://)[^)]+\)", r"", raw)
+    return markdown.markdown(raw, extensions=["tables", "fenced_code"])
+
+
+def _corpus_facts() -> dict:
+    """The landing page's headline numbers, DERIVED from the corpus_facts mart.
+
+    Never typed into the template. The README carried ten hand-written numbers
+    that all rotted (2026-07-31); the one page a first-time visitor reads is the
+    worst possible place to repeat that. `mtime` keys the cache so a mart
+    rebuild is picked up without a restart.
+    """
+    path = _MARTS_DIR / "corpus_facts.parquet"
+    try:
+        return _corpus_facts_cached(str(path), path.stat().st_mtime)
+    except (OSError, FileNotFoundError):
+        return {}
+
+
+@lru_cache(maxsize=4)
+def _corpus_facts_cached(path: str, _mtime: float) -> dict:
+    try:
+        import pandas as pd
+        df = pd.read_parquet(path)
+        return {} if df.empty else {k: v for k, v in df.iloc[0].to_dict().items()}
+    except Exception:  # noqa: BLE001 - a missing mart must not take the site down
+        return {}
+
+
+def _exemplar_track() -> Optional[str]:
+    """One analyzed track to deep-link the 83-feature page from the landing.
+
+    That page is the demo's strongest artifact ("I measured this from audio, it
+    is not a Spotify API call") and it used to sit three clicks deep behind a
+    library search. Deterministic so the demo link never moves under you.
+    """
+    try:
+        rows = _feature_cache().library_rows()
+        analyzed = sorted(r["id"] for r in rows
+                          if r.get("analyzed") and r.get("source_url"))
+        return analyzed[0] if analyzed else None
+    except Exception:  # noqa: BLE001
+        return None
 
 
 @lru_cache(maxsize=1)
@@ -554,7 +620,32 @@ def create_app() -> FastAPI:
     def index(request: Request):
         authed = auth_web.is_authenticated(request.state.session)
         return templates.TemplateResponse(request, "index.html",
-                                          {"authed": authed, "has_demo": load_demo_profile() is not None})
+                                          {"authed": authed,
+                                           "has_demo": load_demo_profile() is not None,
+                                           "facts": _corpus_facts(),
+                                           "exemplar": _exemplar_track()})
+
+    @app.get("/how-it-works", response_class=HTMLResponse)
+    def how_it_works(request: Request):
+        """Serve the plain-language explainer the repo already maintains.
+
+        PUBLIC and no login: a colleague sent this link should be able to
+        understand what the thing is without an account. Rendered from
+        `docs/HOW_IT_WORKS.md` rather than re-written into a template — that
+        file is tested for structure (`test_docs_structure.py`) and its numbers
+        are generated (`docs_facts.py`), and a second hand-typed copy would rot
+        exactly the way the README's ten numbers did.
+
+        The links in that document are relative repo paths (`concepts/…`,
+        `../CLAUDE_INSTRUCTIONS.md`) which do not resolve as URLs here, so they
+        are unwrapped to plain text rather than rendered as broken links.
+        """
+        body = _render_explainer()
+        if body is None:
+            return RedirectResponse("/", status_code=303)
+        return templates.TemplateResponse(
+            request, "how_it_works.html",
+            {**_viewer_flags(request.state.session), "body": body})
 
     @app.get("/login")
     def login(request: Request):

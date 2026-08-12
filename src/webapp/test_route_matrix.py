@@ -235,6 +235,16 @@ MATRIX: list[Row] = [
 
     # THE A7 BUG CLASS, both directions: the owner must SEE the repair queue and
     # nobody else may. Before this row, only the env-unset case was asserted.
+    # The plain-language explainer, rendered from docs/HOW_IT_WORKS.md. PUBLIC
+    # on purpose: the demo is a link a colleague opens with no account, and
+    # "what is this?" must be answerable without one. Read-only, no session
+    # writes, identical for every persona.
+    Row("/how-it-works", "GET", "/how-it-works", "public explainer, no login", {
+        ANON: Expect(200, effects=NONE),
+        GUEST: Expect(200, effects=NONE),
+        USER: Expect(200),
+        OWNER: Expect(200)}),
+
     Row("/library", "GET", "/library", "D-18 public + D-56 owner affordance", {
         ANON: Expect(200, forbid=("needs_source_tab",), effects=NONE),
         GUEST: Expect(200, forbid=("needs_source_tab",), effects=NONE),
@@ -312,7 +322,7 @@ def test_matrix_covers_every_registered_route():
     assert covered == live, (
         f"NEW route(s) missing from the matrix: {sorted(live - covered)}; "
         f"STALE row(s): {sorted(covered - live)}")
-    assert len(live) == 29, "route count changed — update docs/DEDUP_QA_SPEC.md too"
+    assert len(live) == 30, "route count changed — update docs/DEDUP_QA_SPEC.md too"
 
 
 def test_non_apiroute_surface_stays_an_allowlist():

@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="hero" style="padding-bottom:.5rem">
+  <h1>How it works</h1>
+  <p class="lede">
+    The whole system in plain language — no data-engineering background needed.
+    This page is rendered from
+    <code>docs/HOW_IT_WORKS.md</code> in the repository, so it cannot drift out
+    of step with the documentation the project actually maintains.
+  </p>
+</section>
+
+<article class="doc">
+  {{ body|safe }}
+</article>
+
+<p class="cap" style="margin-top:1.5rem">
+  Deeper pages on the bridge key, the warehouse layers, the 83 features, the
+  models and the data-quality checks live alongside this one in the repository.
+</p>
+{% endblock %}

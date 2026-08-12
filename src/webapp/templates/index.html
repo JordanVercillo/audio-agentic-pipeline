@@ -3,16 +3,34 @@
 <section class="hero">
   <h1>What does your Spotify say about your <em>vibe</em>?</h1>
   <p class="lede">
-    Log in with your own Spotify account and this pilot pulls your top tracks,
-    then joins them against a local <strong>77-dimension acoustic corpus</strong>
-    built from audio DSP — the features Spotify's API no longer exposes.
+    Spotify deleted the API that told apps what a song <em>sounds</em> like. So
+    this pipeline downloads the audio and measures it itself —
+    {% set f = facts|default({}, true) %}{% if f.get("n_tracks") %}<strong>{{ "{:,}".format(f.get("n_tracks")) }} tracks</strong>
+    across <strong>{{ "{:,}".format(f.get("n_artists")) }} artists</strong>,
+    {{ f.get("total_hours")|round|int }} hours of audio analysed locally,{% endif %}
+    83 acoustic features per track, all of them shown.
   </p>
   {% if authed %}
     <a class="btn" href="/dashboard">Open your dashboard →</a>
   {% else %}
-    <a class="btn" href="/login">Log in with Spotify</a>
-    {% if has_demo %}<a class="btn ghost" href="/guest">or explore a live demo →</a>
-    <p class="cap" style="margin:.4rem 0 0">No account needed — the demo loads Jordan's own taste, read-only.</p>{% endif %}
+    {% if has_demo %}
+      <a class="btn" href="/guest">Explore the live demo →</a>
+      <p class="cap" style="margin:.5rem 0 0">
+        No account needed. Personal logins are a 5-seat pilot, so the demo is the
+        way in — it loads a real listening history, read-only.
+        <a href="/login">Log in with Spotify</a> if you have a seat.
+      </p>
+    {% else %}
+      <a class="btn" href="/login">Log in with Spotify</a>
+    {% endif %}
+    {% if exemplar is defined and exemplar %}
+      <p class="cap" style="margin:.6rem 0 0">
+        Straight to the deep end:
+        <a href="/song/{{ exemplar }}/features"><strong>every measured feature for one
+        track</strong></a> — 83 numbers, each with what it means and how this song
+        compares to the rest of the corpus.
+      </p>
+    {% endif %}
 
     <div class="tiers">
       <div class="tier">

@@ -496,3 +496,28 @@ a.prov-glyph:hover { text-decoration: underline; }
   width: var(--pct, 0%); background: var(--spotify); border-radius: 3px;
 }
 .art-sm { width: 34px; height: 34px; border-radius: 4px; object-fit: cover; }
+
+/* ── /how-it-works: the explainer rendered from docs/HOW_IT_WORKS.md ──────
+   The markdown carries an ASCII pipeline diagram and three tables, none of
+   which wrap. Without this the PAGE scrolls sideways on a phone — measured
+   370px of overflow at 349px wide. Wide content scrolls inside its own box;
+   the body never does. Same rule as .lib-wrap on the data tables. */
+/* min-width:0 is load-bearing, not decoration: a flex/grid child defaults to
+   min-width:auto, which means "never shrink below my content". The <pre> then
+   refuses to narrow, its overflow-x never engages, and the PAGE scrolls
+   instead of the box. Measured: 370px of page overflow at 349px wide. */
+.doc { max-width: 68ch; margin: 0 auto; min-width: 0; }
+.doc h2 { margin-top: 2rem; }
+.doc h3 { margin-top: 1.4rem; }
+.doc p, .doc li { line-height: 1.65; }
+.doc pre,
+.doc table { display: block; max-width: 100%; min-width: 0; overflow-x: auto; }
+.doc pre { padding: .75rem; border-radius: 6px; background: var(--surface-2, #1a1a1f); }
+.doc code { word-break: break-word; }
+.doc pre code { word-break: normal; white-space: pre; }
+.doc table { border-collapse: collapse; white-space: nowrap; }
+.doc th, .doc td { padding: .35rem .6rem; border-bottom: 1px solid var(--line, #333); }
+.doc blockquote {
+  margin: 1rem 0; padding: .5rem 1rem;
+  border-left: 3px solid var(--accent, #6ae3a8); opacity: .9;
+}

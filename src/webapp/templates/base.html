@@ -12,7 +12,7 @@
   <header class="site">
     <a class="brand" href="/">Vercillo Analytics</a>
     <nav>
-      {% if authed or guest %}<a href="/dashboard">Dashboard</a><a href="/chat">Chat</a><a href="/analytics">Analytics</a><a href="/artists">Artists</a><span class="nav-sep" aria-hidden="true"></span><a href="/library">Library</a><a href="/explore">Explore</a><a href="/recommend">Recommend</a><a href="/queue">Queue</a>{% else %}<a href="/library">Library</a><a href="/queue">Queue</a>{% endif %}
+      {% if authed or guest %}<a href="/dashboard">Dashboard</a><a href="/chat">Chat</a><a href="/analytics">Analytics</a><a href="/artists">Artists</a><span class="nav-sep" aria-hidden="true"></span><a href="/library">Library</a><a href="/explore">Explore</a><a href="/recommend">Recommend</a><a href="/queue">Queue</a><a href="/how-it-works">How it works</a>{% else %}<a href="/library">Library</a><a href="/artists">Artists</a><a href="/explore">Explore</a><a href="/how-it-works">How it works</a>{% endif %}
       {% if authed %}<form class="logout" method="post" action="/logout"><button type="submit">Log out</button></form>
       {% else %}<a href="/login" class="cta">Log in with Spotify</a>{% endif %}
     </nav>

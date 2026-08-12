@@ -43,6 +43,11 @@ dependencies = [
     # ── Visualization + single-file HTML report ──
     "matplotlib>=3.7.0",
     "jinja2>=3.1.0",
+    # Serves docs/HOW_IT_WORKS.md at /how-it-works. A dependency rather than a
+    # hand-written second copy: the explainer is already maintained, tested for
+    # structure and generated for its numbers, and duplicating it into a
+    # template would rot exactly the way the README did (2026-07-31).
+    "markdown>=3.5",
     # ── Agent Access Layer: MCP server + read-only SQL ──
     "mcp>=1.2.0",
     "duckdb>=1.1.0",
