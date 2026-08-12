@@ -18,6 +18,7 @@ defect-discovery channels (hand-entered — a discipline, not a gate; see
 |---|---|---|---|---|---|---|---|---|---|
 | 68–71 | 2026-07-29/31 | Vision F S1–S6 | 17 | 905→914 | clean | all-false | +1722/+1069 | 1·3·3·2·**3**·0 | Full review: `reviews/2026-07-31_director-review_vision-F.md`. **3 BLOCKERS found by red-team**, 1 corrupting live serving data for 24 h. Self-catch 33%. |
 | 72 | 2026-07-31 | carried findings (12/12) + consolidation | 20 | 914→948 | clean | all-false (26 flags) | +873/+1287 | 3·2·0·**5**·1·0 | All 12 carried findings closed. New tripwire `CLUSTER_ASSIGNMENT_DESYNC` proven to fire. Percentile error 4.69→0.72 pts. D-74 declines P4.6.5 on a measured premise. FAISS stack deleted (`docs/DELETIONS.md`). Public numbers + docs structure now self-checking. **D-use beat D-self 5:3 — if session 73 repeats it, the FULL review trigger fires.** |
+| 73 | 2026-08-12 | Track B - measure the models | 8 | 948->971 | clean | all-false (26 flags) | +1055/+460 | 2.1.0.0.2.0 | First offline eval for both shipped models. Whitening SHIPPED (+0.0059 held out). Feature selection REJECTED (+14% pool / **-11.3% untouched holdout**). Two of my own earlier readings corrected by measurement. |
 
 ## Reading the rows
 
@@ -62,3 +63,20 @@ must equal HEAD.
 a logged one-line `git checkout`, not a history scrub or force-push, and a full
 review had already run on this session's code the same day — so no second full
 pass. Recorded rather than assumed. The D-use/D-self ratio is the one to watch.
+
+### Session 73 - the channel that mattered was the holdout
+
+D-self 2 (the nested holdout caught the feature-selection overfit; the
+perfect-retriever control proved the harness could score 1.0). D-red 2 (the
+research consult confirmed MPD's licence and surfaced ListenBrainz; the
+data-platform consult found the 39% MPD blind spot and the `canonical_ids()`
+foot-gun). D-use 0 - this session barely touched the UI.
+
+The number worth carrying: **two of my own stated conclusions were reversed by
+measurement in the same session I stated them** - "k=2 may be an artifact" (it
+is not) and "the model loses to popularity" (it wins 7x where it matters).
+Both were reasonable readings of real numbers. Neither survived being tested.
+
+Also: one commit was pushed with a red test in it. I ran the suite, saw the
+failure in the output, and committed anyway. Caught and fixed in the next
+commit, but the discipline failed before the tooling did.

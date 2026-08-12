@@ -1389,6 +1389,9 @@ narrative goes to `notes/engineering_journal.md`, plans to
 | `src/warehouse/` | Medallion: `staging.py` (Bronze) → `cleansed.py` (Silver) → `modeled.py` (Gold star schema; fact denormalized, agent-optimized per ADR-002). |
 | `src/search/` | UMAP visualizer + its config (feeds the taste map via `analysis/clustering.py`). Tests: `test_visualizer.py`. **`faiss_store.py`, `pipeline.py` and `test_search.py` DELETED 2026-07-31** — zero importers, and `test_search.py`'s entry point wasn't named `test_*` so pytest never collected it (`docs/DELETIONS.md`). |
 | `src/analysis/` | Temporal drift (cosine, ADR-003) + matplotlib visuals. |
+| `src/analysis/model_eval.py` | **The offline evaluation both shipped models lacked** (2026-08-12): recall@k vs playlist co-occurrence with random AND popularity baselines, same-artist pairs excluded as leakage, `stratified_by_popularity()`, and `cluster_null_model()` (is k=2 real?). Run it: `scripts/evaluate_models.py`. |
+| `src/analysis/metric_experiment.py` | Held-out metric/feature comparison. `paired_feature_sets()` for any proposed change, `nested_feature_selection()` with an outer holdout the selection never sees — it caught a +14%/-11.3% overfit. |
+| `src/store/metric.py` | The similarity transform, defined ONCE and imported by serving and by eval so the measured number and the shipped behaviour cannot drift. Whitening + shrinkage + a sample floor. |
 | `docs/HOW_IT_WORKS.md` + `docs/concepts/` | **The plain-language front door** (2026-07-31): the whole system for a reader with no AE background, five deeper pages. Numbers derived by `docs_facts.py`; `src/store/test_docs_structure.py` fails on an orphan page or a dead link. Keep the PROSE current when behaviour changes (wrap-session §5d). |
 | `docs/DELETIONS.md` | **The standing deletion log.** Nothing is archived in-tree — deleted code is recorded here with what it did, why it went, the last commit containing it, and the one-line `git checkout` to restore. |
 | `scripts/docs_facts.py` | Derives every countable claim in the public docs from the live system (`--print` / `--apply` / `--check`). `test_docs_freshness.py` fails the build on drift. |
@@ -3204,3 +3207,52 @@ narrative goes to `notes/engineering_journal.md`, plans to
   937/957 — may be an artifact, and it is live on the site). Owner track:
   download the AcousticBrainz CC0 dump to unblock J0b. NEW SESSION: run
   `/resume`.**
+
+
+- **2026-08-12 (session 73 — the models get measured, and two results reverse).**
+  Track B. Both unsupervised models that ship to visitors had NO offline
+  evaluation; now both do, on data the project already had (no external dataset,
+  no licence question). **`src/analysis/model_eval.py` + `scripts/evaluate_models.py`.**
+  **Clustering:** tested against column-shuffled data — real silhouette 0.176 vs
+  shuffled mean 0.012, **0 of 20 shuffles came close**, z≈337. The k=2 structure
+  is REAL, just weak. This CORRECTS my own earlier reading that it "may be an
+  artifact"; the concepts page carried that for a few hours.
+  **Similarity:** recall@10 = 0.051 against a popularity baseline of 0.082 — so
+  the first headline was "loses to recommending whatever is famous". Wrong
+  summary (journal #70): the truth set is popularity-biased (co-members median
+  pop 68 vs corpus 48) and the popularity "model" returns the same 10 tracks for
+  every seed. Stratified: **obscure co-members (n=93) acoustic 0.038 vs
+  popularity 0.005 — 7×**; famous co-members (n=495) 0.060 vs 0.097. CIs
+  non-overlapping both rows. The metric wins exactly where a popularity ranker
+  is useless.
+  **SHIPPED — whitening** (`src/store/metric.py`, one definition used by serving
+  AND eval so they cannot drift): recall@10 **0.0475 → 0.0534** held out, paired
+  over 20 re-splits, CI (0.0036, 0.0082), 16/20 wins, **+0.1 ms/query**. Guards:
+  shrinkage bounds amplification, a 10-rows-per-dimension floor returns z-scores
+  unchanged (so every synthetic test corpus keeps the old behaviour).
+  **REJECTED — feature selection** (journal #71). Seven candidate sets showed
+  MORE FEATURES MONOTONICALLY WORSE (13 cols 0.056 → 83 cols 0.034, curse of
+  dimensionality). A 13-way ablation then found two "significant" wins; run
+  through `nested_feature_selection()` with a third of playlists held out of the
+  whole process, selection gained **+14% on its own pool and lost 11.3% on the
+  untouched holdout**. The shipped 13 columns stay. **Binding constraint is
+  LABEL SUPPLY (29 curated playlists, 93 obscure-stratum seeds), not the feature
+  set.**
+  **MPD re-verified and still blocked** (research consult, cited): AIcrowd says
+  not downloadable, licence grants use "solely as required to prepare your
+  Challenge Result" and forbids "make available" + commercial derived use;
+  Kaggle mirrors cannot cure it. **But it would not have helped** — 750 of 1,946
+  tracks post-date MPD's Nov-2017 freeze, a hard 39% blind spot, and 211
+  pre-2018 tracks sit under popularity 20 (the obscure tail where DSP earns its
+  keep). **ListenBrainz is the CC0 substitute** (`listenbrainz-listens-dump-spark`,
+  joins MBID→ISRC→bridge key) if Spark scale is wanted.
+  **971 tests · ruff clean · 26/26 warehouse flags FALSE · CI green.**
+  ⚠️ **The app is STOPPED** (webapp + worker; tunnel up, so the public site
+  502s). Start with `start_app.bat`, or `deploy_app.bat` to pull+restart+verify.
+  **Left off: both models measured, one improvement shipped, one rejected with
+  the evidence. ➡️ NEXT = the label supply is the constraint — importing more
+  CURATED playlists (not library dumps) widens the 93-seed obscure stratum that
+  currently cannot adjudicate anything. After that, Phase 5 groundwork (J0.5 +
+  the 58-track `duration_ms` gap + the 77.1% ceiling), which needs no dump.
+  Owner track: start the app; download the AcousticBrainz CC0 dump to unblock
+  J0b. NEW SESSION: run `/resume`.**

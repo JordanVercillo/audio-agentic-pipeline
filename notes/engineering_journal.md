@@ -1881,3 +1881,66 @@ assumption those measurements were organised around.
 > Measure the premise, not just the result. A carefully-specced solution to a
 > mis-stated bottleneck is still waste — and it looks like diligence.
 
+## 70 — The baseline said we lose; the strata said we win where it counts (2026-08-12)
+
+The first evaluation `similar()` has ever had reported recall@10 = 0.051 against
+a popularity baseline of 0.082. Read straight, that says the acoustic features
+lose to sorting by fame — an unflattering result I published as the headline.
+
+It was the wrong summary. The ground truth is playlist co-occurrence, and
+playlists over-represent famous music: co-members have median popularity 68
+against the corpus's 48. The "popularity model" is also not a model — it returns
+the SAME ten tracks for every seed, and only 1.5% of all truth co-members sit
+inside them. It scores well because recall's denominator is min(k, |relevant|),
+so a seed with forty co-members turns one lucky hit into 0.1.
+
+Splitting seeds by how famous their co-members are:
+
+    obscure co-members (n=93)      acoustic 0.038   popularity 0.005   7x
+    famous co-members  (n=495)     acoustic 0.060   popularity 0.097
+
+Non-overlapping CIs both rows. The acoustic metric wins exactly where a
+popularity ranker is useless, and loses on the majority stratum that dominates
+the average.
+
+**The realization:** the aggregate wasn't wrong, it was answering a different
+question than the one that mattered. A single number over a population with two
+regimes reports the bigger regime and hides the one you built the feature for.
+
+> Before believing an aggregate, ask which subgroup it is actually describing.
+> The stratum you care about is often the minority — and the average is exactly
+> the statistic that will bury it.
+
+
+## 71 — I selected features on the data I reported, and it cost 25 points (2026-08-12)
+
+With a baseline finally in place, the obvious next move: find which of the 13
+similarity columns are dead weight. A single-column ablation over all 13, paired
+across 40 re-splits, came back with two clean winners — dropping `mfcc_mean_1`
+gave +0.0023, `mfcc_mean_3` +0.0029, both CIs comfortably clear of zero.
+
+Every one of those numbers was computed on the same playlists used to pick them.
+Thirteen candidates, keep the best: that is selection ON the evaluation set, and
+the winner's margin is the largest of thirteen noise draws.
+
+So I cut the playlists in three — a selection pool, and a third held out of the
+entire process and scored exactly once at the end:
+
+                     selection pool      untouched holdout
+    shipped 13            0.0523                 0.0518
+    after selection       0.0596  (+14%)         0.0459  (-11.3%)
+
+A 25-point swing between the data that chose the features and data that had
+never seen them. The greedy pass also dropped `mfcc_mean_2`, which the 13-way
+ablation had scored as significantly WORSE to drop — the same corpus, a
+different pool, opposite "findings".
+
+**The realization:** held-out evaluation is not enough on its own. The moment
+you *choose* among candidates using held-out scores, that held-out set has been
+spent, and it will flatter whatever you picked. What protects you is a partition
+you never touch — and the only way to know it is working is that it sometimes
+contradicts you.
+
+> Every selection needs an evaluation the selection could not see. If your
+> holdout has never once disagreed with you, it is not a holdout.
+
