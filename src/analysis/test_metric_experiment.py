@@ -117,3 +117,110 @@ def test_truth_drops_same_artist_pairs_here_too():
 def test_unanalyzed_members_do_not_enter_the_truth():
     truth = _truth_from({"p": ["a", "b", "ghost"]}, {"a", "b"}, {"a": "X", "b": "Y"})
     assert "ghost" not in truth.get("a", set())
+
+
+def test_paired_comparison_reports_no_difference_for_identical_sets():
+    """The control: comparing a set against ITSELF must never claim a winner.
+    A harness that finds a difference here would find one anywhere."""
+    from .metric_experiment import paired_feature_sets
+
+    class _C:
+        def __init__(self):
+            self.f = {f"t{i:03d}": {"a": float(i), "b": float(i % 7),
+                                    "c": float((i * 13) % 11)} for i in range(200)}
+            self.pl = {f"p{j}": [f"t{(j * 7 + i) % 200:03d}" for i in range(6)]
+                       for j in range(12)}
+
+        def all_features(self):
+            return self.f
+
+        def excluded_from_aggregates(self):
+            return set()
+
+        def playlist_track_ids(self):
+            return self.pl
+
+        def library_rows(self):
+            return [{"id": t, "primary_artist_id": t, "artist": t,
+                     "popularity": 10} for t in self.f]
+
+    res = paired_feature_sets(_C(), ["a", "b", "c"], ["a", "b", "c"], n_splits=8)
+    assert res["overall"]["mean_delta"] == 0.0
+    assert res["overall"]["significant"] is False
+    assert res["overall"]["verdict"] == "no difference detected"
+
+
+def test_the_outer_holdout_never_overlaps_the_selection_pool():
+    """The load-bearing property of nested selection.
+
+    If one playlist appeared in both, the "untouched" holdout would be scoring
+    evidence the selection already used, and the whole point — catching a
+    selection that only looks good on its own data — would silently vanish.
+    Measured live 2026-08-12, that catch was worth having: greedy elimination
+    gained +14% on the pool and lost 11.3% on the holdout.
+    """
+    from .metric_experiment import nested_feature_selection
+
+    class _C:
+        def __init__(self):
+            rng = __import__("random").Random(0)
+            self.f = {f"t{i:03d}": {c: rng.random() for c in ("a", "b", "c", "d")}
+                      for i in range(400)}
+            keys = sorted(self.f)
+            self.pl = {f"p{j:02d}": [keys[(j * 11 + i) % 400] for i in range(8)]
+                       for j in range(24)}
+
+        def all_features(self):
+            return self.f
+
+        def excluded_from_aggregates(self):
+            return set()
+
+        def playlist_track_ids(self):
+            return self.pl
+
+        def library_rows(self):
+            return [{"id": t, "primary_artist_id": t, "artist": t, "popularity": 10}
+                    for t in self.f]
+
+    c = _C()
+    res = nested_feature_selection(c, ["a", "b", "c", "d"], n_splits=4)
+    assert res["n_pool_playlists"] + res["n_holdout_playlists"] == len(c.pl), (
+        "playlists went missing between the two partitions")
+    assert res["n_holdout_playlists"] >= 1 and res["n_pool_playlists"] >= 1
+    # the holdout is scored, and it is scored on the SELECTED set
+    assert res["holdout_base"] is not None
+    assert res["holdout_selected"] is not None
+    assert set(res["selected_cols"]) <= {"a", "b", "c", "d"}
+    assert not (set(res["dropped"]) & set(res["selected_cols"]))
+
+
+def test_selection_never_drops_below_a_floor_of_columns():
+    """A greedy loop that keeps finding 'improvements' in noise would strip the
+    set to one column. The floor stops that from being expressible."""
+    from .metric_experiment import nested_feature_selection
+
+    class _C:
+        def __init__(self):
+            rng = __import__("random").Random(1)
+            self.f = {f"t{i:03d}": {c: rng.random() for c in ("a", "b", "c", "d", "e")}
+                      for i in range(300)}
+            keys = sorted(self.f)
+            self.pl = {f"p{j:02d}": [keys[(j * 7 + i) % 300] for i in range(6)]
+                       for j in range(18)}
+
+        def all_features(self):
+            return self.f
+
+        def excluded_from_aggregates(self):
+            return set()
+
+        def playlist_track_ids(self):
+            return self.pl
+
+        def library_rows(self):
+            return [{"id": t, "primary_artist_id": t, "artist": t, "popularity": 10}
+                    for t in self.f]
+
+    res = nested_feature_selection(_C(), ["a", "b", "c", "d", "e"], n_splits=4)
+    assert len(res["selected_cols"]) >= 3

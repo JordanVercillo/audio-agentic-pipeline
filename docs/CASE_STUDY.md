@@ -4,7 +4,7 @@
 have depended on — and the AI-assisted engineering methodology that built it.*
 
 **Live:** [vercilloanalytics.com](https://vercilloanalytics.com) ·
-**Author:** Jordan Vercillo · **Cost:** $0/month · **Tests:** 968 synthetic-only
+**Author:** Jordan Vercillo · **Cost:** $0/month · **Tests:** 971 synthetic-only
 
 ---
 
@@ -171,7 +171,7 @@ at the cost of one person's attention.
 | Acoustic corpus | **1946** analyzed tracks (grown by real users + playlist imports); **1,894** with a verified audio source shape every aggregate, 40 withheld until repaired |
 | Provenance | **100%** of the aggregate corpus traces to a recorded YouTube source (append-only lineage, one click to verify) |
 | Feature space | 77-dim frozen vector · 82 numeric feature columns · a reproducible batch star-schema snapshot (118 tracks) feeds the MCP layer |
-| Tests | **968**, all synthetic-data — no credentials or network needed; CI green on every push |
+| Tests | **971**, all synthetic-data — no credentials or network needed; CI green on every push |
 | Serving | ~50 s/track download+DSP, serial worker, capped imports (100/playlist) |
 | Cost | $0/month (residential hosting, Cloudflare free tier, no paid APIs) |
 | Users | 5 PKCE pilot seats (Spotify dev-mode ceiling) + unlimited anonymous browsing |

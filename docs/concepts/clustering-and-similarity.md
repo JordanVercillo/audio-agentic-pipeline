@@ -179,12 +179,46 @@ Stated plainly, because it's the honest state:
 
 2. ~~k=2 may be an artifact~~ — **tested, and it is not** (see above).
 
-3. **The 13 similarity features were chosen by judgement**, not by any selection
-   procedure — and several are correlated, so timbre is over-weighted relative
-   to tempo purely by how many columns describe it. **Partly addressed
-   2026-08-12:** whitening now decorrelates the space before distance is taken
-   (recall@10 0.0475 → 0.0534 on held-out playlists, paired over 20 re-splits,
-   16/20 wins). Which columns belong in the set is still an open question.
+3. ~~The 13 features were chosen by judgement~~ — **tested 2026-08-12, and the
+   judgement holds up.** Seven candidate sets scored on held-out playlists:
+
+   | feature set | d | recall@10 |
+   |---|---|---|
+   | **shipped 13** | 13 | **0.056** |
+   | perceptual core, no MFCCs | 12 | 0.052 |
+   | core + all 13 MFCC means | 25 | 0.041 |
+   | core + MFCC + contrast + chroma | 44 | 0.031 |
+   | everything numeric | 83 | 0.034 |
+
+   **More features is monotonically worse** — the curse of dimensionality. Past
+   ~15 columns, distances between every pair of songs converge and "nearest"
+   stops meaning anything. Whitening also now decorrelates the space before
+   distance is taken (0.0475 → 0.0534, paired over 20 re-splits, 16/20 wins).
+
+   A cautionary note kept deliberately: a 10-split run said dropping the five
+   MFCCs improved the obscure stratum by ~20%. Re-run paired over 40 splits it
+   was **−0.0002 with a CI spanning zero, winning 23 of 40** — noise from a
+   93-seed stratum, and significantly *worse* overall. Any proposed feature
+   change has to go through `paired_feature_sets()` for that reason.
+
+   **The stronger test, run after that one, settles it.** A single-column
+   ablation over all 13 found two "significant improvements". Feeding those to
+   a greedy elimination that chose columns on one set of playlists and was then
+   scored on a third held out from the entire process and touched exactly once:
+
+   | | selection pool | **untouched holdout** |
+   |---|---|---|
+   | shipped 13 | 0.0523 | 0.0518 |
+   | after selection | 0.0596 **(+14%)** | **0.0459 (−11.3%)** |
+
+   Selection gained 14% on its own data and lost 11% on data it had never seen.
+   Picking the best of 13 noisy candidates and reporting that margin is how a
+   null result gets published as a finding — `nested_feature_selection()` exists
+   so the holdout catches it.
+
+   **What the feature set can no longer explain, the label supply might.** With
+   only ~93 obscure-co-star seeds, that stratum cannot adjudicate a change of
+   this size. More curated playlists would do more than more columns.
 
 The weak labels that made this measurable are songs a human put in the same
 playlist — 16,085 usable pairs across 588 seed tracks, once library dumps and

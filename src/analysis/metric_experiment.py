@@ -243,3 +243,269 @@ def repeated_comparison(cache: Any, cols: list[str], *, k: int = 10,
         "consistent": sum(1 for d in deltas if d > 0) >= 0.8 * n
                       and (mean_d - 1.96 * se) > 0,
     }
+
+
+# ── candidate FEATURE SETS (slice 2 of the ML track) ────────────────────────
+# Each is a HYPOTHESIS, not a search result. Greedy selection over 83 columns
+# would be ~800 evaluations against ~300 seeds: it would find noise and call it
+# a finding, and the winner would not survive a re-split. Six named sets keep
+# the multiple-comparisons burden small enough that a win means something.
+
+def feature_sets(all_cols: list[str], shipped: list[str]) -> dict[str, list[str]]:
+    """Named candidate column sets, built from what the corpus actually has."""
+    have = set(all_cols)
+
+    def take(pred) -> list[str]:
+        return sorted(c for c in all_cols if pred(c))
+
+    mfcc_mean = take(lambda c: c.startswith("mfcc_mean_"))
+    contrast = take(lambda c: c.startswith("spectral_contrast_mean_"))
+    chroma = take(lambda c: c.startswith("chroma_mean_"))
+    # The shipped set minus its five MFCCs — the "timbre out-votes tempo"
+    # hypothesis says removing them should help, or at least not hurt.
+    shipped_no_mfcc = [c for c in shipped if not c.startswith("mfcc_")]
+    core = [c for c in ("tempo_bpm", "rms_mean", "rms_std", "zcr_mean",
+                        "spectral_centroid_mean", "spectral_rolloff_mean",
+                        "spectral_bandwidth_mean", "spectral_flatness_mean",
+                        "harmonic_ratio", "onset_strength_mean",
+                        "onset_strength_std", "beats_per_sec")
+            if c in have]
+
+    sets = {
+        "shipped 13": [c for c in shipped if c in have],
+        "shipped minus MFCCs (8)": shipped_no_mfcc,
+        "perceptual core (12)": core,
+        "core + all 13 MFCC means": core + mfcc_mean,
+        "core + spectral contrast": core + contrast,
+        "core + MFCC + contrast + chroma": core + mfcc_mean + contrast + chroma,
+        "everything numeric": sorted(have),
+    }
+    return {k: v for k, v in sets.items() if len(v) >= 2}
+
+
+def compare_feature_sets(cache: Any, sets: dict[str, list[str]], *, k: int = 10,
+                         n_splits: int = 10, seed_offset: int = 0,
+                         stratify_cut: int = 50) -> dict[str, Any]:
+    """Score each candidate set on held-out playlists, overall and stratified.
+
+    Every set sees the IDENTICAL splits, so the comparison is paired and the
+    large split-to-split variance cancels. The stratified column is the one
+    that matters: the obscure-co-member seeds are where acoustic features earn
+    their keep, and the overall average is dominated by the famous ones.
+    """
+    rows = cache.library_rows()
+    artist_of = {r["id"]: (r.get("primary_artist_id")
+                           or (r.get("artist") or "").split(",")[0].strip().lower())
+                 for r in rows}
+    pop_of = {r["id"]: (r.get("popularity") or 0) for r in rows}
+
+    def _median(xs):
+        xs = sorted(xs)
+        n = len(xs)
+        return 0.0 if not n else (xs[n // 2] if n % 2
+                                  else (xs[n // 2 - 1] + xs[n // 2]) / 2)
+
+    out: dict[str, Any] = {"k": k, "n_splits": n_splits, "results": {}}
+    prepared = {}
+    for name, cols in sets.items():
+        ids, X = build_matrix(cache, cols)
+        prepared[name] = (ids, set(ids), _whiten(X), cols)
+
+    for name, (ids, idset, Y, cols) in prepared.items():
+        overall, obscure, famous = [], [], []
+        for s in range(n_splits):
+            _, test_pl = split_playlists(cache, seed=seed_offset + s)
+            truth = _truth_from(test_pl, idset, artist_of)
+            if not truth:
+                continue
+            o, ob, fa = [], [], []
+            for seed_id, relevant in sorted(truth.items()):
+                r = _recall(knn(ids, Y, seed_id, k), relevant, k)
+                o.append(r)
+                (ob if _median([pop_of.get(b, 0) for b in relevant]) < stratify_cut
+                 else fa).append(r)
+            if o:
+                overall.append(sum(o) / len(o))
+            if ob:
+                obscure.append(sum(ob) / len(ob))
+            if fa:
+                famous.append(sum(fa) / len(fa))
+        out["results"][name] = {
+            "n_features": len(cols),
+            "overall": round(sum(overall) / len(overall), 4) if overall else None,
+            "obscure_costars": round(sum(obscure) / len(obscure), 4) if obscure else None,
+            "famous_costars": round(sum(famous) / len(famous), 4) if famous else None,
+        }
+    return out
+
+
+def paired_feature_sets(cache: Any, cols_a: list[str], cols_b: list[str], *,
+                        k: int = 10, n_splits: int = 40, stratify_cut: int = 50,
+                        label_a: str = "A", label_b: str = "B") -> dict[str, Any]:
+    """Is set B better than set A? Paired over many splits, with a CI.
+
+    THE reason this exists. A 10-split run said dropping the five MFCCs from the
+    shipped set improved the obscure-co-star stratum by ~20% (0.0291 -> 0.0350).
+    Re-run paired over 40 splits it was **delta -0.0002, CI (-0.0053, +0.0048),
+    winning 23 of 40** — noise, from a stratum with only ~93 seeds. The same
+    change was significantly WORSE overall.
+
+    A point estimate from a handful of splits will happily invent a 20%
+    improvement here. Anything proposing a feature-set change has to come
+    through this function.
+    """
+    rows = cache.library_rows()
+    artist_of = {r["id"]: (r.get("primary_artist_id")
+                           or (r.get("artist") or "").split(",")[0].strip().lower())
+                 for r in rows}
+    pop_of = {r["id"]: (r.get("popularity") or 0) for r in rows}
+
+    def _median(xs):
+        xs = sorted(xs)
+        n = len(xs)
+        return 0.0 if not n else (xs[n // 2] if n % 2
+                                  else (xs[n // 2 - 1] + xs[n // 2]) / 2)
+
+    prep = {}
+    for name, cols in ((label_a, cols_a), (label_b, cols_b)):
+        ids, X = build_matrix(cache, cols)
+        prep[name] = (ids, set(ids), _whiten(X))
+
+    d_overall, d_obscure = [], []
+    for s in range(n_splits):
+        _, test_pl = split_playlists(cache, seed=s)
+        truth = _truth_from(test_pl, prep[label_a][1], artist_of)
+        if not truth:
+            continue
+        scored = {}
+        for name, (ids, _idset, Y) in prep.items():
+            ov, ob = [], []
+            for seed_id, relevant in sorted(truth.items()):
+                r = _recall(knn(ids, Y, seed_id, k), relevant, k)
+                ov.append(r)
+                if _median([pop_of.get(b, 0) for b in relevant]) < stratify_cut:
+                    ob.append(r)
+            scored[name] = (sum(ov) / len(ov) if ov else None,
+                            sum(ob) / len(ob) if ob else None)
+        if scored[label_a][0] is not None and scored[label_b][0] is not None:
+            d_overall.append(scored[label_b][0] - scored[label_a][0])
+        if scored[label_a][1] is not None and scored[label_b][1] is not None:
+            d_obscure.append(scored[label_b][1] - scored[label_a][1])
+
+    def _stats(d: list[float]) -> dict[str, Any]:
+        n = len(d)
+        if n < 2:
+            return {"n": n, "verdict": "too few splits"}
+        m = sum(d) / n
+        sd = (sum((x - m) ** 2 for x in d) / (n - 1)) ** 0.5
+        se = sd / n ** 0.5
+        lo, hi = m - 1.96 * se, m + 1.96 * se
+        return {"n": n, "mean_delta": round(m, 4),
+                "ci95": (round(lo, 4), round(hi, 4)),
+                "b_wins": sum(1 for x in d if x > 0),
+                "significant": lo > 0 or hi < 0,
+                "verdict": ("B better" if lo > 0 else
+                            "A better" if hi < 0 else "no difference detected")}
+
+    return {"k": k, "label_a": label_a, "label_b": label_b,
+            "overall": _stats(d_overall), "obscure_costars": _stats(d_obscure)}
+
+
+def nested_feature_selection(cache: Any, base_cols: list[str], *, k: int = 10,
+                             n_splits: int = 30, holdout_frac: float = 0.34,
+                             seed: int = 1234) -> dict[str, Any]:
+    """Choose columns on one set of playlists, report on playlists never seen.
+
+    WHY THIS AND NOT A PLAIN ABLATION. Scoring 13 single-column drops and
+    keeping the winners is selection ON the evaluation data: with 13 tests at
+    the usual threshold you expect roughly one false positive by construction,
+    and the winner's margin is inflated because you picked the largest of 13
+    noisy numbers. Reporting that margin is how a null result gets published as
+    a finding.
+
+    So the playlists are cut in three from the start:
+
+        OUTER HOLDOUT (~1/3)  untouched until the very last line
+        SELECTION POOL (~2/3) every ablation, every paired split, lives here
+
+    The selection pool is where columns are chosen. The outer holdout is scored
+    exactly once, for the final set. Whatever it says is the number — including
+    when it disagrees with the selection pool, which is the case worth having
+    built this for.
+    """
+    rows = cache.library_rows()
+    artist_of = {r["id"]: (r.get("primary_artist_id")
+                           or (r.get("artist") or "").split(",")[0].strip().lower())
+                 for r in rows}
+
+    pl = {p: v for p, v in cache.playlist_track_ids().items()
+          if 2 <= len(set(v)) <= MAX_CURATED_PLAYLIST}
+    keys = sorted(pl)
+    random.Random(seed).shuffle(keys)
+    n_hold = max(1, int(len(keys) * holdout_frac))
+    holdout_keys, pool_keys = keys[:n_hold], keys[n_hold:]
+    holdout = {x: pl[x] for x in holdout_keys}
+    pool = {x: pl[x] for x in pool_keys}
+
+    def _score(cols: list[str], playlists: dict[str, list[str]]) -> Optional[float]:
+        ids, X = build_matrix(cache, cols)
+        Y = _whiten(X)
+        truth = _truth_from(playlists, set(ids), artist_of)
+        if not truth:
+            return None
+        vals = [_recall(knn(ids, Y, s, k), rel, k) for s, rel in sorted(truth.items())]
+        return sum(vals) / len(vals) if vals else None
+
+    def _pool_delta(cols_a: list[str], cols_b: list[str]) -> dict[str, Any]:
+        """Paired over re-splits WITHIN the selection pool only."""
+        pa = build_matrix(cache, cols_a)
+        pb = build_matrix(cache, cols_b)
+        Ya, Yb = _whiten(pa[1]), _whiten(pb[1])
+        deltas = []
+        pk = sorted(pool)
+        for s in range(n_splits):
+            rnd = random.Random(s)
+            sub = rnd.sample(pk, max(2, len(pk) // 2))
+            truth = _truth_from({x: pool[x] for x in sub}, set(pa[0]), artist_of)
+            if not truth:
+                continue
+            a = [_recall(knn(pa[0], Ya, s2, k), rel, k) for s2, rel in sorted(truth.items())]
+            b = [_recall(knn(pb[0], Yb, s2, k), rel, k) for s2, rel in sorted(truth.items())]
+            if a and b:
+                deltas.append(sum(b) / len(b) - sum(a) / len(a))
+        n = len(deltas)
+        if n < 2:
+            return {"n": n, "mean_delta": 0.0, "significant": False}
+        m = sum(deltas) / n
+        sd = (sum((x - m) ** 2 for x in deltas) / (n - 1)) ** 0.5
+        se = sd / n ** 0.5
+        lo, hi = m - 1.96 * se, m + 1.96 * se
+        return {"n": n, "mean_delta": round(m, 5), "ci95": (round(lo, 5), round(hi, 5)),
+                "significant": lo > 0}
+
+    # ── greedy backward elimination, INSIDE the pool ────────────────────────
+    current = list(base_cols)
+    trail: list[dict[str, Any]] = []
+    while len(current) > 3:
+        best = None
+        for col in current:
+            cand = [c for c in current if c != col]
+            d = _pool_delta(current, cand)
+            if d["significant"] and (best is None or d["mean_delta"] > best[1]["mean_delta"]):
+                best = (col, d)
+        if best is None:
+            break                       # nothing left that helps on the pool
+        trail.append({"dropped": best[0], **best[1]})
+        current = [c for c in current if c != best[0]]
+
+    # ── the outer holdout, touched once ────────────────────────────────────
+    return {
+        "k": k,
+        "n_holdout_playlists": len(holdout), "n_pool_playlists": len(pool),
+        "selected_cols": current, "dropped": [t_["dropped"] for t_ in trail],
+        "selection_trail": trail,
+        "holdout_base": _score(base_cols, holdout),
+        "holdout_selected": _score(current, holdout),
+        "pool_base": _score(base_cols, pool),
+        "pool_selected": _score(current, pool),
+    }
