@@ -521,3 +521,15 @@ a.prov-glyph:hover { text-decoration: underline; }
   margin: 1rem 0; padding: .5rem 1rem;
   border-left: 3px solid var(--accent, #6ae3a8); opacity: .9;
 }
+
+/* ── /eras: the decade charts ─────────────────────────────────────────────
+   Inline SVG, no chart library and no JS — the page has to render on a phone
+   over cell data during a demo. */
+.era-chart { width: 100%; height: auto; max-width: 100%; display: block;
+             margin: .6rem 0 .2rem; }
+.era-grid  { stroke: var(--line, #333); stroke-width: 1; }
+.era-line  { fill: none; stroke: var(--accent, #6ae3a8); stroke-width: 2.5;
+             stroke-linejoin: round; }
+.era-dot   { fill: var(--accent, #6ae3a8); stroke: var(--surface, #111);
+             stroke-width: 2; }
+.era-axis  { fill: var(--muted, #9aa); font-size: 11px; }

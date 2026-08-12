@@ -235,6 +235,15 @@ MATRIX: list[Row] = [
 
     # THE A7 BUG CLASS, both directions: the owner must SEE the repair queue and
     # nobody else may. Before this row, only the env-unset case was asserted.
+    # Decade-grain corpus facts (the loudness war + the streaming squeeze).
+    # PUBLIC on the same terms as /library: these are facts about the corpus,
+    # not about anyone's listening.
+    Row("/eras", "GET", "/eras", "public corpus facts, no login", {
+        ANON: Expect(200, effects=NONE),
+        GUEST: Expect(200, effects=NONE),
+        USER: Expect(200),
+        OWNER: Expect(200)}),
+
     # The plain-language explainer, rendered from docs/HOW_IT_WORKS.md. PUBLIC
     # on purpose: the demo is a link a colleague opens with no account, and
     # "what is this?" must be answerable without one. Read-only, no session
@@ -322,7 +331,7 @@ def test_matrix_covers_every_registered_route():
     assert covered == live, (
         f"NEW route(s) missing from the matrix: {sorted(live - covered)}; "
         f"STALE row(s): {sorted(covered - live)}")
-    assert len(live) == 30, "route count changed — update docs/DEDUP_QA_SPEC.md too"
+    assert len(live) == 31, "route count changed — update docs/DEDUP_QA_SPEC.md too"
 
 
 def test_non_apiroute_surface_stays_an_allowlist():

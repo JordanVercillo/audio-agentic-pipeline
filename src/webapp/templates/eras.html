@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="hero" style="padding-bottom:.4rem">
+  <h1>How music changed, measured here</h1>
+  <p class="lede">
+    Every track in this corpus carries its release date and its loudness — the
+    loudness measured from the audio itself, not read from a metadata field.
+    Grouped by decade, two well-known industry stories fall straight out.
+  </p>
+</section>
+
+{% if not rows %}
+<div class="insight">
+  <div class="insight-badge">Nothing to show yet</div>
+  <p>This page groups the corpus by release decade, and needs at least two
+    decades with {{ min_tracks }}+ analysed tracks each before it will draw a
+    trend. Run the pipeline and rebuild the marts, and it fills in.</p>
+</div>
+{% endif %}
+
+{% if summary %}
+<div class="insight">
+  <div class="insight-badge">The loudness war</div>
+  <p>Across <b>{{ summary.n_total }}</b> tracks in {{ summary.n_decades }} decades,
+    the average record in this library got
+    <b>{{ '%.1f'|format(summary.loudness_delta_db|abs) }} dB
+    {{ 'louder' if summary.louder else 'quieter' }}</b>
+    between the {{ summary.from_decade }}s and the {{ summary.to_decade }}s.</p>
+  {{ loudness_chart|safe }}
+  <p class="cap">Mean <code>loudness_db</code> (dBFS) per decade. Producers have
+    mastered records progressively louder since the 1990s to stand out on radio
+    and playlists — the &ldquo;loudness war&rdquo;. This chart is that effect,
+    measured on our own DSP output.</p>
+</div>
+
+<div class="insight">
+  <div class="insight-badge">And songs got shorter</div>
+  <p>Over the same span the average track went from
+    <b>{{ (rows[0].mean_duration_sec // 60)|int }}:{{ '%02d'|format((rows[0].mean_duration_sec % 60)|int) }}</b>
+    to
+    <b>{{ (rows[-1].mean_duration_sec // 60)|int }}:{{ '%02d'|format((rows[-1].mean_duration_sec % 60)|int) }}</b>
+    — {{ '%.0f'|format(summary.duration_delta_sec|abs) }} seconds
+    {{ 'shorter' if summary.shorter else 'longer' }}.</p>
+  {{ duration_chart|safe }}
+  <p class="cap">Mean track duration per decade. Streaming pays per play past a
+    threshold, and attention is the scarce resource — the industry's response is
+    visible here without us having to assume it.</p>
+</div>
+{% endif %}
+
+{% if rows %}
+<h2 class="section">The numbers</h2>
+<div class="lib-wrap">
+  <table class="catalog">
+    <thead><tr><th>Decade</th><th>Tracks</th><th>Artists</th>
+      <th>Mean loudness</th><th>Median loudness</th><th>Mean tempo</th>
+      <th>Mean length</th></tr></thead>
+    <tbody>
+      {% for r in rows %}
+      <tr>
+        <td><b>{{ r.decade|int }}s</b></td>
+        <td>{{ r.n_tracks|int }}</td>
+        <td>{{ r.n_artists|int }}</td>
+        <td>{{ '%.2f'|format(r.mean_loudness_db) }} dBFS</td>
+        <td>{{ '%.2f'|format(r.median_loudness_db) }} dBFS</td>
+        <td>{{ '%.1f'|format(r.mean_tempo) }} bpm</td>
+        <td>{{ (r.mean_duration_sec // 60)|int }}:{{ '%02d'|format((r.mean_duration_sec % 60)|int) }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% endif %}
+
+{% if rows %}
+<div class="insight" style="margin-top:1.2rem">
+  <div class="insight-badge">What this is, and what it isn't</div>
+  <p>This is <b>one person's library</b>, not a survey of recorded music. The
+    1970s row is &ldquo;the 1970s tracks in this corpus&rdquo;, which is a much
+    narrower thing than &ldquo;1970s music&rdquo;. The <em>direction</em> of both
+    trends matches the published literature; the <em>magnitudes</em> are this
+    corpus's own.</p>
+  <p class="cap">
+    Two more caveats stated rather than silently corrected: release dates are
+    Spotify's, so a <b>remaster reads as its reissue year</b> — some older
+    records are counted in a later decade. And loudness is measured from the
+    audio we acquired, so a loud transfer of a quiet master reads loud. Decades
+    with fewer than {{ min_tracks }} tracks are dropped entirely rather than
+    drawn from a handful of songs.
+  </p>
+</div>
+{% endif %}
+{% endblock %}

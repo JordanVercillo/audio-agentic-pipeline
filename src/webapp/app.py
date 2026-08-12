@@ -183,6 +183,25 @@ def ingestion_status(range_ids: dict[str, list[str]], cache: FeatureCache) -> di
     }
 
 
+def _load_mart(name: str):
+    """A mart as a DataFrame, or None. mtime-keyed so a rebuild is picked up
+    without restarting the app."""
+    path = _MARTS_DIR / f"{name}.parquet"
+    try:
+        return _load_mart_cached(str(path), path.stat().st_mtime)
+    except (OSError, FileNotFoundError):
+        return None
+
+
+@lru_cache(maxsize=8)
+def _load_mart_cached(path: str, _mtime: float):
+    try:
+        import pandas as pd
+        return pd.read_parquet(path)
+    except Exception:  # noqa: BLE001 - a missing mart must not 500 the site
+        return None
+
+
 def _render_explainer() -> Optional[str]:
     """docs/HOW_IT_WORKS.md as HTML, or None if unavailable."""
     path = _BASE.parent.parent / "docs" / "HOW_IT_WORKS.md"
@@ -624,6 +643,31 @@ def create_app() -> FastAPI:
                                            "has_demo": load_demo_profile() is not None,
                                            "facts": _corpus_facts(),
                                            "exemplar": _exemplar_track()})
+
+    @app.get("/eras", response_class=HTMLResponse)
+    def eras(request: Request):
+        """Decade-grain view of the corpus. PUBLIC — these are corpus facts on
+        the same terms as /library and /artists, and it is the surface most
+        likely to be opened by someone with no account.
+
+        Reads `era_profile.parquet`. When the mart is absent (a fresh clone, or
+        CI, where `data/` is gitignored) this renders an honest empty state
+        rather than redirecting: a nav link that bounces you to the home page
+        reads as broken, and it would make the route's status depend on whether
+        the machine happens to hold a corpus.
+        """
+        from . import eras as eras_mod
+
+        rows = eras_mod.era_rows(_load_mart("era_profile"))
+        return templates.TemplateResponse(request, "eras.html", {
+            **_viewer_flags(request.state.session),
+            "rows": rows,
+            "summary": eras_mod.era_summary(rows),
+            "min_tracks": eras_mod.MIN_TRACKS,
+            "loudness_chart": eras_mod.era_chart_svg(
+                rows, "mean_loudness_db", "Mean loudness", " dBFS"),
+            "duration_chart": eras_mod.era_chart_svg(
+                rows, "mean_duration_sec", "Mean track length", " s")})
 
     @app.get("/how-it-works", response_class=HTMLResponse)
     def how_it_works(request: Request):

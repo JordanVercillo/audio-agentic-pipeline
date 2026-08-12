@@ -22,7 +22,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 import pandas as pd
 
@@ -123,6 +123,20 @@ def feature_dictionary_frame() -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def _release_year(raw: Any) -> Optional[int]:
+    """Year from a Spotify release_date, or None. Spotify's field is variously
+    `2006`, `2006-01`, `2006-01-01`, so only the first four characters are
+    dependable — and a remaster reports its REISSUE year, which is why every
+    surface built on this says so rather than silently correcting it."""
+    try:
+        y = int(str(raw)[:4])
+    except (TypeError, ValueError):
+        return None
+    # Recorded music predates 1900 only in ways this corpus will never contain;
+    # a stray 0001 or 9999 is a parse artifact, not a release.
+    return y if 1900 <= y <= 2100 else None
+
+
 def build_track_card(cache: Any, perceptual_df: pd.DataFrame) -> pd.DataFrame:
     """Per-bridge-key analyst card: the perceptual features + metadata + a
     feature_valid gate + percentile ranks for the measured raw values. Keyed by
@@ -136,6 +150,15 @@ def build_track_card(cache: Any, perceptual_df: pd.DataFrame) -> pd.DataFrame:
     df["popularity"] = df["spotify_track_id"].map(lambda t: (meta.get(t) or {}).get("popularity"))
     df["duplicate_of"] = df["spotify_track_id"].map(
         lambda t: (meta.get(t) or {}).get("duplicate_of"))
+    # ERA. D-70 captured album_release_date for the whole corpus and only
+    # /artist read it. Landing them here as DEGENERATE attributes (never a join
+    # key — album_id is far too thin to rollup on: 1,532 albums, only 124 with
+    # 3+ analyzed tracks) turns a stored column into an answerable question.
+    ident = cache.all_track_identity()
+    df["release_year"] = df["spotify_track_id"].map(
+        lambda t: _release_year((ident.get(t) or {}).get("album_release_date")))
+    df["decade"] = df["release_year"].map(
+        lambda y: None if y is None else int(y) // 10 * 10)
     # the safety gate: clearly-broken extractions are excluded from superlatives
     df["feature_valid"] = (df["tempo"] > _MIN_VALID_TEMPO) & \
                           (df["loudness_db"] > _MIN_VALID_LOUDNESS_DB)
@@ -336,6 +359,44 @@ def build_dedup_disagreements_mart(cache: Any) -> pd.DataFrame:
     return pd.DataFrame(sorted(rows, key=lambda r: (r["track_id_a"], r["track_id_b"])))
 
 
+
+# Below this, a decade's mean is one playlist's worth of taste rather than a
+# claim about the era, so the row is dropped instead of drawn.
+_MIN_TRACKS_PER_DECADE = 20
+
+
+def build_era_profile(track_card: pd.DataFrame) -> pd.DataFrame:
+    """One row per DECADE — the grain that makes the loudness war visible.
+
+    `loudness_db` and `tempo` are MEASURED (dBFS, BPM); `energy` is a
+    corpus-relative rank and is deliberately absent, because a rank cannot say
+    anything about an era — it moves when other decades' tracks arrive.
+
+    Only `feature_valid` rows count, and only decades with at least
+    `_MIN_TRACKS_PER_DECADE` tracks, so a 3-track 1960s bucket cannot produce a
+    headline. `n_tracks` travels with every row so the page can show its own
+    denominators.
+    """
+    if track_card is None or track_card.empty or "decade" not in track_card:
+        return pd.DataFrame()
+    df = track_card[track_card.get("feature_valid", True) &
+                    track_card["decade"].notna()].copy()
+    if df.empty:
+        return pd.DataFrame()
+    df["decade"] = df["decade"].astype(int)
+    g = df.groupby("decade")
+    out = pd.DataFrame({
+        "n_tracks": g.size(),
+        "mean_loudness_db": g["loudness_db"].mean().round(2),
+        "median_loudness_db": g["loudness_db"].median().round(2),
+        "mean_tempo": g["tempo"].mean().round(1),
+        "mean_duration_sec": g["duration_sec"].mean().round(1),
+        "n_artists": g["artist"].nunique(),
+    }).reset_index()
+    out = out[out["n_tracks"] >= _MIN_TRACKS_PER_DECADE]
+    return out.sort_values("decade").reset_index(drop=True)
+
+
 def build_semantic_marts(cache: Any, perceptual_df: pd.DataFrame,
                          marts_dir: Path) -> dict[str, int]:
     """Write the semantic marts (atomic, idempotent). Called from rebuild_marts
@@ -354,11 +415,14 @@ def build_semantic_marts(cache: Any, perceptual_df: pd.DataFrame,
     pv = build_provenance_mart(cache)
     dfm = build_duplicate_flags_mart(cache)
     dis = build_dedup_disagreements_mart(cache)
+    era = build_era_profile(tc)
     _write_atomic(fd, marts_dir / "feature_dictionary.parquet")
     if not tc.empty:
         _write_atomic(tc, marts_dir / "track_card.parquet")
     if not ar.empty:
         _write_atomic(ar, marts_dir / "artist_rollup.parquet")
+    if not era.empty:
+        _write_atomic(era, marts_dir / "era_profile.parquet")
     if not cf.empty:
         _write_atomic(cf, marts_dir / "corpus_facts.parquet")
     if not cp.empty:
