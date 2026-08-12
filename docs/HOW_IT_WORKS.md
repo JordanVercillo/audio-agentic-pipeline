@@ -209,6 +209,7 @@ checks, the duplicate problem, and why some songs are withheld.
 | You want to… | Read |
 |---|---|
 | run it yourself | [`SELF_HOSTING.md`](SELF_HOSTING.md) |
+| demo it to someone | [`DEMO_SCRIPT.md`](DEMO_SCRIPT.md) |
 | see the build story | [`CASE_STUDY.md`](CASE_STUDY.md) |
 | understand the architecture in depth | [`../CLAUDE_INSTRUCTIONS.md`](../CLAUDE_INSTRUCTIONS.md) |
 | see what's planned and why | [`VISION_SPECS.md`](VISION_SPECS.md) |

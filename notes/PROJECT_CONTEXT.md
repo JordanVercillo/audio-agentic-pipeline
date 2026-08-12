@@ -1389,6 +1389,8 @@ narrative goes to `notes/engineering_journal.md`, plans to
 | `src/warehouse/` | Medallion: `staging.py` (Bronze) → `cleansed.py` (Silver) → `modeled.py` (Gold star schema; fact denormalized, agent-optimized per ADR-002). |
 | `src/search/` | UMAP visualizer + its config (feeds the taste map via `analysis/clustering.py`). Tests: `test_visualizer.py`. **`faiss_store.py`, `pipeline.py` and `test_search.py` DELETED 2026-07-31** — zero importers, and `test_search.py`'s entry point wasn't named `test_*` so pytest never collected it (`docs/DELETIONS.md`). |
 | `src/analysis/` | Temporal drift (cosine, ADR-003) + matplotlib visuals. |
+| `docs/DEMO_SCRIPT.md` | **How to show this to someone**: the T-30 checklist (deploy_app.bat, app-verify, load it from a phone on cell data, warm the LLM), a 7-minute click path with the words for each stop, failure cards, and the questions colleagues ask. |
+| `src/webapp/eras.py` + `/eras` | Decade-grain corpus facts — the loudness war (+4.1 dB) and the streaming squeeze (−66 s), from `album_release_date` which was stored and unused. Headline numbers derived from the mart, thin decades dropped. |
 | `src/analysis/model_eval.py` | **The offline evaluation both shipped models lacked** (2026-08-12): recall@k vs playlist co-occurrence with random AND popularity baselines, same-artist pairs excluded as leakage, `stratified_by_popularity()`, and `cluster_null_model()` (is k=2 real?). Run it: `scripts/evaluate_models.py`. |
 | `src/analysis/metric_experiment.py` | Held-out metric/feature comparison. `paired_feature_sets()` for any proposed change, `nested_feature_selection()` with an outer holdout the selection never sees — it caught a +14%/-11.3% overfit. |
 | `src/store/metric.py` | The similarity transform, defined ONCE and imported by serving and by eval so the measured number and the shipped behaviour cannot drift. Whitening + shrinkage + a sample floor. |
@@ -3256,3 +3258,47 @@ narrative goes to `notes/engineering_journal.md`, plans to
   the 58-track `duration_ms` gap + the 77.1% ceiling), which needs no dump.
   Owner track: start the app; download the AcousticBrainz CC0 dump to unblock
   J0b. NEW SESSION: run `/resume`.**
+
+
+- **2026-08-12 (session 74 — the goal changes: this is a workplace demo now).**
+  Owner reframe: *"how can we get this up and running to show people at my
+  current work what I've built with AI. That is the goal of the project."*
+  **D-75 records the consequence**: Phase 5 AcousticBrainz DECLINED in full (7
+  sessions, 3 owner gates, for a coverage number no colleague will ask about),
+  the ML track PARKED (its constraint was measured as label supply), and with
+  them MPD/K4/K5/K6/Epic M/instrumentalness/Spark-at-scale. Reversible — the
+  spec is intact and J0a's 100% ISRC still stands.
+  **Three consults agreed the blocker was DISCOVERABILITY, not capability**, and
+  each claim was verified before acting: the landing page's PRIMARY button was
+  `Log in`, which colleagues cannot use (5-seat pilot), while the working
+  `/guest` path was styled `.btn ghost`; the logged-out nav was exactly
+  `Library` + an internal ops `Queue`; and `/song/{id}/features` — 83 measured
+  features, the strongest artifact on the site — sat three clicks deep with
+  nothing pointing at it. All fixed. The hero now states scale **derived from
+  the corpus_facts mart** (1,894 tracks · 892 artists · 117 h · 83 features), so
+  it cannot rot. *(One consult claim REJECTED: "77 vs 83 is a stale
+  contradiction" — it isn't. 77 is the frozen similarity VECTOR, 83 the exposed
+  feature count; bulk-replacing would have introduced an error.)*
+  **NEW `/how-it-works`** — public, rendered from `docs/HOW_IT_WORKS.md` via a
+  new `markdown` dep rather than a hand-copied second version that would rot.
+  **NEW `/eras` — the demo's headline artifact**, built from a column already on
+  disk: mean loudness by decade **−17.02 → −12.93 dBFS (+4.1 dB)** and mean
+  length **4:32 → 3:26 (−66 s)** across 6 decades / 1,880 tracks. The loudness
+  war and the streaming squeeze, measured on our own DSP, zero new acquisition.
+  Every headline number DERIVED from the mart's first and last decade; decades
+  under 20 tracks dropped rather than drawn; the page states it is one person's
+  library, not a survey.
+  **NEW `docs/DEMO_SCRIPT.md`** — the T-30 checklist and a 7-minute click path
+  with what to say at each stop, plus failure cards and the questions to expect.
+  Route matrix 29 → 31 (the standing gate demanded a row for each new route).
+  **986 tests · ruff clean · 26/26 warehouse flags FALSE · app-verify ALL FALSE
+  · public edge 200 · CI green.**
+  **Left off: the demo is coherent end to end — a colleague landing cold now
+  finds the good parts without narration. ➡️ NEXT = the non-code half, which
+  outranks any remaining feature: rehearse the click path twice, and SEAT 1–2
+  COLLEAGUES a week early (Spotify dashboard → Users) so they log in once and
+  see their OWN library on the day — rated the highest-impact item available and
+  it is nearly no work. If more build is wanted after that: `fact_section`
+  (9,129 rows already stored, a real second fact grain — 66% of tracks change
+  key mid-song) and a provenance/reliability page (97% coverage + an honest 11%
+  extraction failure rate, never surfaced). NEW SESSION: run `/resume`.**

@@ -86,6 +86,9 @@ pytest src/ -v                                            # test suite
 uv run .claude/skills/warehouse-audit/audit_warehouse.py  # data-quality audit
 ```
 
+Showing it to someone: [`docs/DEMO_SCRIPT.md`](docs/DEMO_SCRIPT.md)
+(T-30 checklist + a 7-minute click path).
+
 MCP registration + demo transcript: [`docs/AGENT_ACCESS.md`](docs/AGENT_ACCESS.md).
 
 ## The harness

@@ -19,6 +19,7 @@ defect-discovery channels (hand-entered — a discipline, not a gate; see
 | 68–71 | 2026-07-29/31 | Vision F S1–S6 | 17 | 905→914 | clean | all-false | +1722/+1069 | 1·3·3·2·**3**·0 | Full review: `reviews/2026-07-31_director-review_vision-F.md`. **3 BLOCKERS found by red-team**, 1 corrupting live serving data for 24 h. Self-catch 33%. |
 | 72 | 2026-07-31 | carried findings (12/12) + consolidation | 20 | 914→948 | clean | all-false (26 flags) | +873/+1287 | 3·2·0·**5**·1·0 | All 12 carried findings closed. New tripwire `CLUSTER_ASSIGNMENT_DESYNC` proven to fire. Percentile error 4.69→0.72 pts. D-74 declines P4.6.5 on a measured premise. FAISS stack deleted (`docs/DELETIONS.md`). Public numbers + docs structure now self-checking. **D-use beat D-self 5:3 — if session 73 repeats it, the FULL review trigger fires.** |
 | 73 | 2026-08-12 | Track B - measure the models | 8 | 948->971 | clean | all-false (26 flags) | +1055/+460 | 2.1.0.0.2.0 | First offline eval for both shipped models. Whitening SHIPPED (+0.0059 held out). Feature selection REJECTED (+14% pool / **-11.3% untouched holdout**). Two of my own earlier readings corrected by measurement. |
+| 74 | 2026-08-12 | goal reframe - the workplace demo | 3 | 975->986 | clean | all-false (26 flags) | +317/+98 | 0.2.0.0.3.0 | D-75 declines Phase 5 + the ML track. Three consults all found the blocker was DISCOVERABILITY, not capability. /eras built from a stored-but-unread column: +4.1 dB loudness, -66 s length across 6 decades. |
 
 ## Reading the rows
 
@@ -80,3 +81,21 @@ Both were reasonable readings of real numbers. Neither survived being tested.
 Also: one commit was pushed with a red test in it. I ran the suite, saw the
 failure in the output, and committed anyway. Caught and fixed in the next
 commit, but the discipline failed before the tooling did.
+
+### Session 74 - the gates all start from a URL you already know
+
+D-red 3: every finding came from the consults, and each was verified before
+acting. D-matrix 2: the route matrix demanded a row for each new route the
+moment it was registered - the standing gate working exactly as designed,
+twice. D-self 0, D-use 0.
+
+That D-self 0 is the entry worth reading. The defects were not code defects:
+a landing page whose primary button no visitor could use, a nav of two links,
+the best artifact on the site three clicks deep. **986 tests, 26 audit flags
+and a route x persona matrix pass over all of it**, because every gate this
+project owns begins from a route someone already knew existed (journal #72).
+
+One consult claim was REJECTED after checking: '77 vs 83 is a stale
+contradiction'. Both numbers are real and different - the frozen similarity
+vector and the exposed feature count - and bulk-replacing would have
+introduced an error rather than fixed one.

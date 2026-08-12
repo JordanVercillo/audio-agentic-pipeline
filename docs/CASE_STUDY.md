@@ -199,7 +199,7 @@ on a local model at $0.
 
 ---
 
-*The decision log (D-1…D-74), phase plan, and acceptance criteria live in
+*The decision log (D-1…D-75), phase plan, and acceptance criteria live in
 [`docs/VISION_SPECS.md`](VISION_SPECS.md) and
 [`notes/PROJECT_CONTEXT.md`](../notes/PROJECT_CONTEXT.md); the lessons in
 [`notes/engineering_journal.md`](../notes/engineering_journal.md).*

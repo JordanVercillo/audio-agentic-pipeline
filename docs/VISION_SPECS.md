@@ -704,6 +704,27 @@ the new seed's server-side fill, or the seed change doesn't re-trigger
 `seed_targets`). Fix so a new seed re-derives + repopulates every visible target;
 regression test on the seed→targets mapping.
 
+- **D-75 — the goal is a WORKPLACE DEMO; Phase 5 and the ML track are declined,
+  2026-08-12.** The owner reframed the project: *"how can we get this up and
+  running to show people at my current work what I've built with AI. That is the
+  goal."* Three consults (ui-ux · data-platform · agile-coach) independently
+  concluded the blocker is DISCOVERABILITY, not capability — the landing page's
+  primary call was a login colleagues cannot use, the logged-out nav offered
+  `Library` and an internal ops `Queue`, and the strongest artifact on the site
+  (83 measured features per track) sat three clicks deep with nothing pointing
+  at it. **Declined against this goal:** Phase 5 AcousticBrainz in full (7
+  sessions and 3 owner gates — a large manual dump download, ~2 h of listening
+  adjudication, a sign-off — to produce an external-validation coverage number
+  no colleague will ask for), the ML track (parked by the owner; the binding
+  constraint was measured as LABEL SUPPLY, not modelling), and with them MPD,
+  K4, K5/K6, Epic M, instrumentalness and Spark-at-scale. **Reversible**: if the
+  goal returns to the DE-portfolio target, `PHASE5_AB_SPEC.md` is intact and
+  J0a's 100% ISRC supply still stands. **Not declined**, because they serve the
+  demo directly: surfacing what the corpus already holds (`/eras` shipped;
+  `fact_section` at 9,129 rows and a provenance/reliability page remain), and
+  the non-code half — the click script, the pre-demo checklist, seating a
+  colleague so they see their OWN library.
+
 ## Sequence — Vision D (owner-approved interleave, D-29)
 
 - **Phase 1 — bugs + quick wins** (fast, mostly frontend, high-value):

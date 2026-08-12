@@ -1944,3 +1944,60 @@ contradicts you.
 > Every selection needs an evaluation the selection could not see. If your
 > holdout has never once disagreed with you, it is not a holdout.
 
+## 72 — Every impressive thing was built; none of it was reachable (2026-08-12)
+
+The goal changed to "show colleagues at work what I built", so I asked three
+experts what stood between the project and that. I expected a feature list.
+
+All three said the same thing, and it was not a feature: **the good parts were
+unreachable.** The landing page's primary button was *Log in with Spotify* — a
+five-seat pilot no colleague can use — while the one path that works was styled
+as the ghost secondary. The logged-out nav offered exactly two links: `Library`,
+and `Queue`, an internal ops screen. The single most convincing artifact on the
+site, 83 measured features per track with plain-English descriptions, sat three
+clicks deep behind a library search with nothing anywhere pointing at it.
+
+Months of work had gone into making those surfaces good. Roughly zero had gone
+into whether a stranger would ever see them. Every session had begun from a
+route I already knew existed, so no session ever hit the front door cold.
+
+The fix took an afternoon: swap two buttons, add three nav links, serve a doc
+that already existed, deep-link one exemplar page.
+
+**The realization:** building and *arriving* are different activities, and
+working on something daily makes you permanently unable to arrive at it. Nothing
+in the test suite, the audits or the review process asks "would a stranger find
+this?" — every gate this project owns starts from a URL someone already knew.
+
+> Demo readiness is not a subset of quality. You can pass every check you own
+> and still be undiscoverable, because none of your checks start at the front
+> door.
+
+
+## 73 — The best feature of the session was a column we already had (2026-08-12)
+
+Asked what would most impress a non-specialist, I expected the answer to be
+something to build. Instead the data-platform consult went looking for what was
+already on disk and unused, and found `album_release_date` — captured for the
+whole corpus weeks earlier by a slice whose actual purpose was something else
+entirely, and read by exactly one page since.
+
+Grouped by decade against loudness, it reproduces **the loudness war**: −17.02
+dBFS in the 1970s rising monotonically to −12.93 in the 2020s, +4.1 dB. The same
+grouping against duration gives **the streaming squeeze**, 4:32 down to 3:26.
+Two documented industry phenomena, from a column already sitting in the
+database, needing no acquisition and no external dataset.
+
+Weeks were spent on an evaluation harness that produced a genuinely valuable
+negative result. An afternoon on `GROUP BY decade` produced the thing people
+will actually remember.
+
+**The realization:** "what should we build next" and "what do we already have
+that nobody has looked at" are different questions, and this project had only
+ever been asking the first. Acquisition is expensive here — 14.7 s per track —
+which makes the stored-but-unread columns the cheapest capability available, and
+they had accumulated silently for months.
+
+> Before adding a source, inventory the one you have. The pipeline had been
+> storing an answer to an interesting question for weeks and nobody had asked it.
+
